@@ -603,6 +603,52 @@
   color: var(--ink-muted);
 }
 
+/* --- password field with reveal toggle ----------------------------------- */
+
+.password {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+/* Room for the toggle so a long password never runs underneath it. */
+.password__input {
+  padding-right: 44px;
+}
+
+.password__toggle {
+  position: absolute;
+  right: 4px;
+  width: 32px;
+  height: 32px;
+  display: grid;
+  place-items: center;
+  border: none;
+  border-radius: var(--r-sm);
+  background: transparent;
+  color: var(--ink-muted);
+  cursor: pointer;
+  transition: color 120ms ease, background 120ms ease;
+}
+
+.password__toggle:hover:not(:disabled) {
+  color: var(--ink);
+  background: var(--surface-sunk);
+}
+
+.password__toggle[aria-pressed='true'] {
+  color: var(--accent);
+}
+
+.password__toggle:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.password--error .password__input {
+  border-color: var(--danger);
+}
+
 .toolbar {
   display: flex;
   align-items: center;

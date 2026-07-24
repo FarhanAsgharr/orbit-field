@@ -23,6 +23,7 @@ import * as Device from 'expo-device';
 import * as LocalAuthentication from 'expo-local-authentication';
 import type { DeviceInfo } from '@orbit/types';
 import { Button, Field, Txt } from '../../src/components/ui';
+import { PasswordField } from '../../src/components/ui/PasswordField';
 import { useTheme } from '../../src/theme/ThemeProvider';
 import { useSession } from '../../src/stores/session.store';
 import { secureStorage, storage } from '../../src/lib/storage';
@@ -39,7 +40,6 @@ export default function LoginScreen(): React.ReactElement {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [rememberMe, setRememberMe] = useState(true);
-  const [showPassword, setShowPassword] = useState(false);
   const [biometricAvailable, setBiometricAvailable] = useState(false);
   const [fieldErrors, setFieldErrors] = useState<{ email?: string; password?: string }>({});
 
@@ -188,7 +188,7 @@ export default function LoginScreen(): React.ReactElement {
           placeholder="you@company.com"
         />
 
-        <Field
+        <PasswordField
           label="Password"
           value={password}
           onChangeText={(text) => {
@@ -196,25 +196,12 @@ export default function LoginScreen(): React.ReactElement {
             if (fieldErrors.password) setFieldErrors((prev) => ({ ...prev, password: undefined }));
           }}
           error={fieldErrors.password}
-          secureTextEntry={!showPassword}
           textContentType="password"
           autoComplete="current-password"
           returnKeyType="go"
           onSubmitEditing={() => void handleSubmit()}
           editable={!busy}
           placeholder="••••••••••••"
-          trailing={
-            <Pressable
-              onPress={() => setShowPassword((v) => !v)}
-              hitSlop={12}
-              accessibilityRole="button"
-              accessibilityLabel={showPassword ? 'Hide password' : 'Show password'}
-            >
-              <Txt variant="caption" color="accent">
-                {showPassword ? 'Hide' : 'Show'}
-              </Txt>
-            </Pressable>
-          }
         />
 
         <Pressable

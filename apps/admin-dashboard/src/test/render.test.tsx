@@ -258,7 +258,7 @@ describe('sign in', () => {
   it('labels both fields and wires autocomplete for password managers', () => {
     render(wrap(<SessionProvider><Login /></SessionProvider>));
     expect(screen.getByLabelText(/email/i)).toHaveAttribute('autocomplete', 'username');
-    expect(screen.getByLabelText(/password/i)).toHaveAttribute('autocomplete', 'current-password');
+    expect(screen.getByLabelText('Password')).toHaveAttribute('autocomplete', 'current-password');
   });
 
   it('flags a malformed email on blur rather than only on submit', async () => {
@@ -279,10 +279,95 @@ describe('sign in', () => {
     render(wrap(<SessionProvider><Login /></SessionProvider>));
 
     await userEvent.type(screen.getByLabelText(/email/i), 'a@b.com');
-    await userEvent.type(screen.getByLabelText(/password/i), 'wrong');
+    await userEvent.type(screen.getByLabelText('Password'), 'wrong');
     await userEvent.click(screen.getByRole('button', { name: /sign in/i }));
 
     expect(await screen.findByRole('alert')).toHaveTextContent(/incorrect/i);
+  });
+});
+
+// --- password reveal --------------------------------------------------------
+
+/**
+ * The toggle is asserted through the real login form rather than in isolation,
+ * because two of its failure modes only exist inside a form: a button without
+ * an explicit type submits it, and clicking the toggle blurs the input, which
+ * would re-hide the value the instant it was revealed.
+ */
+describe('password reveal', () => {
+  beforeEach(() => {
+    vi.spyOn(apiModule, 'hasSession').mockReturnValue(false);
+    // The signup-availability probe would otherwise settle after the test ends.
+    vi.spyOn(apiModule.api, 'get').mockResolvedValue({ available: false } as never);
+  });
+
+  function renderLogin(): { input: HTMLInputElement; toggle: HTMLElement } {
+    render(wrap(<SessionProvider><Login /></SessionProvider>));
+    return {
+      input: screen.getByLabelText('Password') as HTMLInputElement,
+      toggle: screen.getByRole('button', { name: /show password/i }),
+    };
+  }
+
+  it('starts masked', () => {
+    expect(renderLogin().input).toHaveAttribute('type', 'password');
+  });
+
+  it('reveals and re-masks the value', async () => {
+    const { input, toggle } = renderLogin();
+
+    await userEvent.click(toggle);
+    expect(input).toHaveAttribute('type', 'text');
+
+    await userEvent.click(screen.getByRole('button', { name: /hide password/i }));
+    expect(input).toHaveAttribute('type', 'password');
+  });
+
+  it('names the action and carries the state in aria-pressed', async () => {
+    const { toggle } = renderLogin();
+    expect(toggle).toHaveAttribute('aria-pressed', 'false');
+
+    await userEvent.click(toggle);
+    // A name that never changes leaves a screen reader user unsure what the
+    // press did, so both the name and aria-pressed have to move.
+    const pressed = screen.getByRole('button', { name: /hide password/i });
+    expect(pressed).toHaveAttribute('aria-pressed', 'true');
+  });
+
+  it('does not submit the form it sits in', async () => {
+    const login = vi.spyOn(apiModule, 'login').mockResolvedValue({} as never);
+    const { input, toggle } = renderLogin();
+
+    await userEvent.type(screen.getByLabelText(/email/i), 'a@b.com');
+    await userEvent.type(input, 'hunter2hunter2');
+    await userEvent.click(toggle);
+
+    expect(login).not.toHaveBeenCalled();
+  });
+
+  it('re-masks when focus leaves the field', async () => {
+    const { input, toggle } = renderLogin();
+
+    await userEvent.type(input, 'hunter2hunter2');
+    await userEvent.click(toggle);
+    expect(input).toHaveAttribute('type', 'text');
+
+    await userEvent.click(screen.getByLabelText(/email/i));
+    expect(input).toHaveAttribute('type', 'password');
+  });
+
+  it('keeps a new password visible while it is being checked against the rules', async () => {
+    vi.spyOn(apiModule.api, 'get').mockResolvedValue({ available: true } as never);
+    render(wrap(<SessionProvider><Login /></SessionProvider>));
+
+    await userEvent.click(await screen.findByRole('tab', { name: /create account/i }));
+
+    const input = screen.getByLabelText('Password') as HTMLInputElement;
+    await userEvent.click(screen.getByRole('button', { name: /show password/i }));
+    await userEvent.click(screen.getByLabelText(/first name/i));
+
+    // Unlike sign-in, the user is reading this one against the strength list.
+    expect(input).toHaveAttribute('type', 'text');
   });
 });
 

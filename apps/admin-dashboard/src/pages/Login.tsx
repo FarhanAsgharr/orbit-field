@@ -14,6 +14,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { useSession } from '../lib/auth';
 import { api } from '../lib/api';
 import { ErrorBanner } from '../components/ui';
+import { PasswordInput } from '../components/PasswordInput';
 
 type Mode = 'signIn' | 'register';
 
@@ -211,43 +212,43 @@ export function Login(): React.ReactElement {
             {emailInvalid ? <span className="field__error">Enter a valid email address.</span> : null}
           </div>
 
-          <div className="field">
-            <label className="field__label" htmlFor="password">Password</label>
-            <input
-              id="password"
-              className="input"
-              type="password"
-              // A password manager offered the wrong entry here is a real
-              // annoyance, so the two modes declare different intents.
-              autoComplete={mode === 'register' ? 'new-password' : 'current-password'}
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              disabled={busy}
-              required
-            />
-
-            {mode === 'register' && password.length > 0 ? (
-              <div className="stack gap-2 mt-2">
-                <div className="bar">
-                  <div
-                    className="bar__fill"
-                    style={{ width: `${(assessment.score / 4) * 100}%`, background: strengthColour }}
-                  />
+          <PasswordInput
+            id="password"
+            label="Password"
+            // A password manager offered the wrong entry here is a real
+            // annoyance, so the two modes declare different intents.
+            autoComplete={mode === 'register' ? 'new-password' : 'current-password'}
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            disabled={busy}
+            required
+            // While choosing a new password the user is reading it against the
+            // strength rules below, so it stays visible until they move on.
+            persistReveal={mode === 'register'}
+            hint={
+              mode === 'register' && password.length > 0 ? (
+                <div className="stack gap-2 mt-2">
+                  <div className="bar">
+                    <div
+                      className="bar__fill"
+                      style={{ width: `${(assessment.score / 4) * 100}%`, background: strengthColour }}
+                    />
+                  </div>
+                  {assessment.problems.length > 0 ? (
+                    <ul className="stack gap-1" style={{ margin: 0, paddingLeft: 16 }}>
+                      {assessment.problems.map((problem) => (
+                        <li key={problem} className="small muted">{problem}</li>
+                      ))}
+                    </ul>
+                  ) : (
+                    <span className="small" style={{ color: 'var(--ok)' }}>
+                      Strong enough
+                    </span>
+                  )}
                 </div>
-                {assessment.problems.length > 0 ? (
-                  <ul className="stack gap-1" style={{ margin: 0, paddingLeft: 16 }}>
-                    {assessment.problems.map((problem) => (
-                      <li key={problem} className="small muted">{problem}</li>
-                    ))}
-                  </ul>
-                ) : (
-                  <span className="small" style={{ color: 'var(--ok)' }}>
-                    Strong enough
-                  </span>
-                )}
-              </div>
-            ) : null}
-          </div>
+              ) : null
+            }
+          />
 
           <button
             className="btn"

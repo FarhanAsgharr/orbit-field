@@ -15,6 +15,7 @@ import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { AppError } from '@orbit/shared';
 import { Button, Card, Field, ProgressBar, Txt } from '../../src/components/ui';
+import { PasswordField } from '../../src/components/ui/PasswordField';
 import { useTheme } from '../../src/theme/ThemeProvider';
 import { useRuntime, useSession } from '../../src/stores/session.store';
 import { getNetworkState } from '../../src/lib/network';
@@ -158,25 +159,25 @@ export default function ChangePasswordScreen(): React.ReactElement {
           </View>
         ) : null}
 
-        <Field
+        <PasswordField
           label="Current password"
           value={current}
           onChangeText={setCurrent}
-          secureTextEntry
           textContentType="password"
           error={fieldErrors.currentPassword ?? null}
           editable={!busy && online}
         />
 
         <View style={{ gap: theme.spacing.sm }}>
-          <Field
+          <PasswordField
             label="New password"
             value={next}
             onChangeText={setNext}
-            secureTextEntry
             textContentType="newPassword"
             error={fieldErrors.newPassword ?? null}
             editable={!busy && online}
+            // Stays visible while the user reads it against the rules below.
+            persistReveal
           />
 
           {next.length > 0 ? (
@@ -199,11 +200,10 @@ export default function ChangePasswordScreen(): React.ReactElement {
           ) : null}
         </View>
 
-        <Field
+        <PasswordField
           label="Confirm new password"
           value={confirm}
           onChangeText={setConfirm}
-          secureTextEntry
           textContentType="newPassword"
           error={mismatch ? 'The passwords do not match.' : null}
           editable={!busy && online}
