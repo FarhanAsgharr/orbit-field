@@ -416,6 +416,87 @@ async function main() {
   check('unsupported protocol version rejected', badProtocol.status === 400,
     `status=${badProtocol.status}`);
 
+  // --- 11. pull scoping ---------------------------------------------------
+  section('11. Pull scoping for a project-scoped inspector');
+
+  // Regression guard. The scope filter is two independent OR groups: one for
+  // the assignee, one for the project. Spreading both into a single object
+  // literal makes the second silently replace the first, and a project member
+  // then receives every inspection in their project instead of only their own.
+  // That reproduces only when the user actually has a project membership,
+  // which is why this test creates one rather than relying on the seed.
+  const adminLogin = await api('/auth/login', {
+    method: 'POST',
+    body: {
+      email: 'admin@northwind.test',
+      password: 'OrbitField2026!',
+      rememberMe: true,
+      device: {
+        installationId: ulid(), name: 'Scope Admin', platform: 'web',
+        osVersion: '1', appVersion: '1.0.0', model: 'Harness',
+      },
+    },
+  });
+
+  if (adminLogin.status !== 200) {
+    check('admin logged in to set up scoping test', false, `status=${adminLogin.status}`);
+  } else {
+    const adminToken = adminLogin.body.data.tokens.accessToken;
+
+    const users = await api('/users?pageSize=100', { token: adminToken });
+    const peer = users.body?.data?.items?.find((u) => u.email === 'inspector2@northwind.test');
+    const projects = await api('/projects?pageSize=10', { token: adminToken });
+    const projectId = projects.body?.data?.items?.[0]?.id;
+
+    check('found the peer inspector and a project', Boolean(peer && projectId),
+      `peer=${Boolean(peer)} project=${Boolean(projectId)}`);
+
+    if (peer && projectId) {
+      const patched = await api(`/users/${peer.id}`, {
+        method: 'PATCH', token: adminToken, body: { projectIds: [projectId] },
+      });
+      check('peer inspector given a project membership', patched.status === 200,
+        `status=${patched.status}`);
+
+      const peerLogin = await api('/auth/login', {
+        method: 'POST',
+        body: {
+          email: 'inspector2@northwind.test',
+          password: 'OrbitField2026!',
+          rememberMe: true,
+          device: {
+            installationId: ulid(), name: 'Peer Handset', platform: 'android',
+            osVersion: '14', appVersion: '1.0.0', model: 'Test Device',
+          },
+        },
+      });
+      check('peer inspector authenticated', peerLogin.status === 200, `status=${peerLogin.status}`);
+
+      if (peerLogin.status === 200) {
+        const peerToken = peerLogin.body.data.tokens.accessToken;
+        const peerPull = await api('/sync/pull?protocolVersion=1&since=0&limit=500', {
+          token: peerToken,
+        });
+        // /sync/pull returns its payload at the top level, unlike the admin
+        // list endpoints which wrap in `data`.
+        const changes = peerPull.body?.changes ?? [];
+        const inspections = changes.filter((c) => c.entity === 'INSPECTION');
+        const foreign = inspections.filter((c) => c.data?.assignedToId && c.data.assignedToId !== peer.id);
+
+        check('project membership does not leak another inspector\'s work',
+          foreign.length === 0,
+          `received ${foreign.length} inspections assigned to someone else`);
+
+        // The same filter must not over-correct: reference data carries a null
+        // assignee and every user still needs it to render anything at all.
+        check('reference data still reaches a project-scoped inspector',
+          changes.some((c) => c.entity === 'TEMPLATE_VERSION') &&
+          changes.some((c) => c.entity === 'SITE'),
+          `entities: ${[...new Set(changes.map((c) => c.entity))].join(',')}`);
+      }
+    }
+  }
+
   // --- summary ------------------------------------------------------------
   console.log(`\n${'─'.repeat(60)}`);
   console.log(`\x1b[1mResult: ${passed} passed, ${failed} failed\x1b[0m`);

@@ -9,8 +9,9 @@
  * trivial text fields.
  */
 
-import { PrismaClient } from '@prisma/client';
+import { Prisma, PrismaClient } from '@prisma/client';
 import argon2 from 'argon2';
+import type { SyncEntity } from '@orbit/types';
 
 const prisma = new PrismaClient();
 
@@ -21,6 +22,100 @@ function seedId(prefix: string, n: number): string {
 }
 
 const ORG_ID = seedId('ORG', 1);
+
+/**
+ * Publish everything this seed created to the change log.
+ *
+ * Devices are not fed from the entity tables — they replay the change log and
+ * nothing else. A seed that writes rows without log entries produces a database
+ * that looks fully populated in the console and completely empty on every
+ * phone, which is the most confusing possible starting state.
+ *
+ * Cursors are allocated in dependency order so a device applying the stream in
+ * order never sees an inspection before the site it points at.
+ *
+ * Returns the last cursor used, so the caller can park the org's sequence above
+ * it.
+ */
+async function publishSeedToChangeLog(): Promise<bigint> {
+  // BigInt and Date do not survive JSON.stringify, and Prisma returns both.
+  const serialise = (row: unknown): Prisma.InputJsonValue =>
+    JSON.parse(
+      JSON.stringify(row, (_k, v: unknown) => {
+        if (typeof v === 'bigint') return Number(v);
+        if (v instanceof Date) return v.toISOString();
+        return v;
+      }),
+    ) as Prisma.InputJsonValue;
+
+  const where = { orgId: ORG_ID } as const;
+
+  // Reference data carries a null assignee, which is what makes it visible to
+  // every user; only inspections are scoped to the person who owns them.
+  const groups: Array<{ entity: SyncEntity; rows: Array<Record<string, unknown>> }> = [
+    { entity: 'ORGANIZATION', rows: await prisma.organization.findMany({ where: { id: ORG_ID } }) },
+    { entity: 'USER', rows: await prisma.user.findMany({ where }) },
+    { entity: 'CLIENT', rows: await prisma.client.findMany({ where }) },
+    { entity: 'PROJECT', rows: await prisma.project.findMany({ where }) },
+    { entity: 'SITE', rows: await prisma.site.findMany({ where }) },
+    { entity: 'ASSET', rows: await prisma.asset.findMany({ where }) },
+    { entity: 'TEMPLATE_VERSION', rows: await prisma.templateVersion.findMany({ where }) },
+    { entity: 'INSPECTION', rows: await prisma.inspection.findMany({ where }) },
+  ];
+
+  // Re-running the seed must not append a second copy of every entry.
+  await prisma.changeLogEntry.deleteMany({ where });
+
+  let cursor = 0n;
+
+  for (const group of groups) {
+    for (const row of group.rows) {
+      cursor += 1n;
+
+      await prisma.changeLogEntry.create({
+        data: {
+          cursor,
+          orgId: ORG_ID,
+          entity: group.entity,
+          operation: 'CREATE',
+          entityId: row.id as string,
+          version: typeof row.version === 'number' ? row.version : 1,
+          data: serialise(row),
+          projectId: (row.projectId as string | undefined) ?? null,
+          assignedToId:
+            group.entity === 'INSPECTION' ? ((row.assignedToId as string | null) ?? null) : null,
+          actorUserId: null,
+          actorDeviceId: null,
+        },
+      });
+
+      // Keep the row's own cursor consistent with the entry describing it.
+      // Support tooling answers "has this device seen this row?" from the
+      // entity table, and a stale value there reads as a device left behind.
+      // The table name comes from the closed map below, never from input.
+      await prisma.$executeRawUnsafe(
+        `UPDATE "${CURSOR_TABLES[group.entity]}" SET "syncCursor" = $1 WHERE id = $2`,
+        cursor,
+        row.id as string,
+      );
+    }
+  }
+
+  console.log(`  Change log   : ${cursor} entries published`);
+  return cursor;
+}
+
+/** Table per entity, for stamping the allocated cursor back onto the row. */
+const CURSOR_TABLES: Record<string, string> = {
+  ORGANIZATION: 'organizations',
+  USER: 'users',
+  CLIENT: 'clients',
+  PROJECT: 'projects',
+  SITE: 'sites',
+  ASSET: 'assets',
+  TEMPLATE_VERSION: 'template_versions',
+  INSPECTION: 'inspections',
+};
 
 async function main(): Promise<void> {
   // This repository is public and the demo password below is published with it.
@@ -428,11 +523,13 @@ async function main(): Promise<void> {
     });
   }
 
+  const cursor = await publishSeedToChangeLog();
+
   // The org's sequence must sit above every cursor handed out, or the next
   // allocation would collide with a seeded row.
   await prisma.organization.update({
     where: { id: org.id },
-    data: { syncSequence: 100n, numberSequence: 3, numberYear: new Date().getFullYear() },
+    data: { syncSequence: cursor, numberSequence: 3, numberYear: new Date().getFullYear() },
   });
 
   console.log('Seed complete.');

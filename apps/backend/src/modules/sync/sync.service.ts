@@ -595,21 +595,31 @@ export async function pull(actor: SyncActor, request: SyncPullRequest): Promise<
   const seesEverything = can(actor, Permission.INSPECTION_READ_ALL);
   const scopedProjects = actor.projectIds.length > 0 ? actor.projectIds : null;
 
+  // Both scopes are conjunctive, and both are expressed as an OR. Spreading two
+  // `OR` keys into one object literal silently drops the first — a project-
+  // scoped inspector would then receive every inspection in their projects
+  // rather than only their own. They are collected into `AND` so each one
+  // constrains the result independently.
+  const scopes: Prisma.ChangeLogEntryWhereInput[] = [];
+
+  if (!seesEverything) {
+    scopes.push({
+      OR: [
+        { assignedToId: actor.userId },
+        { assignedToId: null }, // reference data: templates, sites, clients
+      ],
+    });
+  }
+
+  if (scopedProjects) {
+    scopes.push({ OR: [{ projectId: { in: scopedProjects } }, { projectId: null }] });
+  }
+
   const where: Prisma.ChangeLogEntryWhereInput = {
     orgId: actor.orgId,
     cursor: { gt: since },
     ...(request.entities?.length ? { entity: { in: request.entities } } : {}),
-    ...(seesEverything
-      ? {}
-      : {
-          OR: [
-            { assignedToId: actor.userId },
-            { assignedToId: null }, // reference data: templates, sites, clients
-          ],
-        }),
-    ...(scopedProjects
-      ? { OR: [{ projectId: { in: scopedProjects } }, { projectId: null }] }
-      : {}),
+    ...(scopes.length > 0 ? { AND: scopes } : {}),
   };
 
   const rows = await prisma.changeLogEntry.findMany({
