@@ -1,0 +1,9 @@
+apiVersion: 1
+providers:
+  - name: Orbit Field
+    folder: Orbit Field
+    type: file
+    disableDeletion: true
+    updateIntervalSeconds: 60
+    options:
+      path: /etc/grafana/provisioning/dashboards

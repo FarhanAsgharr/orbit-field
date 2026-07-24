@@ -1,0 +1,93 @@
+{
+  "expo": {
+    "name": "Orbit Field",
+    "slug": "orbit-field",
+    "version": "1.0.0",
+    "orientation": "default",
+    "scheme": "orbit",
+    "userInterfaceStyle": "automatic",
+    "newArchEnabled": true,
+    "splash": {
+      "image": "./assets/splash.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#0B0F1A"
+    },
+    "assetBundlePatterns": ["**/*"],
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "app.orbitfield.field",
+      "requireFullScreen": false,
+      "infoPlist": {
+        "NSCameraUsageDescription": "Orbit Field uses the camera to capture inspection evidence photographs and to scan asset barcodes.",
+        "NSPhotoLibraryUsageDescription": "Orbit Field attaches existing photographs to inspections when your organisation permits it.",
+        "NSMicrophoneUsageDescription": "Orbit Field records voice notes against inspection findings.",
+        "NSLocationWhenInUseUsageDescription": "Orbit Field stamps inspections and photographs with your location to prove they were carried out on site.",
+        "NSLocationAlwaysAndWhenInUseUsageDescription": "Orbit Field records your location while an inspection is in progress to verify site attendance.",
+        "NSFaceIDUsageDescription": "Orbit Field uses Face ID to unlock the app without re-entering your password in the field.",
+        "UIBackgroundModes": ["fetch", "processing"],
+        "ITSAppUsesNonExemptEncryption": false
+      }
+    },
+    "android": {
+      "package": "app.orbitfield.field",
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundColor": "#0B0F1A"
+      },
+      "permissions": [
+        "CAMERA",
+        "ACCESS_FINE_LOCATION",
+        "ACCESS_COARSE_LOCATION",
+        "ACCESS_BACKGROUND_LOCATION",
+        "RECORD_AUDIO",
+        "READ_EXTERNAL_STORAGE",
+        "WRITE_EXTERNAL_STORAGE",
+        "USE_BIOMETRIC",
+        "USE_FINGERPRINT",
+        "VIBRATE",
+        "RECEIVE_BOOT_COMPLETED",
+        "WAKE_LOCK",
+        "FOREGROUND_SERVICE"
+      ],
+      "blockedPermissions": ["com.google.android.gms.permission.AD_ID"]
+    },
+    "plugins": [
+      "expo-router",
+      "expo-secure-store",
+      "expo-sqlite",
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "Orbit Field uses the camera to capture inspection evidence.",
+          "recordAudioAndroid": true
+        }
+      ],
+      [
+        "expo-location",
+        {
+          "locationAlwaysAndWhenInUsePermission": "Orbit Field records your location to prove inspections were carried out on site.",
+          "isAndroidBackgroundLocationEnabled": true
+        }
+      ],
+      [
+        "expo-local-authentication",
+        {
+          "faceIDPermission": "Orbit Field uses Face ID to unlock the app in the field."
+        }
+      ],
+      [
+        "expo-build-properties",
+        {
+          "ios": { "deploymentTarget": "15.1" },
+          "android": { "minSdkVersion": 24, "compileSdkVersion": 35, "targetSdkVersion": 35 }
+        }
+      ]
+    ],
+    "experiments": {
+      "typedRoutes": true
+    },
+    "extra": {
+      "apiUrl": "http://localhost:4000/api/v1"
+    }
+  }
+}

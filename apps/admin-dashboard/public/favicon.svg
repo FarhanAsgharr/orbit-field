@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
+  <!--
+    The orbit mark: a ring with a satellite at its upper right, the same glyph
+    the console's nav rail draws in CSS. Kept as one shape so it stays legible
+    at 16px, where a more detailed mark turns to mud.
+  -->
+  <rect width="32" height="32" rx="7" fill="#1B5CF0"/>
+  <circle cx="16" cy="17" r="8" fill="none" stroke="#FFFFFF" stroke-width="2.75"/>
+  <circle cx="24" cy="9" r="4" fill="#FFFFFF"/>
+</svg>

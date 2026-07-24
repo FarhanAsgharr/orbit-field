@@ -1,0 +1,39 @@
+{
+  "name": "orbit-field",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Orbit Field \u2014 offline-first enterprise inspection platform",
+  "license": "UNLICENSED",
+  "engines": {
+    "node": ">=20.0.0"
+  },
+  "workspaces": [
+    "packages/types",
+    "packages/utils",
+    "packages/shared",
+    "packages/ui",
+    "apps/backend",
+    "apps/mobile",
+    "apps/admin-dashboard"
+  ],
+  "scripts": {
+    "build": "npm run build --workspaces --if-present",
+    "typecheck": "npm run typecheck --workspaces --if-present",
+    "lint": "eslint . --ext .ts,.tsx",
+    "test": "vitest run && npm run test -w @orbit/admin-dashboard",
+    "build:packages": "npm run build -w @orbit/types -w @orbit/utils -w @orbit/shared",
+    "dev:backend": "npm run dev -w @orbit/backend",
+    "dev:mobile": "npm run start -w @orbit/mobile",
+    "db:migrate": "npm run db:migrate -w @orbit/backend",
+    "db:seed": "npm run db:seed -w @orbit/backend",
+    "infra:up": "docker compose -f deployment/docker-compose.yml up -d",
+    "infra:down": "docker compose -f deployment/docker-compose.yml down",
+    "test:unit": "vitest run",
+    "test:e2e": "node scripts/e2e-sync.mjs && node scripts/e2e-api.mjs && node scripts/e2e-admin.mjs && node scripts/e2e-dashboard-contract.mjs"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.2",
+    "typescript": "^5.7.2",
+    "vitest": "^2.1.8"
+  }
+}

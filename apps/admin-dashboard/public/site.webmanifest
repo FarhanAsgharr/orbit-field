@@ -1,0 +1,13 @@
+{
+  "name": "Orbit Field — Operations",
+  "short_name": "Orbit Field",
+  "description": "Operations console for the Orbit Field inspection platform.",
+  "icons": [
+    { "src": "/favicon.svg", "sizes": "any", "type": "image/svg+xml" },
+    { "src": "/apple-touch-icon.svg", "sizes": "180x180", "type": "image/svg+xml" }
+  ],
+  "theme_color": "#1B5CF0",
+  "background_color": "#F5F7FB",
+  "display": "standalone",
+  "start_url": "/"
+}

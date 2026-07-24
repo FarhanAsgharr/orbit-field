@@ -1,0 +1,60 @@
+# Multi-stage build for the Orbit Field API.
+#
+# Two things matter here: the Prisma client must be generated against the same
+# platform the runtime uses (Alpine/musl), and the final image must not carry
+# the toolchain that built it.
+
+FROM node:22-alpine AS base
+RUN apk add --no-cache libc6-compat openssl
+WORKDIR /app
+
+# --- dependencies ----------------------------------------------------------
+FROM base AS deps
+COPY package.json package-lock.json* ./
+COPY packages/types/package.json   ./packages/types/
+COPY packages/utils/package.json   ./packages/utils/
+COPY packages/shared/package.json  ./packages/shared/
+COPY apps/backend/package.json     ./apps/backend/
+# argon2 is a native module; it needs a toolchain at install time only.
+RUN apk add --no-cache --virtual .build-deps python3 make g++ \
+ && npm ci \
+ && apk del .build-deps
+
+# --- build -----------------------------------------------------------------
+FROM base AS build
+COPY --from=deps /app/node_modules ./node_modules
+COPY . .
+RUN npx prisma generate --schema apps/backend/prisma/schema.prisma \
+ && npm run build -w @orbit/types \
+ && npm run build -w @orbit/utils \
+ && npm run build -w @orbit/shared \
+ && npm run build -w @orbit/backend
+
+# --- runtime ---------------------------------------------------------------
+FROM base AS runtime
+ENV NODE_ENV=production
+
+# Never run the API as root: a container escape should not start as uid 0.
+RUN addgroup -g 1001 -S nodejs && adduser -u 1001 -S orbit -G nodejs
+
+# From `build`, not `deps`: the Prisma client is generated during the build
+# stage and lives inside node_modules. Taking the tree from `deps` ships an
+# uninitialised client and the process exits on its first import.
+COPY --from=build --chown=orbit:nodejs /app/node_modules ./node_modules
+COPY --from=build --chown=orbit:nodejs /app/packages/types/dist   ./packages/types/dist
+COPY --from=build --chown=orbit:nodejs /app/packages/utils/dist   ./packages/utils/dist
+COPY --from=build --chown=orbit:nodejs /app/packages/shared/dist  ./packages/shared/dist
+COPY --from=build --chown=orbit:nodejs /app/apps/backend/dist     ./apps/backend/dist
+COPY --from=build --chown=orbit:nodejs /app/apps/backend/prisma   ./apps/backend/prisma
+COPY --chown=orbit:nodejs package.json ./
+COPY --chown=orbit:nodejs packages/types/package.json  ./packages/types/
+COPY --chown=orbit:nodejs packages/utils/package.json  ./packages/utils/
+COPY --chown=orbit:nodejs packages/shared/package.json ./packages/shared/
+COPY --chown=orbit:nodejs apps/backend/package.json    ./apps/backend/
+
+USER orbit
+EXPOSE 4000
+
+# Migrations run at start rather than at build: the schema must be applied by
+# whichever replica comes up first, against the real database.
+CMD ["sh", "-c", "npx prisma migrate deploy --schema apps/backend/prisma/schema.prisma && node apps/backend/dist/server.js"]

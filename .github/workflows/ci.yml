@@ -1,0 +1,303 @@
+name: CI
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main, develop]
+
+# A new push supersedes an in-flight run on the same branch. Without this, a
+# busy PR queues five redundant runs and the useful one waits behind them.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  NODE_VERSION: '22'
+
+jobs:
+  # ---------------------------------------------------------------------------
+  # Static checks. Fast, no services, fails the PR before anything expensive.
+  # ---------------------------------------------------------------------------
+  static:
+    name: Typecheck & unit tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci --omit=optional
+
+      # The Prisma client is generated code that everything else typechecks
+      # against, so it must exist before any tsc run.
+      - name: Generate Prisma client
+        run: npx prisma generate --schema apps/backend/prisma/schema.prisma
+
+      - name: Build shared packages
+        run: npm run build:packages
+
+      - name: Typecheck
+        run: |
+          npx tsc -p packages/types/tsconfig.json --noEmit
+          npx tsc -p packages/utils/tsconfig.json --noEmit
+          npx tsc -p packages/shared/tsconfig.json --noEmit
+          npx tsc -p apps/backend/tsconfig.json --noEmit
+          npx tsc -p apps/mobile/tsconfig.json --noEmit
+          npx tsc -p apps/admin-dashboard/tsconfig.json --noEmit
+
+      - name: Unit tests
+        run: npm run test:unit
+
+      - name: Dashboard tests
+        run: npm run test -w @orbit/admin-dashboard
+
+  # ---------------------------------------------------------------------------
+  # End-to-end against a real Postgres and Redis. This is the job that catches
+  # the bugs a typecheck cannot: BigInt serialisation, missing change-log
+  # entries, broken migrations.
+  # ---------------------------------------------------------------------------
+  e2e:
+    name: End-to-end (live database)
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: orbit
+          POSTGRES_PASSWORD: orbit_ci_password
+          POSTGRES_DB: orbit_field
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U orbit -d orbit_field"
+          --health-interval 10s --health-timeout 5s --health-retries 10
+
+      redis:
+        image: redis:7-alpine
+        ports: ['6379:6379']
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s --health-timeout 5s --health-retries 5
+
+    env:
+      NODE_ENV: test
+      PORT: '4055'
+      DATABASE_URL: postgresql://orbit:orbit_ci_password@localhost:5432/orbit_field?schema=public
+      REDIS_URL: redis://localhost:6379
+      JWT_ACCESS_SECRET: ci_access_secret_at_least_32_characters_long
+      JWT_REFRESH_SECRET: ci_refresh_secret_at_least_32_characters_diff
+      OTP_SECRET: ci_otp_secret_at_least_32_characters_long_xx
+      LOG_LEVEL: warn
+      CORS_ORIGINS: '*'
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci --omit=optional
+
+      - name: Generate Prisma client
+        run: npx prisma generate --schema apps/backend/prisma/schema.prisma
+
+      - name: Build shared packages
+        run: npm run build:packages
+
+      # `migrate deploy`, not `migrate dev`: CI must apply the committed
+      # migrations exactly, and fail if the schema has drifted from them.
+      - name: Apply migrations
+        run: npx prisma migrate deploy --schema apps/backend/prisma/schema.prisma
+
+      - name: Seed
+        run: npx tsx apps/backend/prisma/seed.ts
+
+      - name: Start API
+        run: |
+          npx tsx apps/backend/src/server.ts > /tmp/api.log 2>&1 &
+          for i in $(seq 1 40); do
+            if curl -sf http://localhost:4055/health/ready > /dev/null; then
+              echo "API ready"; exit 0
+            fi
+            sleep 2
+          done
+          echo "API failed to become ready"; cat /tmp/api.log; exit 1
+
+      - name: Sync protocol
+        run: node scripts/e2e-sync.mjs
+
+      - name: REST surface & uploads
+        run: node scripts/e2e-api.mjs
+
+      - name: Admin surface
+        run: node scripts/e2e-admin.mjs
+
+      - name: Dashboard contract
+        run: node scripts/e2e-dashboard-contract.mjs
+
+      - name: Reports & exports
+        run: node scripts/e2e-reports.mjs
+
+      # The API log is the only way to diagnose a failure that happened inside
+      # the server rather than in the assertion.
+      - name: API log on failure
+        if: failure()
+        run: tail -200 /tmp/api.log
+
+  # ---------------------------------------------------------------------------
+  # Builds. Proves every deployable artefact actually compiles.
+  # ---------------------------------------------------------------------------
+  build:
+    name: Build artefacts
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    needs: static
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci --omit=optional
+
+      - name: Generate Prisma client
+        run: npx prisma generate --schema apps/backend/prisma/schema.prisma
+
+      - name: Build backend
+        run: npm run build:packages && npm run build -w @orbit/backend
+
+      - name: Build dashboard
+        run: npm run build -w @orbit/admin-dashboard
+
+      - name: Upload dashboard bundle
+        uses: actions/upload-artifact@v4
+        with:
+          name: dashboard-dist
+          path: apps/admin-dashboard/dist
+          retention-days: 14
+
+      - name: Upload backend bundle
+        uses: actions/upload-artifact@v4
+        with:
+          name: backend-dist
+          path: |
+            apps/backend/dist
+            apps/backend/prisma
+          retention-days: 14
+
+  # ---------------------------------------------------------------------------
+  # Security. Dependency audit plus a secret scan.
+  # ---------------------------------------------------------------------------
+  security:
+    name: Security scan
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    permissions:
+      contents: read
+      security-events: write
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # Full history so the secret scan can inspect the diff range.
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci --omit=optional
+
+      # Fails on high and critical only. Moderate advisories in transitive dev
+      # dependencies would block every PR without improving anything shipped.
+      - name: Dependency audit
+        run: npm audit --audit-level=high --omit=dev
+
+      - name: Check for committed secrets
+        run: |
+          echo "Scanning for credential patterns..."
+          # Deliberately narrow: broad entropy scanning on a TypeScript repo is
+          # almost all false positives, which trains people to ignore it.
+          if git grep -nIE '(BEGIN (RSA|OPENSSH|EC) PRIVATE KEY|AKIA[0-9A-Z]{16}|ghp_[A-Za-z0-9]{36})' -- ':!*.test.ts' ':!scripts/e2e-*'; then
+            echo "::error::A credential pattern was found in the working tree."
+            exit 1
+          fi
+          echo "No credential patterns found."
+
+      - name: Verify no placeholders shipped
+        run: |
+          # The repository holds itself to having no unfinished markers in
+          # application code. Test fixtures and docs are exempt.
+          if git grep -nE '(TODO:|FIXME|Not available yet)' -- 'apps/*/src' 'apps/*/app' 'packages/*/src' ':!*.test.ts' ':!*.test.tsx'; then
+            echo "::error::Placeholder or TODO markers found in application code."
+            exit 1
+          fi
+          echo "No placeholders found."
+
+  # ---------------------------------------------------------------------------
+  # Container images. Only on main, and only once everything else is green.
+  # ---------------------------------------------------------------------------
+  images:
+    name: Build container images
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    needs: [static, e2e, build, security]
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Log in to registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push API
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: deployment/Dockerfile.backend
+          push: true
+          tags: |
+            ghcr.io/${{ github.repository }}/api:latest
+            ghcr.io/${{ github.repository }}/api:${{ github.sha }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Build and push dashboard
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: deployment/Dockerfile.dashboard
+          push: true
+          tags: |
+            ghcr.io/${{ github.repository }}/dashboard:latest
+            ghcr.io/${{ github.repository }}/dashboard:${{ github.sha }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max

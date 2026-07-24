@@ -1,0 +1,784 @@
+/*
+ * Component styles.
+ *
+ * Held in one stylesheet rather than co-located per component: the console is
+ * a small number of repeated primitives (table, card, badge, rail) used
+ * everywhere, and splitting them buys nothing but import noise.
+ */
+
+/* --- shell ---------------------------------------------------------------- */
+
+.shell {
+  display: grid;
+  grid-template-columns: var(--rail-width) 1fr;
+  min-height: 100vh;
+}
+
+.rail {
+  background: var(--surface);
+  border-right: 1px solid var(--line);
+  display: flex;
+  flex-direction: column;
+  position: sticky;
+  top: 0;
+  height: 100vh;
+  overflow-y: auto;
+}
+
+.rail__brand {
+  padding: var(--s-5) var(--s-5) var(--s-4);
+  border-bottom: 1px solid var(--line);
+}
+
+.rail__mark {
+  font-size: 15px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+}
+
+/* The orbit glyph: a ring with a satellite. The product's one piece of iconography. */
+.rail__glyph {
+  width: 18px;
+  height: 18px;
+  border: 2px solid var(--accent);
+  border-radius: 50%;
+  position: relative;
+  flex-shrink: 0;
+}
+
+.rail__glyph::after {
+  content: '';
+  position: absolute;
+  width: 6px;
+  height: 6px;
+  background: var(--accent);
+  border-radius: 50%;
+  top: -3px;
+  right: -1px;
+}
+
+.rail__org {
+  font-size: 12px;
+  color: var(--ink-muted);
+  margin-top: 2px;
+}
+
+.rail__nav {
+  padding: var(--s-3) var(--s-3);
+  flex: 1;
+}
+
+.rail__group {
+  margin-bottom: var(--s-5);
+}
+
+.rail__group-label {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  color: var(--ink-faint);
+  padding: 0 var(--s-3);
+  margin-bottom: var(--s-2);
+}
+
+.rail__link {
+  display: flex;
+  align-items: center;
+  gap: var(--s-3);
+  padding: var(--s-2) var(--s-3);
+  border-radius: var(--r-md);
+  color: var(--ink-secondary);
+  font-size: 13.5px;
+  font-weight: 500;
+  text-decoration: none;
+  transition: background 120ms ease, color 120ms ease;
+}
+
+.rail__link:hover {
+  background: var(--surface-sunk);
+  color: var(--ink);
+  text-decoration: none;
+}
+
+.rail__link--active {
+  background: var(--accent-wash);
+  color: var(--accent-ink);
+  font-weight: 600;
+}
+
+.rail__link-count {
+  margin-left: auto;
+  font-size: 11px;
+  padding: 1px 6px;
+  border-radius: var(--r-pill);
+  background: var(--danger);
+  color: #fff;
+  font-weight: 700;
+}
+
+.rail__footer {
+  padding: var(--s-4);
+  border-top: 1px solid var(--line);
+}
+
+.rail__user {
+  display: flex;
+  align-items: center;
+  gap: var(--s-3);
+}
+
+.avatar {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: var(--accent-wash);
+  color: var(--accent-ink);
+  display: grid;
+  place-items: center;
+  font-size: 12px;
+  font-weight: 700;
+  flex-shrink: 0;
+}
+
+.main {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.page {
+  padding: var(--s-6) var(--s-8) var(--s-12);
+  max-width: 1560px;
+  width: 100%;
+  margin: 0 auto;
+}
+
+.page__head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--s-6);
+  margin-bottom: var(--s-6);
+  flex-wrap: wrap;
+}
+
+.page__title {
+  font-size: 22px;
+  font-weight: 680;
+  letter-spacing: -0.025em;
+}
+
+.page__subtitle {
+  color: var(--ink-muted);
+  font-size: 13.5px;
+  margin-top: 2px;
+}
+
+/* --- fleet status bar ------------------------------------------------------
+ * Persistent across every page. This console exists to answer one question —
+ * "is field data reaching us right now" — and the answer should never be more
+ * than a glance away, whatever screen the operator is on.
+ */
+
+.statusbar {
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  height: var(--statusbar-height);
+  background: var(--surface);
+  border-bottom: 1px solid var(--line);
+  display: flex;
+  align-items: center;
+  gap: var(--s-6);
+  padding: 0 var(--s-8);
+  overflow-x: auto;
+}
+
+.statusbar__item {
+  display: flex;
+  align-items: baseline;
+  gap: var(--s-2);
+  white-space: nowrap;
+}
+
+.statusbar__label {
+  font-size: 11px;
+  color: var(--ink-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  font-weight: 600;
+}
+
+.statusbar__value {
+  font-size: 15px;
+  font-weight: 650;
+}
+
+.statusbar__value--ok { color: var(--ok); }
+.statusbar__value--warn { color: var(--warn); }
+.statusbar__value--danger { color: var(--danger); }
+
+.statusbar__divider {
+  width: 1px;
+  height: 24px;
+  background: var(--line);
+  flex-shrink: 0;
+}
+
+/* --- cursor lag rail -------------------------------------------------------
+ * The signature element.
+ *
+ * Every device sits somewhere on the org's monotonic change sequence. "How far
+ * behind head is each device" is the operator's real question, and it is a
+ * position on a line — not a row in a table. Devices at head cluster hard right;
+ * stragglers trail left, and the eye finds them without reading a single number.
+ */
+
+.lagrail {
+  padding: var(--s-5) var(--s-6) var(--s-6);
+}
+
+.lagrail__scale {
+  position: relative;
+  height: 72px;
+  margin-top: var(--s-5);
+  border-bottom: 2px solid var(--line-strong);
+}
+
+.lagrail__head {
+  position: absolute;
+  right: 0;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  background: var(--ok);
+}
+
+.lagrail__head-label {
+  position: absolute;
+  right: 0;
+  top: -18px;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--ok);
+  white-space: nowrap;
+}
+
+.lagrail__tick {
+  position: absolute;
+  bottom: -1px;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  border: 2px solid var(--surface);
+  transform: translate(-50%, 50%);
+  cursor: default;
+  transition: transform 120ms ease;
+}
+
+.lagrail__tick:hover,
+.lagrail__tick:focus-visible {
+  transform: translate(-50%, 50%) scale(1.5);
+  z-index: 2;
+}
+
+.lagrail__tick--current { background: var(--ok); }
+.lagrail__tick--near { background: var(--accent); }
+.lagrail__tick--behind { background: var(--warn); }
+.lagrail__tick--stale { background: var(--danger); }
+
+.lagrail__axis {
+  display: flex;
+  justify-content: space-between;
+  font-size: 11px;
+  color: var(--ink-muted);
+  margin-top: var(--s-2);
+}
+
+.lagrail__legend {
+  display: flex;
+  gap: var(--s-4);
+  flex-wrap: wrap;
+  margin-top: var(--s-4);
+  font-size: 12px;
+  color: var(--ink-secondary);
+}
+
+.lagrail__legend-item {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+}
+
+.lagrail__swatch {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+}
+
+/* --- card ----------------------------------------------------------------- */
+
+.card {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
+  box-shadow: var(--shadow-sm);
+}
+
+.card__head {
+  padding: var(--s-4) var(--s-5);
+  border-bottom: 1px solid var(--line);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--s-4);
+}
+
+.card__title {
+  font-size: 14px;
+  font-weight: 650;
+  letter-spacing: -0.01em;
+}
+
+.card__body {
+  padding: var(--s-5);
+}
+
+.card__body--flush {
+  padding: 0;
+}
+
+.grid {
+  display: grid;
+  gap: var(--s-5);
+}
+
+.grid--2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.grid--3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.grid--4 { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+
+@media (max-width: 1200px) {
+  .grid--4 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .grid--3 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+
+@media (max-width: 820px) {
+  .shell { grid-template-columns: 1fr; }
+  .rail { position: static; height: auto; border-right: none; border-bottom: 1px solid var(--line); }
+  .page { padding: var(--s-4); }
+  .statusbar { padding: 0 var(--s-4); }
+  .grid--2, .grid--3, .grid--4 { grid-template-columns: 1fr; }
+}
+
+/* --- metric --------------------------------------------------------------- */
+
+.metric__value {
+  font-size: 30px;
+  font-weight: 660;
+  letter-spacing: -0.03em;
+  line-height: 1.1;
+}
+
+.metric__label {
+  font-size: 11px;
+  font-weight: 650;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  color: var(--ink-muted);
+  margin-top: var(--s-2);
+}
+
+.metric__delta {
+  font-size: 12px;
+  color: var(--ink-muted);
+  margin-top: var(--s-1);
+}
+
+/* --- table ---------------------------------------------------------------- */
+
+.table-wrap {
+  overflow-x: auto;
+}
+
+/*
+ * Long lists get a bounded, vertically scrolling body so the sticky header
+ * actually sticks. Short lists are left to flow naturally — a fixed height
+ * around four rows would leave dead space under them.
+ */
+.table-wrap--tall {
+  max-height: min(68vh, 720px);
+  overflow-y: auto;
+}
+
+.table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+
+.table th {
+  text-align: left;
+  font-size: 11px;
+  font-weight: 650;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--ink-muted);
+  padding: var(--s-3) var(--s-4);
+  border-bottom: 1px solid var(--line-strong);
+  white-space: nowrap;
+  background: var(--surface);
+  position: sticky;
+  top: 0;
+  z-index: 1;
+}
+
+.table td {
+  padding: var(--s-3) var(--s-4);
+  border-bottom: 1px solid var(--line);
+  vertical-align: middle;
+}
+
+.table tbody tr:hover {
+  background: var(--surface-sunk);
+}
+
+.table tbody tr:last-child td {
+  border-bottom: none;
+}
+
+.table__num {
+  text-align: right;
+}
+
+.table__primary {
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.table__meta {
+  font-size: 12px;
+  color: var(--ink-muted);
+}
+
+.table__actions {
+  display: flex;
+  gap: var(--s-2);
+  justify-content: flex-end;
+}
+
+/* --- badge ---------------------------------------------------------------- */
+
+.badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 2px 8px;
+  border-radius: var(--r-sm);
+  font-size: 11.5px;
+  font-weight: 620;
+  white-space: nowrap;
+  line-height: 1.6;
+}
+
+.badge--neutral { background: var(--surface-sunk); color: var(--ink-secondary); }
+.badge--ok { background: var(--ok-wash); color: var(--ok); }
+.badge--warn { background: var(--warn-wash); color: var(--warn); }
+.badge--danger { background: var(--danger-wash); color: var(--danger); }
+.badge--accent { background: var(--accent-wash); color: var(--accent-ink); }
+.badge--info { background: var(--info-wash); color: var(--info); }
+
+/* The glyph carries the same meaning as the colour, so status survives
+   greyscale printing and colour-vision deficiency. */
+.badge__glyph {
+  font-size: 9px;
+  line-height: 1;
+}
+
+/* --- buttons -------------------------------------------------------------- */
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--s-2);
+  height: 34px;
+  padding: 0 var(--s-4);
+  border-radius: var(--r-md);
+  border: 1px solid transparent;
+  background: var(--accent);
+  color: #fff;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 120ms ease, border-color 120ms ease;
+  white-space: nowrap;
+}
+
+.btn:hover:not(:disabled) { background: var(--accent-hover); }
+
+.btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.btn--secondary {
+  background: var(--surface);
+  border-color: var(--line-strong);
+  color: var(--ink);
+}
+
+.btn--secondary:hover:not(:disabled) {
+  background: var(--surface-sunk);
+}
+
+.btn--ghost {
+  background: transparent;
+  color: var(--accent);
+}
+
+.btn--ghost:hover:not(:disabled) {
+  background: var(--accent-wash);
+}
+
+.btn--danger { background: var(--danger); }
+.btn--danger:hover:not(:disabled) { background: #a92d18; }
+
+.btn--sm {
+  height: 28px;
+  padding: 0 var(--s-3);
+  font-size: 12px;
+}
+
+/* --- form ----------------------------------------------------------------- */
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-2);
+}
+
+.field__label {
+  font-size: 12px;
+  font-weight: 620;
+  color: var(--ink-secondary);
+}
+
+.input,
+.select {
+  height: 36px;
+  padding: 0 var(--s-3);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-md);
+  background: var(--surface);
+  color: var(--ink);
+  font-size: 13.5px;
+  width: 100%;
+  transition: border-color 120ms ease, box-shadow 120ms ease;
+}
+
+.input:focus,
+.select:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-wash);
+}
+
+.input--error {
+  border-color: var(--danger);
+}
+
+.field__error {
+  font-size: 12px;
+  color: var(--danger);
+}
+
+.field__hint {
+  font-size: 12px;
+  color: var(--ink-muted);
+}
+
+.toolbar {
+  display: flex;
+  align-items: center;
+  gap: var(--s-3);
+  flex-wrap: wrap;
+  margin-bottom: var(--s-4);
+  /* Containing block for the popovers anchored to toolbar actions. */
+  position: relative;
+}
+
+.popover {
+  position: absolute;
+  top: calc(100% + var(--s-2));
+  right: 0;
+  z-index: 30;
+  width: 340px;
+  max-width: calc(100vw - var(--s-8));
+  box-shadow: var(--shadow-lg);
+}
+
+.toolbar__search {
+  min-width: 260px;
+  flex: 1;
+  max-width: 420px;
+}
+
+/* --- states --------------------------------------------------------------- */
+
+.empty {
+  padding: var(--s-12) var(--s-6);
+  text-align: center;
+  color: var(--ink-muted);
+}
+
+.empty__title {
+  font-size: 15px;
+  font-weight: 620;
+  color: var(--ink);
+  margin-bottom: var(--s-2);
+}
+
+.empty__body {
+  font-size: 13px;
+  max-width: 420px;
+  margin: 0 auto var(--s-4);
+}
+
+.skeleton {
+  background: var(--surface-sunk);
+  border-radius: var(--r-sm);
+  height: 12px;
+  animation: pulse 1.6s ease-in-out infinite;
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.55; }
+}
+
+.error-banner {
+  background: var(--danger-wash);
+  border: 1px solid var(--danger);
+  border-radius: var(--r-md);
+  padding: var(--s-3) var(--s-4);
+  color: var(--danger);
+  font-size: 13px;
+  margin-bottom: var(--s-4);
+}
+
+/* --- misc ----------------------------------------------------------------- */
+
+.bar {
+  height: 6px;
+  background: var(--surface-sunk);
+  border-radius: var(--r-pill);
+  overflow: hidden;
+}
+
+.bar__fill {
+  height: 100%;
+  border-radius: var(--r-pill);
+  transition: width 240ms ease;
+}
+
+.pagination {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--s-4);
+  padding: var(--s-3) var(--s-4);
+  border-top: 1px solid var(--line);
+  font-size: 12.5px;
+  color: var(--ink-muted);
+}
+
+.stack { display: flex; flex-direction: column; }
+.row { display: flex; align-items: center; }
+.gap-1 { gap: var(--s-1); }
+.gap-2 { gap: var(--s-2); }
+.gap-3 { gap: var(--s-3); }
+.gap-4 { gap: var(--s-4); }
+.gap-5 { gap: var(--s-5); }
+.gap-6 { gap: var(--s-6); }
+.mt-2 { margin-top: var(--s-2); }
+.mt-4 { margin-top: var(--s-4); }
+.mt-6 { margin-top: var(--s-6); }
+.wrap { flex-wrap: wrap; }
+.grow { flex: 1; }
+.right { margin-left: auto; }
+.muted { color: var(--ink-muted); }
+.small { font-size: 12px; }
+.strong { font-weight: 620; }
+.truncate { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* --- login ---------------------------------------------------------------- */
+
+.login {
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+  padding: var(--s-6);
+  background:
+    radial-gradient(1100px 500px at 50% -10%, var(--accent-wash), transparent 60%),
+    var(--ground);
+}
+
+.login__card {
+  width: 100%;
+  max-width: 380px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
+  box-shadow: var(--shadow-lg);
+  padding: var(--s-8);
+}
+
+.login__brand {
+  display: flex;
+  align-items: center;
+  gap: var(--s-3);
+  margin-bottom: var(--s-6);
+}
+
+/* Segmented control for sign in / create account. */
+.tabs {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 2px;
+  padding: 3px;
+  background: var(--surface-sunk);
+  border-radius: var(--r-md);
+  margin-bottom: var(--s-5);
+}
+
+.tabs__tab {
+  border: none;
+  background: transparent;
+  color: var(--ink-muted);
+  font-size: 13px;
+  font-weight: 600;
+  padding: 7px 12px;
+  border-radius: calc(var(--r-md) - 2px);
+  cursor: pointer;
+  transition: background 120ms ease, color 120ms ease;
+}
+
+.tabs__tab:hover { color: var(--ink); }
+
+.tabs__tab--active {
+  background: var(--surface);
+  color: var(--ink);
+  box-shadow: var(--shadow-sm);
+}
+
+.login__title {
+  font-size: 18px;
+  font-weight: 690;
+  letter-spacing: -0.025em;
+}

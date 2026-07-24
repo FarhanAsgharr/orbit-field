@@ -1,0 +1,231 @@
+/*
+ * Orbit Field — operations console.
+ *
+ * Deliberately the inverse of the mobile app's palette. The field app is
+ * dark-first because inspectors work at dawn, at dusk, and inside plant rooms.
+ * This console is used on a desk monitor for hours at a stretch against dense
+ * tables, where a light ground is measurably less fatiguing. Same brand family,
+ * opposite context.
+ *
+ * The one system-wide typographic rule: every operational number is set in
+ * tabular figures. In a console where the question is "is cursor 4,182 behind
+ * cursor 4,190", digits that do not align are actively harmful.
+ */
+
+:root {
+  /* Ground — cool near-white with a blue cast, never pure #FFF against white cards */
+  --ground: #f5f7fb;
+  --surface: #ffffff;
+  --surface-sunk: #eef2f8;
+  --surface-raised: #ffffff;
+
+  /* Ink */
+  --ink: #0b1220;
+  --ink-secondary: #45526b;
+  --ink-muted: #6b7a94;
+  --ink-faint: #98a5bb;
+  --ink-inverse: #ffffff;
+
+  /* Lines. Two weights only: hairline for table rows, solid for section edges. */
+  --line: #dfe6f0;
+  --line-strong: #c3cede;
+
+  /* Brand — carried over from the field app so the two read as one product */
+  --accent: #1b5cf0;
+  --accent-hover: #164ccc;
+  --accent-wash: #e8efff;
+  --accent-ink: #0f3fad;
+
+  /* Signal. Identical hues to the mobile app: an operator and an inspector
+     discussing a failure must be looking at the same red. */
+  --ok: #0e8a5f;
+  --ok-wash: #dcf3e9;
+  --warn: #b26a00;
+  --warn-wash: #fdeed6;
+  --danger: #c2371f;
+  --danger-wash: #fce3dd;
+  --info: #6247d6;
+  --info-wash: #ece8fb;
+
+  /* Spacing — 4pt base */
+  --s-1: 4px;
+  --s-2: 8px;
+  --s-3: 12px;
+  --s-4: 16px;
+  --s-5: 20px;
+  --s-6: 24px;
+  --s-8: 32px;
+  --s-10: 40px;
+  --s-12: 48px;
+
+  --r-sm: 4px;
+  --r-md: 7px;
+  --r-lg: 11px;
+  --r-pill: 999px;
+
+  /*
+   * Type. System stacks rather than webfonts: this console must load instantly
+   * on a locked-down corporate desktop with no CDN access, which is exactly the
+   * environment it will be deployed into.
+   */
+  --font-ui: ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+  --font-mono: ui-monospace, 'SF Mono', SFMono-Regular, 'JetBrains Mono', Menlo, Consolas, monospace;
+
+  --shadow-sm: 0 1px 2px rgba(11, 18, 32, 0.06);
+  --shadow-md: 0 2px 8px rgba(11, 18, 32, 0.08), 0 1px 2px rgba(11, 18, 32, 0.04);
+  --shadow-lg: 0 12px 32px rgba(11, 18, 32, 0.12);
+
+  --rail-width: 232px;
+  --statusbar-height: 56px;
+}
+
+/*
+ * Dark mode follows the OS. Operators on a night shift monitoring a sync
+ * backlog are a real case, and forcing them into a white screen at 3am is the
+ * kind of detail that decides whether a tool gets used.
+ */
+@media (prefers-color-scheme: dark) {
+  :root {
+    --ground: #0a0f1a;
+    --surface: #111827;
+    --surface-sunk: #0d1420;
+    --surface-raised: #17202f;
+
+    --ink: #eef2f8;
+    --ink-secondary: #b3c0d4;
+    --ink-muted: #8695ad;
+    --ink-faint: #64748b;
+    --ink-inverse: #0b1220;
+
+    --line: #222d40;
+    --line-strong: #33415a;
+
+    --accent: #4a80ff;
+    --accent-hover: #6a97ff;
+    --accent-wash: rgba(74, 128, 255, 0.14);
+    --accent-ink: #9dbcff;
+
+    --ok: #2fb883;
+    --ok-wash: rgba(47, 184, 131, 0.14);
+    --warn: #e0942e;
+    --warn-wash: rgba(224, 148, 46, 0.14);
+    --danger: #ef6a52;
+    --danger-wash: rgba(239, 106, 82, 0.14);
+    --info: #8f7bef;
+    --info-wash: rgba(143, 123, 239, 0.14);
+
+    --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.4);
+    --shadow-md: 0 2px 8px rgba(0, 0, 0, 0.45);
+    --shadow-lg: 0 12px 32px rgba(0, 0, 0, 0.55);
+  }
+}
+
+/* --- reset ---------------------------------------------------------------- */
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  background: var(--ground);
+  color: var(--ink);
+  font-family: var(--font-ui);
+  font-size: 14px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+h1,
+h2,
+h3,
+h4,
+p,
+figure {
+  margin: 0;
+}
+
+button,
+input,
+select,
+textarea {
+  font: inherit;
+  color: inherit;
+}
+
+a {
+  color: var(--accent);
+  text-decoration: none;
+}
+
+a:hover {
+  text-decoration: underline;
+}
+
+/*
+ * Every number in this console is a quantity to be compared against another
+ * number in the row above. Tabular figures are not a nicety here.
+ */
+.num {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: 'tnum' 1;
+  letter-spacing: -0.01em;
+}
+
+/* --- accessibility floor -------------------------------------------------- */
+
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  border-radius: var(--r-sm);
+}
+
+/* Keyboard users get a way past the nav rail on every page. */
+.skip-link {
+  position: absolute;
+  left: -9999px;
+  top: var(--s-2);
+  z-index: 100;
+  padding: var(--s-2) var(--s-4);
+  background: var(--surface);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-md);
+  box-shadow: var(--shadow-md);
+}
+
+.skip-link:focus {
+  left: var(--s-2);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}

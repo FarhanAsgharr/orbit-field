@@ -1,0 +1,204 @@
+# Production stack.
+#
+# Differences from the development compose that matter:
+#  - No published database or Redis ports. They are reachable only on the
+#    internal network, so a misconfigured firewall cannot expose Postgres.
+#  - Every service has a healthcheck and a restart policy.
+#  - Secrets come from the environment, never from a default in this file.
+#  - Resource limits, so one runaway container cannot starve the host.
+
+name: orbit-field-prod
+
+x-logging: &logging
+  driver: json-file
+  options:
+    max-size: '20m'
+    max-file: '5'
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: always
+    logging: *logging
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:?required}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?required}
+      POSTGRES_DB: ${POSTGRES_DB:-orbit_field}
+      POSTGRES_INITDB_ARGS: '--locale-provider=icu --icu-locale=en-US --encoding=UTF8'
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+      - ./postgres/init:/docker-entrypoint-initdb.d:ro
+    networks: [internal]
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB:-orbit_field}']
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+    command:
+      - postgres
+      - -c
+      - max_connections=300
+      - -c
+      - shared_buffers=1GB
+      - -c
+      - effective_cache_size=3GB
+      - -c
+      - work_mem=16MB
+      - -c
+      - maintenance_work_mem=256MB
+      - -c
+      - random_page_cost=1.1
+      # Slow-query log. 500ms is above every healthy query in this schema, so
+      # anything that appears here is worth looking at.
+      - -c
+      - log_min_duration_statement=500
+      - -c
+      - log_checkpoints=on
+      - -c
+      - log_lock_waits=on
+    deploy:
+      resources:
+        limits: { cpus: '2', memory: 4G }
+
+  redis:
+    image: redis:7-alpine
+    restart: always
+    logging: *logging
+    command: >
+      redis-server
+      --appendonly yes
+      --maxmemory 512mb
+      --maxmemory-policy allkeys-lru
+      --requirepass ${REDIS_PASSWORD:?required}
+    volumes:
+      - redis-data:/data
+    networks: [internal]
+    healthcheck:
+      test: ['CMD', 'redis-cli', '-a', '${REDIS_PASSWORD}', 'ping']
+      interval: 10s
+      timeout: 3s
+      retries: 5
+    deploy:
+      resources:
+        limits: { cpus: '1', memory: 768M }
+
+  api:
+    image: ${API_IMAGE:-ghcr.io/orbit-field/api:latest}
+    restart: always
+    logging: *logging
+    depends_on:
+      postgres: { condition: service_healthy }
+      redis: { condition: service_healthy }
+    environment:
+      NODE_ENV: production
+      PORT: 4000
+      DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-orbit_field}?schema=public&connection_limit=25&pool_timeout=20
+      REDIS_URL: redis://:${REDIS_PASSWORD}@redis:6379
+      JWT_ACCESS_SECRET: ${JWT_ACCESS_SECRET:?required}
+      JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET:?required}
+      OTP_SECRET: ${OTP_SECRET:?required}
+      CORS_ORIGINS: ${CORS_ORIGINS:?required}
+      # Required behind the reverse proxy, or every client appears to share one
+      # IP and rate limiting collapses onto a single bucket.
+      TRUST_PROXY: 'true'
+      STORAGE_DRIVER: ${STORAGE_DRIVER:-local}
+      STORAGE_LOCAL_PATH: /var/lib/orbit/storage
+      S3_ENDPOINT: ${S3_ENDPOINT:-}
+      S3_BUCKET: ${S3_BUCKET:-}
+      S3_ACCESS_KEY_ID: ${S3_ACCESS_KEY_ID:-}
+      S3_SECRET_ACCESS_KEY: ${S3_SECRET_ACCESS_KEY:-}
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+      EXPO_ACCESS_TOKEN: ${EXPO_ACCESS_TOKEN:-}
+    volumes:
+      - storage-data:/var/lib/orbit/storage
+    networks: [internal, edge]
+    healthcheck:
+      test: ['CMD', 'node', '-e', "fetch('http://localhost:4000/health/ready').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 40s
+    deploy:
+      replicas: ${API_REPLICAS:-2}
+      resources:
+        limits: { cpus: '2', memory: 1G }
+
+  dashboard:
+    image: ${DASHBOARD_IMAGE:-ghcr.io/orbit-field/dashboard:latest}
+    restart: always
+    logging: *logging
+    networks: [edge]
+    healthcheck:
+      test: ['CMD', 'wget', '-qO-', 'http://localhost:8080/healthz']
+      interval: 30s
+      timeout: 3s
+      retries: 3
+    deploy:
+      resources:
+        limits: { cpus: '0.5', memory: 128M }
+
+  # Nightly backup. A sidecar rather than a host cron so it ships with the
+  # stack and cannot be forgotten when the service moves hosts.
+  backup:
+    image: postgres:16-alpine
+    restart: always
+    logging: *logging
+    depends_on:
+      postgres: { condition: service_healthy }
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-orbit_field}
+      BACKUP_RETENTION_DAYS: ${BACKUP_RETENTION_DAYS:-30}
+      BACKUP_S3_BUCKET: ${BACKUP_S3_BUCKET:-}
+    volumes:
+      - backup-data:/var/backups/orbit
+      - ./scripts:/scripts:ro
+    networks: [internal]
+    entrypoint: >
+      sh -c "while true; do
+        sh /scripts/backup.sh /var/backups/orbit || echo '[backup] run failed';
+        sleep 86400;
+      done"
+
+  prometheus:
+    image: prom/prometheus:latest
+    restart: always
+    logging: *logging
+    volumes:
+      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./prometheus/alerts.yml:/etc/prometheus/alerts.yml:ro
+      - prometheus-data:/prometheus
+    networks: [internal]
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.retention.time=30d'
+    profiles: [monitoring]
+
+  grafana:
+    image: grafana/grafana:latest
+    restart: always
+    logging: *logging
+    environment:
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_PASSWORD:?required}
+      GF_USERS_ALLOW_SIGN_UP: 'false'
+      GF_AUTH_ANONYMOUS_ENABLED: 'false'
+    volumes:
+      - ./grafana/provisioning:/etc/grafana/provisioning:ro
+      - grafana-data:/var/lib/grafana
+    networks: [internal, edge]
+    depends_on: [prometheus]
+    profiles: [monitoring]
+
+networks:
+  # Databases live here and are unreachable from outside the compose network.
+  internal:
+    internal: true
+  edge:
+
+volumes:
+  postgres-data:
+  redis-data:
+  storage-data:
+  backup-data:
+  prometheus-data:
+  grafana-data:

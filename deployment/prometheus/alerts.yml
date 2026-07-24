@@ -1,0 +1,82 @@
+# Alerts.
+#
+# Every rule here answers "would I want to be woken up for this?". Symptom-based
+# rather than cause-based: an alert on CPU tells you nothing actionable, an
+# alert on inspectors being unable to sync tells you exactly what is broken.
+
+groups:
+  - name: orbit-availability
+    rules:
+      - alert: OrbitApiDown
+        expr: up{job="orbit-api"} == 0
+        for: 2m
+        labels: { severity: critical }
+        annotations:
+          summary: 'Orbit API is not responding'
+          description: 'No successful scrape for 2 minutes. Field devices cannot sync.'
+
+      - alert: OrbitDatabaseUnreachable
+        expr: orbit_db_up == 0
+        for: 1m
+        labels: { severity: critical }
+        annotations:
+          summary: 'API cannot reach PostgreSQL'
+          description: 'Every write is failing. Devices queue locally, so no data is lost yet.'
+
+      - alert: OrbitHighErrorRate
+        expr: |
+          sum(rate(orbit_http_errors_total{status=~"5.."}[5m]))
+          / clamp_min(sum(rate(orbit_http_requests_total[5m])), 0.001) > 0.05
+        for: 5m
+        labels: { severity: warning }
+        annotations:
+          summary: 'More than 5% of requests are failing'
+
+      - alert: OrbitSlowRequests
+        expr: |
+          histogram_quantile(0.95,
+            sum by (le) (rate(orbit_http_request_duration_seconds_bucket[5m]))
+          ) > 3
+        for: 10m
+        labels: { severity: warning }
+        annotations:
+          summary: '95th percentile latency above 3 seconds'
+          description: 'Sync pushes from devices returning from the field will be timing out.'
+
+  - name: orbit-field-operations
+    rules:
+      # The one that matters most operationally: unresolved conflicts block an
+      # inspector's queue until a human decides.
+      - alert: OrbitConflictsUnresolved
+        expr: orbit_unresolved_conflicts > 10
+        for: 30m
+        labels: { severity: warning }
+        annotations:
+          summary: '{{ $value }} sync conflicts awaiting a decision'
+          description: 'Each one blocks an inspector''s queue. Resolve them in the operations console.'
+
+      - alert: OrbitDevicesStale
+        expr: orbit_devices_stale > 5
+        for: 2h
+        labels: { severity: warning }
+        annotations:
+          summary: '{{ $value }} devices have not synced in 24 hours'
+          description: 'Work on those devices has not reached the server. Often just powered off.'
+
+      - alert: OrbitUploadBacklog
+        expr: orbit_pending_uploads > 500
+        for: 1h
+        labels: { severity: warning }
+        annotations:
+          summary: '{{ $value }} attachments queued or failed'
+          description: 'Check object storage availability and the upload session sweeper.'
+
+  - name: orbit-resources
+    rules:
+      - alert: OrbitMemoryPressure
+        expr: orbit_process_heap_used_bytes / 1024 / 1024 > 700
+        for: 15m
+        labels: { severity: warning }
+        annotations:
+          summary: 'API heap above 700 MB'
+          description: 'Likely a large export or a leak. Check recent report generation.'
