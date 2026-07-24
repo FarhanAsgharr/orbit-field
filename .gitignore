@@ -9,3 +9,4 @@ storage/
 .expo/
 coverage/
 *.tsbuildinfo
+.vercel
