@@ -23,6 +23,20 @@ function seedId(prefix: string, n: number): string {
 const ORG_ID = seedId('ORG', 1);
 
 async function main(): Promise<void> {
+  // This repository is public and the demo password below is published with it.
+  // Seeding a production database would therefore create known-credential
+  // administrator accounts on a live system. Refusing outright is the only safe
+  // behaviour; `SEED_ALLOW_PRODUCTION=1` exists for the rare operator who has
+  // genuinely edited the accounts and understands what they are doing.
+  if (process.env.NODE_ENV === 'production' && process.env.SEED_ALLOW_PRODUCTION !== '1') {
+    console.error(
+      'Refusing to seed a production database.\n' +
+      'This seed creates accounts with a password published in the public repository.\n' +
+      'Edit the users in seed.ts, then set SEED_ALLOW_PRODUCTION=1 if you are certain.',
+    );
+    process.exit(1);
+  }
+
   console.log('Seeding Orbit Field…');
 
   // --- organisation ------------------------------------------------------

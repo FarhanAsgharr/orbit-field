@@ -71,6 +71,10 @@ npm run dev -w @orbit/admin-dashboard   # http://localhost:5180
 
 Seeded login: `inspector@northwind.test` / `OrbitField2026!`
 
+> **These are demo credentials, published deliberately.** The seed refuses to run
+> against `NODE_ENV=production`. For a real deployment, edit the users in
+> `apps/backend/prisma/seed.ts` and set your own password before running it.
+
 ## Build state
 
 | Area | State |
