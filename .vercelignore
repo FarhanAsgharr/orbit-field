@@ -1,0 +1,13 @@
+# Vercel uploads the repository, and neither deployment needs the mobile build
+# artefacts. The release APK alone is ~130 MB, which exceeds Vercel's 100 MB
+# upload limit and fails the deploy outright.
+#
+# The workspace directories themselves stay — `npm install` runs from the
+# repository root and every workspace listed in package.json must exist — so
+# only the generated output is excluded.
+apps/mobile/android/app/build
+apps/mobile/android/build
+apps/mobile/android/.gradle
+apps/mobile/android/.cxx
+apps/mobile/ios/build
+apps/mobile/.expo
