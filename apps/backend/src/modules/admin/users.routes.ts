@@ -33,6 +33,7 @@ import { asyncHandler } from '../../middleware/error.js';
 import { schemas, validate } from '../../middleware/validate.js';
 import { paginate, paginationArgs, paginationSchema, searchFilter, sortArgs } from '../../lib/pagination.js';
 import { revokeUserTokens } from '../../lib/tokens.js';
+import { DEFAULT_PASSWORD_POLICY, checkPasswordStrength, hashPassword } from '../../lib/crypto.js';
 
 const router: Router = Router();
 
@@ -152,10 +153,20 @@ router.get(
 );
 
 /**
- * Invite a user.
+ * Invite a user, or create one outright.
  *
- * Created in INVITED status with no password. They set one through the standard
- * reset flow, so a password never travels through an invite email.
+ * Two modes, and which one you get depends on whether `password` is supplied:
+ *
+ *   - **Omitted** — the user is created INVITED with no password and sets one
+ *     through the standard reset flow, so a password never travels through an
+ *     invite email. This is the better mode and requires working outbound mail.
+ *
+ *   - **Supplied** — the user is created ACTIVE with that password already set.
+ *     This exists because an installation with no `SMTP_URL` cannot deliver the
+ *     reset OTP, which would leave every invited account permanently unable to
+ *     sign in. The administrator hands the password over out of band and the
+ *     recipient changes it. The password is validated against the same policy
+ *     as any other, and never appears in the response or the audit metadata.
  */
 router.post(
   '/',
@@ -171,6 +182,7 @@ router.post(
       jobTitle: z.string().max(120).nullable().optional(),
       registrationNumber: z.string().max(80).nullable().optional(),
       projectIds: z.array(schemas.ulid).max(100).optional(),
+      password: z.string().min(1).max(200).optional(),
     }),
   }),
   asyncHandler(async (req, res) => {
@@ -179,6 +191,7 @@ router.post(
       email: string; firstName: string; lastName: string; role: Role;
       department?: string | null; jobTitle?: string | null;
       registrationNumber?: string | null; projectIds?: string[];
+      password?: string;
     };
 
     if (!canAssignRole(subject, body.role)) {
@@ -196,6 +209,23 @@ router.post(
       throw new AppError(ErrorCode.DUPLICATE_RESOURCE, 'A user with that email already exists in this organisation.');
     }
 
+    // Same policy the user would face changing it themselves — an account
+    // created by an administrator must not be the one weak password in the org.
+    let passwordHash: string | null = null;
+    if (body.password !== undefined) {
+      const strength = checkPasswordStrength(body.password, DEFAULT_PASSWORD_POLICY, {
+        email: body.email,
+        firstName: body.firstName,
+        lastName: body.lastName,
+      });
+      if (!strength.valid) {
+        throw new AppError(ErrorCode.VALIDATION_FAILED, strength.errors[0]!, {
+          fields: { password: strength.errors.join(' ') },
+        });
+      }
+      passwordHash = await hashPassword(body.password);
+    }
+
     const userId = ulid();
 
     const created = await prisma.$transaction(async (tx) => {
@@ -207,7 +237,11 @@ router.post(
           firstName: body.firstName,
           lastName: body.lastName,
           role: body.role,
-          status: 'INVITED',
+          // A user who already has a password has nothing to accept, so leaving
+          // them INVITED would be a status that never resolves.
+          status: passwordHash ? 'ACTIVE' : 'INVITED',
+          passwordHash,
+          passwordChangedAt: passwordHash ? new Date() : null,
           department: body.department ?? null,
           jobTitle: body.jobTitle ?? null,
           registrationNumber: body.registrationNumber ?? null,
@@ -230,7 +264,8 @@ router.post(
           action: 'RECORD_CREATED',
           entity: 'User',
           entityId: userId,
-          metadata: { email: body.email, role: body.role },
+          // Records that a password was set, never what it was.
+          metadata: { email: body.email, role: body.role, passwordSetByAdmin: Boolean(passwordHash) },
           ipAddress: clientIp(req),
           requestId: req.requestId,
         },
