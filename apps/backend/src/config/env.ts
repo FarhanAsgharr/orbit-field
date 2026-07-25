@@ -8,6 +8,35 @@
 
 import { z } from 'zod';
 
+/**
+ * A boolean that actually reads "false" as false.
+ *
+ * `z.coerce.boolean()` is `Boolean(value)`, and environment variables are
+ * always strings — so every non-empty value becomes `true`, "false" and "0"
+ * included. That is not a cosmetic wart: `ALLOW_SELF_SERVICE_SIGNUP=false`
+ * parsed as `true` and left public registration open on an installation
+ * explicitly configured to refuse it, which is how a stranger creates a tenant
+ * inside someone's compliance system.
+ *
+ * Unrecognised values are rejected rather than guessed. A typo in a security
+ * toggle must fail the boot, not pick a default.
+ */
+const boolish = (defaultValue: boolean) =>
+  z
+    .union([z.boolean(), z.string()])
+    .default(defaultValue)
+    .transform((value, ctx) => {
+      if (typeof value === 'boolean') return value;
+      const normalised = value.trim().toLowerCase();
+      if (['true', '1', 'yes', 'on'].includes(normalised)) return true;
+      if (['false', '0', 'no', 'off', ''].includes(normalised)) return false;
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: `expected a boolean (true/false/1/0/yes/no/on/off), received "${value}"`,
+      });
+      return z.NEVER;
+    });
+
 const schema = z.object({
   NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
   PORT: z.coerce.number().int().min(1).max(65_535).default(4000),
@@ -41,7 +70,7 @@ const schema = z.object({
   S3_BUCKET: z.string().optional(),
   S3_ACCESS_KEY_ID: z.string().optional(),
   S3_SECRET_ACCESS_KEY: z.string().optional(),
-  S3_FORCE_PATH_STYLE: z.coerce.boolean().default(false),
+  S3_FORCE_PATH_STYLE: boolish(false),
 
   UPLOAD_CHUNK_SIZE_BYTES: z.coerce.number().int().positive().default(5 * 1024 * 1024),
   UPLOAD_SESSION_TTL_HOURS: z.coerce.number().int().positive().default(72),
@@ -70,10 +99,10 @@ const schema = z.object({
    * by invitation from an existing administrator — an open signup on a
    * compliance system lets a stranger create a tenant inside your install.
    */
-  ALLOW_SELF_SERVICE_SIGNUP: z.coerce.boolean().default(true),
+  ALLOW_SELF_SERVICE_SIGNUP: boolish(true),
 
   CORS_ORIGINS: z.string().default('*'),
-  TRUST_PROXY: z.coerce.boolean().default(false),
+  TRUST_PROXY: boolish(false),
 
   SMTP_URL: z.string().optional(),
   MAIL_FROM: z.string().default('Orbit Field <no-reply@orbitfield.app>'),
