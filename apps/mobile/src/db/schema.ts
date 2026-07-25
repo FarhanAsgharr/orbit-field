@@ -19,7 +19,7 @@
  *     a battery pull at any instant loses no work.
  */
 
-export const SCHEMA_VERSION = 1;
+export const SCHEMA_VERSION = 2;
 
 /**
  * Each migration is applied exactly once, in order, inside a transaction.
@@ -371,6 +371,28 @@ export const MIGRATIONS: Migration[] = [
          ON attachments(state) WHERE state IN ('QUEUED','UPLOADING','FAILED');`,
       `CREATE INDEX IF NOT EXISTS idx_notifications_unread
          ON notifications(user_id, read_at, created_at DESC);`,
+    ],
+  },
+  {
+    version: 2,
+    name: 'template_versions sync columns',
+    /*
+     * `template_versions` spells its columns out by hand instead of using
+     * `SYNC_COLUMNS`, because its own `version` column is the template's
+     * version number and would collide with the sync record version. Writing
+     * them out lost the other three along the way.
+     *
+     * `apply-change` treats every replicated table alike and writes `is_dirty`
+     * on each row it applies, so the pull phase died on the first published
+     * template with "no such column: is_dirty" — and since the template is what
+     * makes an inspection renderable, a device could never receive any work.
+     * Nothing caught it earlier because the pull only reaches this table once
+     * real reference data exists.
+     */
+    statements: [
+      `ALTER TABLE template_versions ADD COLUMN base_snapshot TEXT;`,
+      `ALTER TABLE template_versions ADD COLUMN is_dirty INTEGER NOT NULL DEFAULT 0;`,
+      `ALTER TABLE template_versions ADD COLUMN has_conflict INTEGER NOT NULL DEFAULT 0;`,
     ],
   },
 ];
