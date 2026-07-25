@@ -19,6 +19,31 @@ buildscript {
         classpath('com.facebook.react:react-native-gradle-plugin')
         classpath('org.jetbrains.kotlin:kotlin-gradle-plugin')
     }
+
+    /**
+     * Pin the Kotlin compiler to `kotlinVersion` above.
+     *
+     * None of the classpath entries name a version — they are resolved through
+     * the React Native Gradle plugin, which brings Kotlin 1.9.24. But
+     * expo-modules-core compiles with Compose Compiler 1.5.15, which requires
+     * exactly 1.9.25 and fails the build rather than warning:
+     *
+     *   e: This version (1.5.15) of the Compose Compiler requires Kotlin
+     *      version 1.9.25 but you appear to be using Kotlin version 1.9.24
+     *
+     * `ext.kotlinVersion` already declares 1.9.25 and modules read it, but ext
+     * does not influence what the buildscript itself resolves, so the compiler
+     * that actually ran was still 1.9.24. Forcing it here makes the declared
+     * version the effective one. A 1.9.24 -> 1.9.25 patch bump, not a jump.
+     */
+    configurations.classpath {
+        resolutionStrategy {
+            force "org.jetbrains.kotlin:kotlin-gradle-plugin:${kotlinVersion}"
+            force "org.jetbrains.kotlin:kotlin-compiler-embeddable:${kotlinVersion}"
+            force "org.jetbrains.kotlin:kotlin-stdlib:${kotlinVersion}"
+            force "org.jetbrains.kotlin:kotlin-reflect:${kotlinVersion}"
+        }
+    }
 }
 
 apply plugin: "com.facebook.react.rootproject"
