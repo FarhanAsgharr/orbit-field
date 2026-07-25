@@ -22,6 +22,7 @@
     "lint": "eslint . --ext .ts,.tsx",
     "test": "vitest run && npm run test -w @orbit/admin-dashboard",
     "build:packages": "npm run build -w @orbit/types -w @orbit/utils -w @orbit/shared",
+    "build:api": "npm run build:packages && npm run db:generate -w @orbit/backend && npm run build -w @orbit/backend && node scripts/vercel-api-output.mjs",
     "dev:backend": "npm run dev -w @orbit/backend",
     "dev:mobile": "npm run start -w @orbit/mobile",
     "db:migrate": "npm run db:migrate -w @orbit/backend",
