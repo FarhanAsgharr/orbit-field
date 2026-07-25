@@ -22,7 +22,7 @@ one became.
 | 2 | 6-hourly `setInterval` maintenance prune | A frozen instance runs no timers, so the sweep would never fire | `api/cron/maintenance.ts` on a Vercel Cron schedule (`vercel.json`), authenticated with `CRON_SECRET` |
 | 3 | `STORAGE_DRIVER=local` (chunks and attachments on disk) | The filesystem is read-only apart from `/tmp`, which is per-invocation — chunk 1 and chunk 2 can land on different instances, so assembly finds nothing | `STORAGE_DRIVER=s3` against Supabase Storage's S3 endpoint. The S3 driver already existed; `@aws-sdk/client-s3` is now a real dependency instead of an optional one. |
 | 4 | 5 MB upload chunks | Base64 in JSON inflates 5 MB to ~6.8 MB; Vercel rejects bodies over 4.5 MB | `UPLOAD_CHUNK_SIZE_BYTES=3145728` (~4.1 MB on the wire). Server-driven: the client uses the `chunkSize` the session returns, so no client change. |
-| 5 | Direct Postgres connections | Every concurrent invocation is its own client; the direct connection limit is reached quickly | Supabase transaction pooler (port 6543) for `DATABASE_URL`. Migrations need DDL and advisory locks a transaction pooler cannot provide, so `DIRECT_URL` (port 5432) was added to the Prisma datasource. |
+| 5 | Direct Postgres connections | Every concurrent invocation is its own client; the direct connection limit is reached quickly | Supabase transaction pooler (port 6543) for `DATABASE_URL`. Migrations need DDL and advisory locks a transaction pooler cannot provide, so `DIRECT_URL` (port 5432) was added to the Prisma datasource — but see "`DIRECT_URL` is not the direct host" below, because the obvious value for it does not work on the free tier. |
 | 6 | `TRUST_PROXY=false` | Requests arrive via Vercel's proxy, so every client IP would read as the proxy's and rate limiting would key all traffic to one bucket | `TRUST_PROXY=true` |
 | 7 | 10s default function timeout | Report generation assembles a PDF or spreadsheet in-request; a large sync push writes many rows in one transaction | `maxDuration: 60` (the Hobby ceiling) in `vercel.json` |
 
@@ -51,6 +51,64 @@ threshold is unaffected.
 but was never added to the timer's callback. Abandoned upload sessions and their
 orphaned chunks therefore accumulated indefinitely. The cron handler calls all
 three sweeps. On object storage this is also a billing matter, not just tidiness.
+
+## Six things that fail on the first attempt
+
+Everything below was found by deploying this for real. Each one fails in a way
+that does not name its own cause, so they are recorded here rather than left to
+be rediscovered.
+
+**`DIRECT_URL` is not the direct host.** The obvious value —
+`db.<ref>.supabase.co:5432` — resolves to an **AAAA record only**. Supabase
+gives free-tier projects an IPv6 direct endpoint, so from any machine or CI
+runner without IPv6 egress `prisma migrate deploy` simply hangs. Use the
+**session-mode pooler** instead: same host as the transaction pooler,
+port 5432 (`aws-0-<region>.pooler.supabase.com:5432`). It is IPv4 and, unlike
+the transaction pooler on 6543, it does support the DDL and advisory locks
+migrations need. Verify before trusting it:
+
+```sh
+psql "$DIRECT_URL" -c "select pg_advisory_lock(1); create table _t(x int); drop table _t;"
+```
+
+**`NODE_ENV=production` breaks the build.** Vercel applies project environment
+variables to the build step as well as the runtime, and npm skips
+`devDependencies` when `NODE_ENV=production` — so `tsc`, `prisma` and every
+`@types/*` package vanish and the build fails on missing type declarations.
+The install command therefore says `npm install --include=dev`. Removing
+`NODE_ENV` instead would be wrong: the API's production security assertions
+key off it.
+
+**`vercel.json` rejects `"//"` comment keys.** The schema permits no additional
+properties, at the top level or nested, so the convention used elsewhere in
+this repository fails validation with `should NOT have additional property`.
+Explanations for that file live here instead.
+
+**An API-only project still needs a static output directory.** With a
+`buildCommand` set, Vercel fails with `No Output Directory named "public"`, and
+then with `Output Directory "public" is empty`. `scripts/vercel-api-output.mjs`
+writes one file to satisfy this. It is deliberately **not** named `index.html`:
+static files are matched *before* rewrites, so an index document would answer
+`/` itself and shadow the `/(.*)` → `/api/index` rewrite, serving a placeholder
+where the API's service pointer belongs.
+
+**`buildCommand` is capped at 256 characters.** The real command lives in the
+root `package.json` as `build:api`; `vercel.json` just calls it.
+
+**Pin the function region.** Vercel defaults to `iad1` (Virginia). If the
+database and Redis are elsewhere, every query crosses an ocean and a sync push
+issues many in sequence. `"regions"` in `apps/backend/vercel.json` should name
+the region hosting the data.
+
+## Sharing a project with other schemas
+
+Prisma honours `?schema=` in both URLs, so the platform does not need a
+dedicated Supabase project. Pointing `DATABASE_URL` and `DIRECT_URL` at
+`?schema=orbit` puts all 24 tables in their own namespace, leaving any existing
+`public` schema untouched. `migrate deploy` creates the schema if missing.
+
+Supabase pre-installs `pgcrypto` in the `extensions` schema; the init
+migration's `CREATE EXTENSION IF NOT EXISTS` is a no-op against it.
 
 ## Deploying
 
@@ -114,5 +172,40 @@ vercel --prod                            # from apps/backend, then apps/admin-da
 ```
 
 Seeding is deliberately refused against a production database — see
-`prisma/seed.ts`. Production accounts are created through the registration
-endpoint or by an administrator, not by the seed script.
+`prisma/seed.ts`. That script creates accounts whose password is published in
+this repository, so it must never touch a live install.
+
+## The first administrator
+
+`ALLOW_SELF_SERVICE_SIGNUP=false` leaves no way to create the first account
+through the UI, which is the point. `scripts/provision-production.mjs` creates
+one, taking its credentials from the environment so nothing it writes is
+guessable from the source:
+
+```sh
+ADMIN_EMAIL=… ADMIN_PASSWORD=… INSPECTOR_EMAIL=… INSPECTOR_PASSWORD=… \
+DATABASE_URL=… DIRECT_URL=… node scripts/provision-production.mjs
+```
+
+It creates an organisation, a SUPER_ADMIN, an inspector, and enough reference
+data to be usable — then publishes every row to the change log. That last step
+is not optional: devices replay the change log and nothing else, so rows written
+without log entries produce a database that looks full in the console and
+completely empty on every phone. Re-running it is a no-op.
+
+Note that `canAssignRole` requires a strictly higher rank, so a SUPER_ADMIN
+cannot create another SUPER_ADMIN through the API. Use this script.
+
+## Accounts without outbound email
+
+`SMTP_URL` is optional in the schema, but an installation without it cannot
+deliver the password-reset OTP — and an invited user is created with no
+password and is expected to set one through exactly that flow. Inviting people
+on a deployment with no mail provider therefore produces accounts that can
+never sign in.
+
+`POST /users` accepts an optional `password` for this reason. Supplied, the
+account is created `ACTIVE` with that password and the administrator passes it
+on directly; omitted, the behaviour is unchanged and the account is `INVITED`.
+The console's **Add someone** form offers both and defaults to the first.
+Configure `SMTP_URL` and the email flow becomes the better choice again.
