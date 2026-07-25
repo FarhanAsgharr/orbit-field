@@ -10,9 +10,11 @@ import React, { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Permission } from '@orbit/shared';
+import { ROLE_RANK, type Role } from '@orbit/types';
 import { api } from '../lib/api';
 import { useSession } from '../lib/auth';
 import { DataTable, type Column } from '../components/DataTable';
+import { PasswordInput } from '../components/PasswordInput';
 import {
   Badge, Bar, Card, Empty, ErrorBanner, Loading, formatBytes, formatDate,
   outcomeBadge, priorityBadge, relativeTime, roleBadge, statusBadge,
@@ -286,38 +288,104 @@ export function People(): React.ReactElement {
   );
 }
 
+const EMPTY_INVITE = { email: '', firstName: '', lastName: '', role: 'INSPECTOR', password: '' };
+
+/**
+ * Create a colleague's account.
+ *
+ * Two ways to hand over the credential, and the right one depends on whether
+ * the installation can send mail:
+ *
+ *  - **Email invitation** — the account is created with no password and the
+ *    recipient sets their own through the reset flow. Better, because no
+ *    password ever travels through an inbox. Requires `SMTP_URL` on the API;
+ *    without it the invitation is never delivered and the account is stranded,
+ *    which is why this is not silently the only option.
+ *  - **Set a password now** — the account is created active and the
+ *    administrator passes the password on directly. The only mode that works
+ *    on a deployment with no mail provider.
+ *
+ * The role list is filtered to what this operator may actually grant. The
+ * server enforces the same rule (`canAssignRole`: strictly below your own
+ * rank), but offering a role that will be rejected is a worse way to learn it.
+ */
 function InviteUserButton(): React.ReactElement {
   const queryClient = useQueryClient();
+  const { user } = useSession();
   const [open, setOpen] = useState(false);
-  const [form, setForm] = useState({ email: '', firstName: '', lastName: '', role: 'INSPECTOR' });
+  const [setPasswordNow, setSetPasswordNow] = useState(true);
+  const [form, setForm] = useState(EMPTY_INVITE);
   const [error, setError] = useState<string | null>(null);
+  const [created, setCreated] = useState<string | null>(null);
+
+  const actorRank = ROLE_RANK[(user?.role ?? 'VIEWER') as Role] ?? 0;
+  const assignable = (['ADMIN', 'MANAGER', 'SUPERVISOR', 'INSPECTOR', 'TECHNICIAN', 'VIEWER'] as Role[])
+    .filter((r) => actorRank > ROLE_RANK[r]);
+
+  const close = (): void => {
+    setOpen(false);
+    setForm(EMPTY_INVITE);
+    setError(null);
+    setCreated(null);
+  };
 
   const invite = useMutation({
-    mutationFn: () => api.post('/users', form),
+    mutationFn: () => {
+      const { password, ...rest } = form;
+      // Omit the key entirely rather than sending an empty string: the server
+      // decides INVITED vs ACTIVE on whether the field is present at all.
+      return api.post('/users', setPasswordNow ? { ...rest, password } : rest);
+    },
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ['users'] });
-      setOpen(false);
-      setForm({ email: '', firstName: '', lastName: '', role: 'INSPECTOR' });
-      setError(null);
+      if (setPasswordNow) {
+        // Keep the panel open on success: the administrator still has to pass
+        // the password on, and closing it takes the only copy off the screen.
+        setCreated(form.email);
+        setError(null);
+      } else {
+        close();
+      }
     },
-    onError: (err) => setError(err instanceof Error ? err.message : 'Could not send the invitation.'),
+    onError: (err) => setError(err instanceof Error ? err.message : 'Could not create the account.'),
   });
 
   if (!open) {
-    return <button className="btn" onClick={() => setOpen(true)}>Invite someone</button>;
+    return <button className="btn" onClick={() => setOpen(true)}>Add someone</button>;
+  }
+
+  if (created) {
+    return (
+      <div className="card popover" role="dialog" aria-label="Account created">
+        <div className="card__head">
+          <h2 className="card__title">Account created</h2>
+          <button className="btn btn--ghost btn--sm" onClick={close}>Done</button>
+        </div>
+        <div className="card__body stack gap-4">
+          <p>
+            <strong>{created}</strong> can sign in now with the password you chose.
+            Pass it on directly and ask them to change it — this is the only time
+            it is shown.
+          </p>
+          <button className="btn" onClick={() => { setCreated(null); setForm(EMPTY_INVITE); }}>
+            Add another
+          </button>
+        </div>
+      </div>
+    );
   }
 
   return (
-    <div className="card popover" role="dialog" aria-label="Invite someone">
+    <div className="card popover" role="dialog" aria-label="Add someone">
       <div className="card__head">
-        <h2 className="card__title">Invite someone</h2>
-        <button className="btn btn--ghost btn--sm" onClick={() => setOpen(false)}>Cancel</button>
+        <h2 className="card__title">Add someone</h2>
+        <button className="btn btn--ghost btn--sm" onClick={close}>Cancel</button>
       </div>
       <div className="card__body stack gap-4">
         {error ? <ErrorBanner message={error} /> : null}
         <div className="field">
           <label className="field__label" htmlFor="inv-email">Email</label>
-          <input id="inv-email" className="input" type="email" value={form.email}
+          <input id="inv-email" className="input" type="email" autoComplete="off" value={form.email}
             onChange={(e) => setForm({ ...form, email: e.target.value })} />
         </div>
         <div className="row gap-3">
@@ -336,17 +404,39 @@ function InviteUserButton(): React.ReactElement {
           <label className="field__label" htmlFor="inv-role">Role</label>
           <select id="inv-role" className="select" value={form.role}
             onChange={(e) => setForm({ ...form, role: e.target.value })}>
-            {['MANAGER', 'SUPERVISOR', 'INSPECTOR', 'TECHNICIAN', 'VIEWER'].map((r) => (
+            {assignable.map((r) => (
               <option key={r} value={r}>{roleBadge(r).label}</option>
             ))}
           </select>
-          {/* Says what actually happens next, so nobody waits for a password to arrive. */}
+          <span className="field__hint">Only roles below your own are listed.</span>
+        </div>
+
+        <div className="field">
+          <label className="field__label" htmlFor="inv-mode">How they get in</label>
+          <select id="inv-mode" className="select" value={setPasswordNow ? 'password' : 'email'}
+            onChange={(e) => { setSetPasswordNow(e.target.value === 'password'); setError(null); }}>
+            <option value="password">Set a password now</option>
+            <option value="email">Email them an invitation</option>
+          </select>
           <span className="field__hint">
-            They receive an email to set their own password. No password is sent.
+            {setPasswordNow
+              ? 'The account is active immediately. You pass the password on yourself, and they change it after signing in.'
+              : 'They receive an email and choose their own password — no password is sent. Requires outbound email to be configured on the API.'}
           </span>
         </div>
+
+        {setPasswordNow ? (
+          <PasswordInput
+            label="Initial password"
+            value={form.password}
+            autoComplete="new-password"
+            onChange={(e) => setForm({ ...form, password: e.target.value })}
+            hint="At least 12 characters, with an uppercase letter, a lowercase letter and a number. It must not contain their name or email."
+          />
+        ) : null}
+
         <button className="btn" onClick={() => invite.mutate()} disabled={invite.isPending}>
-          {invite.isPending ? 'Sending…' : 'Send invitation'}
+          {invite.isPending ? 'Saving…' : setPasswordNow ? 'Create account' : 'Send invitation'}
         </button>
       </div>
     </div>
