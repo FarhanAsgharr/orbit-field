@@ -13,7 +13,7 @@ import { create } from 'zustand';
 import { AppError, ErrorCode } from '@orbit/shared';
 import type { AuthSession, DeviceInfo, SyncStatus } from '@orbit/types';
 import { ApiClient } from '../api/client';
-import { buildRuntime, tokenStore, type Runtime } from '../runtime/runtime';
+import { buildRuntime, resolveApiUrl, tokenStore, type Runtime } from '../runtime/runtime';
 import { getDatabase } from '../db/database';
 import { META_KEYS } from '../db/schema';
 import { kv, secureStorage, storage } from '../lib/storage';
@@ -53,12 +53,18 @@ interface SessionState {
   hasPermission: (permission: string) => boolean;
 }
 
-/** A client that exists before login, purely to call the auth endpoints. */
+/**
+ * A client that exists before login, purely to call the auth endpoints.
+ *
+ * Shares `resolveApiUrl` with the signed-in runtime rather than reading the
+ * config again. Two readers meant two fallbacks, and this one sat on the
+ * sign-in path: a build with no URL configured would have pointed the login
+ * request at localhost and failed with a network timeout, which is
+ * indistinguishable from the backend being down.
+ */
 function anonymousClient(): ApiClient {
   return new ApiClient({
-    baseUrl:
-      (require('expo-constants').default?.expoConfig?.extra as { apiUrl?: string } | undefined)?.apiUrl ??
-      'http://localhost:4000/api/v1',
+    baseUrl: resolveApiUrl(),
     tokens: tokenStore,
     onAuthFailure: () => undefined,
     isOnline: () => getNetworkState().isConnected,

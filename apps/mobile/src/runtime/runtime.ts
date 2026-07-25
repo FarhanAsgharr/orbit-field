@@ -107,9 +107,25 @@ class SessionTokenStore implements TokenStore {
 
 export const tokenStore = new SessionTokenStore();
 
-function resolveApiUrl(): string {
+/**
+ * The backend this installation talks to.
+ *
+ * `app.config.ts` resolves this at build time and refuses to package a release
+ * without it, so on a shipped artefact it is always present. There is
+ * deliberately no localhost fallback: on a packaged build it could never be
+ * reached anyway, and silently substituting it turns a configuration mistake
+ * into "every request times out", which reads as a backend outage rather than
+ * a build error. Failing loudly names the actual problem.
+ */
+export function resolveApiUrl(): string {
   const configured = (Constants.expoConfig?.extra as { apiUrl?: string } | undefined)?.apiUrl;
-  return configured ?? 'http://localhost:4000/api/v1';
+  if (!configured) {
+    throw new Error(
+      'No API URL is configured. This build was packaged without ' +
+        'EXPO_PUBLIC_API_URL — it cannot reach any backend.',
+    );
+  }
+  return configured;
 }
 
 export interface BuildRuntimeOptions {
