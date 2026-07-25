@@ -257,7 +257,22 @@ async function publishToChangeLog(orgId) {
     { entity: 'PROJECT', rows: await prisma.project.findMany({ where }) },
     { entity: 'SITE', rows: await prisma.site.findMany({ where }) },
     { entity: 'ASSET', rows: await prisma.asset.findMany({ where }) },
-    { entity: 'TEMPLATE_VERSION', rows: await prisma.templateVersion.findMany({ where }) },
+    // Display fields live on the parent Template, which devices do not
+    // replicate. They must travel with the version: the device has no
+    // `templates` table to join against, and a null `name` fails a NOT NULL
+    // constraint that aborts the rest of the delta with it.
+    {
+      entity: 'TEMPLATE_VERSION',
+      rows: (await prisma.templateVersion.findMany({ where, include: { template: true } })).map(
+        ({ template, ...version }) => ({
+          ...version,
+          name: template.name,
+          description: template.description,
+          category: template.category,
+          discipline: template.discipline,
+        }),
+      ),
+    },
     { entity: 'INSPECTION', rows: await prisma.inspection.findMany({ where }) },
   ];
 

@@ -424,17 +424,32 @@ router.post(
         data: { publishedAt: new Date(), publishedById: subject.userId, retiredAt: null },
       });
 
-      await tx.template.update({ where: { id }, data: { activeVersionId: versionId } });
+      const parent = await tx.template.update({
+        where: { id },
+        data: { activeVersionId: versionId },
+      });
 
       // Devices need this to appear in their delta, or inspectors will never
       // receive the new checklist.
+      //
+      // The display fields travel with the version deliberately. A device holds
+      // `template_versions` and no `templates` table, so it has nothing to join
+      // against — sending the bare version row leaves `name` null and the
+      // device rejects the whole delta on a NOT NULL constraint, which stops
+      // every later entity in that pull as well.
       await recordChange(tx, {
         orgId: subject.orgId,
         entity: SyncEntity.TEMPLATE_VERSION,
         operation: SyncOperation.CREATE,
         entityId: versionId,
         version: row.version,
-        row,
+        row: {
+          ...row,
+          name: parent.name,
+          description: parent.description,
+          category: parent.category,
+          discipline: parent.discipline,
+        },
         actorUserId: subject.userId,
         actorDeviceId: subject.deviceId,
       });

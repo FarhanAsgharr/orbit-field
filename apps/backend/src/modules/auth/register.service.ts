@@ -359,7 +359,39 @@ export async function registerOrganization(input: RegisterInput): Promise<Regist
         operation: 'CREATE',
         entityId: versionId,
         version: 1,
-        data: { id: versionId, templateId, orgId, version: 1 } as Prisma.InputJsonValue,
+        /*
+         * The whole row a device needs to render this checklist, not a pointer
+         * to it. A device replays the change log and nothing else, so anything
+         * omitted here it simply never has: without `definition` there is no
+         * checklist to draw, and without `name` the insert fails outright on a
+         * NOT NULL constraint, taking the rest of the delta with it. The
+         * display fields come from the parent Template, which is not itself a
+         * replicated entity — the device has no table to join against.
+         */
+        data: {
+          id: versionId,
+          templateId,
+          orgId,
+          version: 1,
+          name: 'General inspection',
+          description: 'A starter checklist. Edit it, clone it, or replace it entirely.',
+          category: 'General',
+          discipline: null,
+          definition,
+          scoring: {
+            enabled: true,
+            passThreshold: 80,
+            observationThreshold: 60,
+            criticalFailureForcesFail: true,
+            excludeNotApplicable: true,
+          },
+          requiredSignatures: ['INSPECTOR'],
+          publishedAt: new Date().toISOString(),
+          syncCursor: Number(cursor),
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+          deletedAt: null,
+        } as unknown as Prisma.InputJsonValue,
         actorUserId: userId,
       },
     });
