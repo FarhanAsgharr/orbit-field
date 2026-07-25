@@ -10,6 +10,11 @@
  * substation with a day's unsynced work on the device.
  */
 
+// First, and before anything that might mint an identifier: Hermes has no
+// `globalThis.crypto`, and every primary key in this app is a client-generated
+// ULID. See the module for what breaks without it.
+import '../src/lib/crypto-polyfill';
+
 import React, { useEffect } from 'react';
 import { StatusBar } from 'expo-status-bar';
 import { Slot, useRouter, useSegments } from 'expo-router';
@@ -50,18 +55,19 @@ function RouteGuard({ children }: { children: React.ReactNode }): React.ReactEle
   const router = useRouter();
   const theme = useTheme();
 
+  const inAuthGroup = segments[0] === '(auth)';
+  const signedIn = phase === 'AUTHENTICATED' || phase === 'AUTHENTICATED_UNVERIFIED';
+  const misplaced = phase !== 'BOOTING' && signedIn !== !inAuthGroup;
+
   useEffect(() => {
     if (phase === 'BOOTING') return;
-
-    const inAuthGroup = segments[0] === '(auth)';
-    const signedIn = phase === 'AUTHENTICATED' || phase === 'AUTHENTICATED_UNVERIFIED';
 
     if (!signedIn && !inAuthGroup) {
       router.replace('/(auth)/login');
     } else if (signedIn && inAuthGroup) {
       router.replace('/(tabs)');
     }
-  }, [phase, segments, router]);
+  }, [phase, signedIn, inAuthGroup, router]);
 
   useEffect(() => {
     if (phase !== 'BOOTING') {
@@ -75,6 +81,16 @@ function RouteGuard({ children }: { children: React.ReactNode }): React.ReactEle
     return <View style={{ flex: 1, backgroundColor: theme.colors.background }} />;
   }
 
+  /**
+   * `children` is the router's `<Slot />` and must stay mounted unconditionally.
+   *
+   * Withholding it to keep signed-out users off the authenticated screens looks
+   * reasonable and does not work: Expo Router refuses to navigate at all until
+   * the root layout has rendered a Slot, so the redirect above fails with
+   * "Attempted to navigate before mounting the Root Layout component" and the
+   * app is stuck. The authenticated area guards itself in `(tabs)/_layout`,
+   * which is where the runtime requirement actually begins.
+   */
   return <>{children}</>;
 }
 
