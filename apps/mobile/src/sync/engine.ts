@@ -28,6 +28,7 @@ import {
   type SyncStatus,
 } from '@orbit/types';
 import { isRetryableCode, retryAfterMs, ulid } from '@orbit/utils';
+import { invalidateQueries } from '../hooks/useLiveQuery';
 import type { Database } from '../db/database';
 import { META_KEYS } from '../db/database';
 import { Outbox } from './outbox';
@@ -143,12 +144,8 @@ export class SyncEngine {
     this.abortController = new AbortController();
     const signal = this.abortController.signal;
 
-    const logId = ulid();
     const startedAt = Date.now();
-    this.options.db.run(
-      `INSERT INTO sync_log (id, started_at, trigger) VALUES (?, ?, ?)`,
-      [logId, new Date(startedAt).toISOString(), trigger],
-    );
+    let logId = '';
 
     let pushed = 0;
     let pulled = 0;
@@ -157,6 +154,24 @@ export class SyncEngine {
     let error: string | null = null;
 
     try {
+      /*
+       * Inside the try, not before it.
+       *
+       * `running` is already set at this point, and it is only cleared in the
+       * `finally` below. Anything that threw between the two — and minting the
+       * log id throws on a runtime with no CSPRNG — left the flag set forever,
+       * so every subsequent sync returned at the guard above without running,
+       * without logging, and without surfacing an error. The app reported
+       * "Online" and quietly never synced again for the life of the process.
+       * One misplaced statement turned a recoverable error into a permanent,
+       * silent one.
+       */
+      logId = ulid();
+      this.options.db.run(
+        `INSERT INTO sync_log (id, started_at, trigger) VALUES (?, ?, ?)`,
+        [logId, new Date(startedAt).toISOString(), trigger],
+      );
+
       // Recover anything the last run left mid-flight before queueing more.
       this.options.outbox.recoverInFlight();
 
@@ -194,25 +209,50 @@ export class SyncEngine {
         lastError: error === 'aborted' ? null : error,
       });
     } finally {
-      this.options.db.run(
-        `UPDATE sync_log
-            SET finished_at = ?, pushed_count = ?, pulled_count = ?, conflict_count = ?,
-                uploaded_count = ?, duration_ms = ?, outcome = ?, error = ?
-          WHERE id = ?`,
-        [
-          new Date().toISOString(),
-          pushed,
-          pulled,
-          conflicts,
-          uploaded,
-          Date.now() - startedAt,
-          error === null ? (conflicts > 0 ? 'PARTIAL' : 'SUCCESS') : error === 'aborted' ? 'ABORTED' : 'FAILED',
-          error,
-          logId,
-        ],
-      );
+      // Guarded: if the failure was minting `logId` itself there is no row to
+      // close, and a second throw in here would skip clearing `running`.
+      if (logId) {
+        this.options.db.run(
+          `UPDATE sync_log
+              SET finished_at = ?, pushed_count = ?, pulled_count = ?, conflict_count = ?,
+                  uploaded_count = ?, duration_ms = ?, outcome = ?, error = ?
+            WHERE id = ?`,
+          [
+            new Date().toISOString(),
+            pushed,
+            pulled,
+            conflicts,
+            uploaded,
+            Date.now() - startedAt,
+            error === null ? (conflicts > 0 ? 'PARTIAL' : 'SUCCESS') : error === 'aborted' ? 'ABORTED' : 'FAILED',
+            error,
+            logId,
+          ],
+        );
+      }
+
+      // Always cleared, whatever happened above.
       this.running = false;
       this.abortController = null;
+
+      /*
+       * Tell the screens the local database moved.
+       *
+       * `useLiveQuery` re-reads on an explicit signal — nothing observes SQLite
+       * directly. Every UI action already raises it, but the other writer named
+       * in that module's own documentation, this engine, never did. So a
+       * STARTUP, CONNECTIVITY or background sync pulled a day's assignments
+       * into the device and the dashboard kept rendering whatever it had read
+       * when it mounted: an inspector saw "Nothing outstanding" with six
+       * inspections sitting in the table beneath it, and only a manual
+       * pull-to-refresh — which raises the signal in its own `finally` — ever
+       * corrected it.
+       *
+       * Raised unconditionally rather than only when counts moved: the flag is
+       * a coarse revision counter, re-running an indexed query costs
+       * microseconds, and a sync that pushed or uploaded also changes rows.
+       */
+      invalidateQueries();
     }
 
     return this.status;
