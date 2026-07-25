@@ -38,6 +38,24 @@ import { assertProductionSecrets } from '../dist/middleware/security.js';
 import { logger } from '../dist/config/logger.js';
 
 /**
+ * BigInt serialisation, again — and this time not through Express.
+ *
+ * `createApp()` sets a `json replacer` that turns BigInt into Number, which is
+ * all a container needs. Vercel's Node runtime, however, wraps the response and
+ * supplies its own `res.json`, so Express's replacer setting is never consulted
+ * and every response carrying a sync cursor or org sequence throws
+ * "Do not know how to serialize a BigInt" — a 500 on login, on sync pull, and
+ * on anything else returning a syncable row.
+ *
+ * Teaching BigInt itself how to serialise fixes it for whichever `res.json`
+ * happens to win, and matches the replacer's semantics exactly: Number, not
+ * String, because the sync protocol declares `SyncCursor = Brand<number>`.
+ */
+(BigInt.prototype as unknown as { toJSON(): number }).toJSON = function toJSON(this: bigint): number {
+  return Number(this);
+};
+
+/**
  * Fail the cold start, not the request.
  *
  * A function signing tokens with a placeholder secret is worse than one that is
