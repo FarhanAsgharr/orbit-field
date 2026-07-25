@@ -1,0 +1,52 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "framework": null,
+
+  "//": "Root Directory for this project is apps/backend, so the commands step up to the workspace root: npm workspaces must install from there, and the shared packages must be built before the backend can compile against them. `prisma generate` must run inside the build — the client is generated code, not a checked-in artifact, and the function bundle needs it present.",
+  "installCommand": "cd ../.. && npm install",
+  "buildCommand": "cd ../.. && npm run build:packages && npm run db:generate -w @orbit/backend && npm run build -w @orbit/backend",
+
+  "functions": {
+    "api/index.ts": {
+      "//": "Reports assemble a PDF or spreadsheet in-request and a large sync push writes many rows in one transaction; the 10s default cuts both off. 60s is the Hobby ceiling.",
+      "maxDuration": 60,
+      "memory": 1024
+    },
+    "api/cron/maintenance.ts": {
+      "maxDuration": 60,
+      "memory": 1024
+    }
+  },
+
+  "crons": [
+    {
+      "//": "Replaces the 6-hourly setInterval in src/server.ts. Daily is the Hobby minimum; retention is measured in days, so the same rows are pruned. 03:17 rather than 03:00 to avoid the top-of-hour scheduling crowd.",
+      "path": "/api/cron/maintenance",
+      "schedule": "17 3 * * *"
+    }
+  ],
+
+  "//rewrites": "Every request reaches the Express app, which owns its own routing (/health, /metrics, and the API_PREFIX tree). The cron path is excluded so it keeps hitting the dedicated function rather than falling through to Express, which has no route for it.",
+  "rewrites": [
+    {
+      "source": "/api/cron/:path*",
+      "destination": "/api/cron/:path*"
+    },
+    {
+      "source": "/(.*)",
+      "destination": "/api/index"
+    }
+  ],
+
+  "headers": [
+    {
+      "//": "The API is called cross-origin by the console and the mobile app, so CORS is handled in Express against an allowlist. These are the headers that must hold regardless of route.",
+      "source": "/(.*)",
+      "headers": [
+        { "key": "X-Content-Type-Options", "value": "nosniff" },
+        { "key": "Referrer-Policy", "value": "no-referrer" },
+        { "key": "Strict-Transport-Security", "value": "max-age=31536000; includeSubDomains; preload" }
+      ]
+    }
+  ]
+}

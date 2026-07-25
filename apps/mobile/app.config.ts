@@ -17,6 +17,18 @@ import type { ExpoConfig } from 'expo/config';
  * `EXPO_PUBLIC_API_URL` is the origin of the backend, including the version
  * prefix — e.g. https://orbit-field-api.up.railway.app/api/v1
  */
+/**
+ * Is this a build whose URL gets frozen into a shippable artefact?
+ *
+ * EAS sets `EAS_BUILD` itself. A local Gradle release build sets nothing, so
+ * `npm run android:release` sets `ORBIT_RELEASE_BUILD` — without it the guard
+ * below is dead code on exactly the path that now produces the APK, and a
+ * release build would happily bake in `localhost` and ship.
+ */
+function isPackagedBuild(): boolean {
+  return process.env.EAS_BUILD === 'true' || process.env.ORBIT_RELEASE_BUILD === 'true';
+}
+
 function resolveApiUrl(): string {
   const configured = process.env.EXPO_PUBLIC_API_URL?.trim();
 
@@ -28,10 +40,25 @@ function resolveApiUrl(): string {
     }
     // A device on a mobile network cannot reach a private address, and the
     // resulting failure looks identical to the server being down.
-    if (process.env.EAS_BUILD === 'true' && /localhost|127\.0\.0\.1/.test(configured)) {
+    if (isPackagedBuild() && /localhost|127\.0\.0\.1|10\.0\.2\.2/.test(configured)) {
       throw new Error(
         `EXPO_PUBLIC_API_URL is "${configured}". A packaged build cannot reach ` +
           'localhost — set it to the public URL of your deployed backend.',
+      );
+    }
+    // A placeholder that survives into a build is worse than an empty one: it
+    // fails at first sign-in on a tester's device rather than here.
+    if (isPackagedBuild() && /REPLACE-ME|example\.com/i.test(configured)) {
+      throw new Error(
+        `EXPO_PUBLIC_API_URL is still the placeholder "${configured}". Set it to ` +
+          'the deployed backend URL before building a release.',
+      );
+    }
+    if (isPackagedBuild() && configured.startsWith('http://')) {
+      // Android blocks cleartext traffic by default from API 28, so an http://
+      // backend fails every request on a release build with no useful error.
+      throw new Error(
+        `EXPO_PUBLIC_API_URL is "${configured}". A release build requires https.`,
       );
     }
     return configured.replace(/\/+$/, '');
@@ -39,10 +66,11 @@ function resolveApiUrl(): string {
 
   // Local development only. `expo start` on a simulator can reach the host
   // machine; a physical device on the same LAN needs the host's IP instead.
-  if (process.env.EAS_BUILD === 'true') {
+  if (isPackagedBuild()) {
     throw new Error(
       'EXPO_PUBLIC_API_URL is not set. A packaged build has no default server ' +
-        'to fall back to — set it in eas.json or the EAS project environment.',
+        'to fall back to — set it in eas.json, the EAS project environment, or ' +
+        'apps/mobile/.env.production for a local Gradle build.',
     );
   }
   return 'http://localhost:4000/api/v1';

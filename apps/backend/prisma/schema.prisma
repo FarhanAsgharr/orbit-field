@@ -17,9 +17,21 @@ generator client {
   previewFeatures = ["postgresqlExtensions"]
 }
 
+// `directUrl` matters only on a pooled deployment, and there it is not optional.
+//
+// Supabase fronts Postgres with a transaction-mode pooler on 6543. Serverless
+// functions must go through it — each concurrent invocation is its own client,
+// and a few hundred of them would exhaust the direct connection limit. But a
+// transaction pooler cannot run DDL or advisory locks, so `prisma migrate`
+// against it fails partway through and leaves the schema half-applied.
+//
+// So: `url` is the pooled connection the API uses, `directUrl` is the 5432
+// connection migrations use. Locally both point at the same server and the
+// distinction costs nothing.
 datasource db {
   provider   = "postgresql"
   url        = env("DATABASE_URL")
+  directUrl  = env("DIRECT_URL")
   extensions = [pgcrypto, pg_trgm]
 }
 

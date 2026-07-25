@@ -1,0 +1,9 @@
+{
+  "//": "The Vercel function entries are typechecked separately from src/, because they import from dist/ and so can only be checked after tsc has emitted it. Keeping them out of the main tsconfig also stops tsc from trying to compile them into dist/api/, which would nest a build output inside its own input.",
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "noEmit": true,
+    "types": ["node"]
+  },
+  "include": ["api/**/*"]
+}
