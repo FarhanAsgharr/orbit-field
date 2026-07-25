@@ -56,9 +56,29 @@ function TabIcon({
   );
 }
 
-export default function TabsLayout(): React.ReactElement {
+export default function TabsLayout(): React.ReactElement | null {
   const theme = useTheme();
   const syncStatus = useSession((s) => s.syncStatus);
+  const runtime = useSession((s) => s.runtime);
+
+  /**
+   * The boundary of the authenticated area.
+   *
+   * `(tabs)` is the router's initial route, so for a signed-out user it mounts
+   * before the root guard's redirect — which runs in an effect, i.e. after the
+   * render — has had a chance to move anyone. Every screen below here calls
+   * `useRuntime()`, which throws without a session, so the app opened straight
+   * into the error boundary instead of the login screen.
+   *
+   * Guarding here rather than in the root layout is deliberate: the root must
+   * keep `<Slot />` mounted unconditionally or Expo Router refuses to navigate
+   * at all ("Attempted to navigate before mounting the Root Layout component"),
+   * which trades the crash for a hang. Holding a blank screen for the single
+   * frame before the redirect lands costs nothing and is invisible.
+   */
+  if (!runtime) {
+    return <View style={{ flex: 1, backgroundColor: theme.colors.background }} />;
+  }
 
   // Anything the user must act on: failed operations and unresolved conflicts.
   // Merely pending work is not badged — that is normal and constant offline,
