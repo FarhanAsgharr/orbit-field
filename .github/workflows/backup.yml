@@ -1,0 +1,60 @@
+name: Nightly backup
+
+# A backup nobody has restored is a hope, not a backup. This workflow dumps,
+# checksums, and then restores into a scratch database before it reports
+# success — see scripts/backup.mjs for why that third step is the point.
+on:
+  schedule:
+    # 02:30 UTC, off the top of the hour to avoid the scheduling crowd.
+    - cron: '30 2 * * *'
+  workflow_dispatch:
+
+jobs:
+  backup:
+    name: Dump, verify, and check storage
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+
+      # pg_dump/pg_restore must be at least the server's major version.
+      - name: Install PostgreSQL client
+        run: |
+          sudo sh -c 'echo "deb http://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main" > /etc/apt/sources.list.d/pgdg.list'
+          curl -fsSL https://www.postgresql.org/media/keys/ACCC4CF8.asc | sudo gpg --dearmor -o /etc/apt/trusted.gpg.d/pgdg.gpg
+          sudo apt-get update && sudo apt-get install -y postgresql-client-17
+
+      - run: npm ci --omit=optional
+      - run: npm run db:generate -w @orbit/backend
+
+      # DIRECT_URL, not DATABASE_URL: the transaction pooler cannot serve a dump.
+      - name: Backup and verify restore
+        env:
+          DATABASE_URL: ${{ secrets.DIRECT_URL }}
+        run: node scripts/backup.mjs --out backups --retain 7
+
+      - name: Verify attachment integrity
+        env:
+          DATABASE_URL: ${{ secrets.DIRECT_URL }}
+          S3_ENDPOINT: ${{ secrets.S3_ENDPOINT }}
+          S3_BUCKET: ${{ secrets.S3_BUCKET }}
+          S3_REGION: ${{ secrets.S3_REGION }}
+          S3_ACCESS_KEY_ID: ${{ secrets.S3_ACCESS_KEY_ID }}
+          S3_SECRET_ACCESS_KEY: ${{ secrets.S3_SECRET_ACCESS_KEY }}
+        run: node scripts/backup-storage.mjs --check
+
+      # Retained on the runner rather than pushed anywhere: a backup stored with
+      # the code it backs up is not an off-site copy. Wire this to your own
+      # object storage before relying on it.
+      - name: Upload artefact
+        uses: actions/upload-artifact@v4
+        with:
+          name: database-backup
+          path: backups/
+          retention-days: 7

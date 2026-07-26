@@ -34,7 +34,10 @@
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "test:coverage": "vitest run --coverage",
-    "test:e2e:production": "node scripts/e2e-production.mjs"
+    "test:e2e:production": "node scripts/e2e-production.mjs",
+    "backup": "node scripts/backup.mjs",
+    "backup:verify": "node scripts/backup.mjs --verify-only",
+    "backup:storage": "node scripts/backup-storage.mjs --check"
   },
   "devDependencies": {
     "@eslint/js": "^9.39.5",
