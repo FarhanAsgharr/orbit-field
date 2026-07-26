@@ -503,6 +503,8 @@ model Site {
   longitude            Float?
   geofenceRadiusMeters Int?
   timezone             String? @db.VarChar(64)
+  /// Operating region, for grouping sites in reports and analytics.
+  region               String? @db.VarChar(120)
   contactName          String? @db.VarChar(120)
   contactPhone         String? @db.VarChar(32)
   isActive             Boolean @default(true)
@@ -538,6 +540,10 @@ model Asset {
   manufacturer  String?   @db.VarChar(120)
   model         String?   @db.VarChar(120)
   serialNumber  String?   @db.VarChar(120)
+  /// Printed identifiers an inspector scans on site to open the right asset.
+  /// Distinct from `tag`, which is the human-readable label on the equipment.
+  qrCode        String?   @db.VarChar(200)
+  barcode       String?   @db.VarChar(200)
   installedAt   DateTime? @db.Timestamptz(6)
   latitude      Float?
   longitude     Float?

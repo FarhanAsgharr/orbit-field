@@ -480,6 +480,47 @@ describe('reference data reaches devices', () => {
   });
 });
 
+describe('fields the workflow depends on actually reach the database', () => {
+  /*
+   * A column added to the schema but not to the route's zod object is stripped
+   * by validation and silently discarded. The row saves, the response looks
+   * plausible, and the value is simply gone — which is exactly what happened
+   * to site region and asset QR codes the first time.
+   */
+  it('stores a site’s region', async () => {
+    const res = await post('/sites').send({ name: unique('Regional'), region: 'North' });
+    expect(res.status).toBe(201);
+    expect(res.body.data.region).toBe('North');
+  });
+
+  it('stores an asset’s scannable codes and make', async () => {
+    const res = await post('/assets').send({
+      name: 'Extractor fan',
+      tag: unique('AT').slice(0, 30),
+      category: 'HVAC',
+      manufacturer: 'Acme',
+      model: 'X1',
+      serialNumber: 'SN-42',
+      qrCode: 'QR-0001',
+      barcode: 'BC-0001',
+    });
+
+    expect(res.status).toBe(201);
+    // What an inspector scans on site to open the right asset.
+    expect(res.body.data.qrCode).toBe('QR-0001');
+    expect(res.body.data.barcode).toBe('BC-0001');
+    expect(res.body.data.serialNumber).toBe('SN-42');
+  });
+
+  it('stores an employee id on a person', async () => {
+    const res = await post('/users').send(newUser({ employeeId: 'EMP-001' }));
+    expect(res.status).toBe(201);
+
+    const stored = await prisma.user.findFirstOrThrow({ where: { id: res.body.data.id } });
+    expect(stored.employeeId).toBe('EMP-001');
+  });
+});
+
 describe('reference data referential integrity', () => {
   it('refuses to attach a project to another organisation’s client', async () => {
     const other = await createTestOrg();

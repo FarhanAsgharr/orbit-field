@@ -116,6 +116,7 @@ const userSelect = {
   department: true,
   jobTitle: true,
   registrationNumber: true,
+  employeeId: true,
   extraPermissions: true,
   revokedPermissions: true,
   timezone: true,
@@ -276,6 +277,7 @@ router.post(
       department: z.string().max(120).nullable().optional(),
       jobTitle: z.string().max(120).nullable().optional(),
       registrationNumber: z.string().max(80).nullable().optional(),
+      employeeId: z.string().max(60).nullable().optional(),
       projectIds: z.array(schemas.ulid).max(100).optional(),
       password: z.string().min(1).max(200).optional(),
     }),
@@ -290,6 +292,7 @@ router.post(
       department?: string | null;
       jobTitle?: string | null;
       registrationNumber?: string | null;
+      employeeId?: string | null;
       projectIds?: string[];
       password?: string;
     };
@@ -351,6 +354,7 @@ router.post(
           department: body.department ?? null,
           jobTitle: body.jobTitle ?? null,
           registrationNumber: body.registrationNumber ?? null,
+          employeeId: body.employeeId ?? null,
         },
         select: userSelect,
       });
@@ -453,6 +457,7 @@ router.patch(
       department: z.string().max(120).nullable().optional(),
       jobTitle: z.string().max(120).nullable().optional(),
       registrationNumber: z.string().max(80).nullable().optional(),
+      employeeId: z.string().max(60).nullable().optional(),
       status: z.enum(['ACTIVE', 'SUSPENDED', 'DEACTIVATED']).optional(),
       extraPermissions: z.array(z.string().max(60)).max(80).optional(),
       revokedPermissions: z.array(z.string().max(60)).max(80).optional(),

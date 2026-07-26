@@ -373,6 +373,7 @@ const siteFields = {
   longitude: z.number().min(-180).max(180).nullable().optional(),
   geofenceRadiusMeters: z.number().int().positive().max(100_000).nullable().optional(),
   timezone: z.string().max(64).nullable().optional(),
+  region: z.string().max(120).nullable().optional(),
   contactName: z.string().max(120).nullable().optional(),
   contactPhone: z.string().max(32).nullable().optional(),
   isActive: z.boolean().optional(),
@@ -438,6 +439,9 @@ const assetFields = {
   manufacturer: z.string().max(120).nullable().optional(),
   model: z.string().max(120).nullable().optional(),
   serialNumber: z.string().max(120).nullable().optional(),
+  // Printed identifiers an inspector scans on site to open the right asset.
+  qrCode: z.string().max(200).nullable().optional(),
+  barcode: z.string().max(200).nullable().optional(),
   installedAt: z.string().datetime({ offset: true }).nullable().optional(),
   latitude: z.number().min(-90).max(90).nullable().optional(),
   longitude: z.number().min(-180).max(180).nullable().optional(),
