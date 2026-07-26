@@ -206,7 +206,14 @@ export default tseslint.config(
   // syntactic and correctness rules — only the rules that genuinely need a type
   // checker are switched off.
   {
-    files: ['scripts/**/*.mjs', '**/*.config.{ts,mjs,js}', '*.mjs', 'apps/*/*.config.{ts,mjs,js}'],
+    files: [
+      'scripts/**/*.mjs',
+      '**/*.config.{ts,mjs,js}',
+      '*.mjs',
+      'apps/*/*.config.{ts,mjs,js}',
+      // Root-level vitest setup: no workspace tsconfig covers it either.
+      'vitest.setup.*.ts',
+    ],
     ...tseslint.configs.disableTypeChecked,
     languageOptions: {
       ...tseslint.configs.disableTypeChecked.languageOptions,
