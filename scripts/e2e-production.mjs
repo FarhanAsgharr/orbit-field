@@ -216,11 +216,24 @@ async function main() {
       r.json(),
     );
     check('/health reports ok', health.status === 'ok', JSON.stringify(health));
+    /*
+     * Whether signup is open is a deployment's choice, so this reports it
+     * rather than insisting on one answer — an installation that deliberately
+     * opens registration should not fail its own verification.
+     *
+     * What is checked is that the endpoint gives a straight answer, because
+     * the console hides or shows its "Create account" tab based on it. An
+     * absent or non-boolean value leaves that tab in whatever state the last
+     * render left it.
+     */
     const signup = await api('/auth/signup-available');
     check(
-      'self-service signup is disabled on this deployment',
-      signup.body?.data?.available === false,
+      'the deployment states whether self-service signup is open',
+      typeof signup.body?.data?.available === 'boolean',
       `available=${signup.body?.data?.available}`,
+    );
+    console.log(
+      `    self-service signup is ${signup.body?.data?.available ? 'OPEN — anyone can create an organisation' : 'closed'}`,
     );
 
     section('3. Provision a temporary inspector');

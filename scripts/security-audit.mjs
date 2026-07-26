@@ -68,43 +68,74 @@ async function main() {
   console.log('\x1b[1mOrbit Field — security audit\x1b[0m');
   console.log(`Target: ${API}\n`);
 
-  // --- registration ---------------------------------------------------------
+  /*
+   * --- registration ---------------------------------------------------------
+   *
+   * Open registration is a posture, not automatically a defect: some
+   * installations want anyone to be able to start a workspace. So the audit
+   * takes the intended posture as input and reports a *mismatch*, rather than
+   * insisting on one answer. An audit that is permanently red on a deliberate
+   * choice is an audit people stop reading.
+   *
+   * The probe that follows only runs when signup is supposed to be closed. It
+   * creates a real organisation when it succeeds, so running it against an
+   * install with signup open would litter production with a tenant on every
+   * audit — the check would become the thing that needed cleaning up.
+   */
   section('Public registration');
+  const expectOpen = /^(1|true|yes|on)$/i.test(process.env.ORBIT_EXPECT_OPEN_SIGNUP ?? '');
   const available = await request('/auth/signup-available');
-  if (available.body?.data?.available === false) {
-    ok('self-service signup reports disabled');
-  } else {
+  const isOpen = available.body?.data?.available;
+
+  if (isOpen === expectOpen) {
+    ok(`self-service signup is ${isOpen ? 'open, as configured' : 'disabled'}`);
+    if (isOpen) {
+      console.log(
+        '      anyone who reaches this URL can create an organisation and sign in.\n' +
+          '      Set ALLOW_SELF_SERVICE_SIGNUP=false to close it.',
+      );
+    }
+  } else if (isOpen) {
     finding('high', 'self-service signup is enabled', 'anyone can create a tenant');
+  } else {
+    finding('medium', 'self-service signup is disabled', 'this deployment expected it to be open');
   }
 
-  const probeEmail = `audit-probe-${Date.now()}@invalid.test`;
-  const registered = await request('/auth/register', {
-    method: 'POST',
-    body: {
-      email: probeEmail,
-      password: `Aud${Date.now().toString(36)}Xy1`,
-      firstName: 'Audit',
-      lastName: 'Probe',
-      organizationName: `Audit Probe ${Date.now()}`,
-      device: {
-        installationId: `audit-${Date.now()}`,
-        name: 'Audit',
-        platform: 'web',
-        osVersion: '1',
-        appVersion: '1.0.0',
+  if (!isOpen) {
+    // Only safe to attempt when the answer should be "no": a success here means
+    // a tenant now exists.
+    const probeEmail = `audit-probe-${Date.now()}@invalid.test`;
+    const registered = await request('/auth/register', {
+      method: 'POST',
+      body: {
+        email: probeEmail,
+        password: `Aud${Date.now().toString(36)}Xy1`,
+        firstName: 'Audit',
+        lastName: 'Probe',
+        organizationName: `Audit Probe ${Date.now()}`,
+        device: {
+          installationId: `audit-${Date.now()}`,
+          name: 'Audit',
+          platform: 'web',
+          osVersion: '1',
+          appVersion: '1.0.0',
+        },
       },
-    },
-  });
-  if (registered.status === 403) {
-    ok('registration endpoint refuses (403)');
-  } else if (registered.status === 201) {
-    finding(
-      'critical',
-      'registration SUCCEEDED',
-      `a tenant was created for ${probeEmail} — delete it now`,
-    );
-  } else {
-    ok(`registration refused (${registered.status})`);
+    });
+    if (registered.status === 403) {
+      ok('registration endpoint refuses (403)');
+    } else if (registered.status === 201) {
+      // The endpoint contradicted `/auth/signup-available`, which is worse than
+      // either posture: the console decides whether to show its "Create
+      // account" tab from that endpoint.
+      finding(
+        'critical',
+        'registration SUCCEEDED while reporting itself closed',
+        `a tenant was created for ${probeEmail} — delete it now`,
+      );
+    } else {
+      ok(`registration refused (${registered.status})`);
+    }
   }
 
   // --- authentication -------------------------------------------------------

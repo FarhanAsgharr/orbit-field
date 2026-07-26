@@ -297,12 +297,7 @@ export function Login(): React.ReactElement {
               You will be signed in as the administrator of a new workspace, with one starter
               checklist ready to edit.
             </p>
-          ) : (
-            <p className="small muted" style={{ textAlign: 'center' }}>
-              For supervisors and administrators. Field inspections are carried out in the Orbit
-              Field mobile app.
-            </p>
-          )}
+          ) : null}
         </div>
       </form>
     </div>

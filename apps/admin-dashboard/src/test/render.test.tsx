@@ -361,17 +361,6 @@ describe('sign in', () => {
     expect(await screen.findByText(/valid email/i)).toBeInTheDocument();
   });
 
-  it('tells someone who wanted the field app that they are in the wrong place', () => {
-    render(
-      wrap(
-        <SessionProvider>
-          <Login />
-        </SessionProvider>,
-      ),
-    );
-    expect(screen.getByText(/mobile app/i)).toBeInTheDocument();
-  });
-
   it('surfaces a rejected sign-in', async () => {
     vi.spyOn(apiModule, 'login').mockRejectedValue(
       new Error('The email or password is incorrect.'),
