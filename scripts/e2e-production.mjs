@@ -219,7 +219,6 @@ async function main() {
       throw new Error('cannot continue without a test inspector');
     }
     created.userEmails.push(inspectorEmail);
-    const inspectorId = createUser.body.data.id;
     check(
       'created active, not stranded awaiting an email',
       createUser.body.data.status === 'ACTIVE',

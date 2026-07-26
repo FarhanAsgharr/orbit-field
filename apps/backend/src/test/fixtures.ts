@@ -10,8 +10,8 @@
  * that depends on the endpoints under test cannot fail independently of them.
  */
 
-import { ulid } from '@orbit/utils';
 import type { Role } from '@orbit/types';
+import { ulid } from '@orbit/utils';
 
 import { prisma } from '../db/prisma.js';
 import { hashPassword } from '../lib/crypto.js';
