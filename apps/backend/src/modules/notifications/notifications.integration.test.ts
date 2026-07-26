@@ -24,6 +24,7 @@ import { createApp } from '../../app.js';
 import { prisma } from '../../db/prisma.js';
 import { createInspection, createTestOrg, type TestOrg } from '../../test/fixtures.js';
 import { unique } from '../../test/harness.js';
+import { testServer } from '../../test/http.js';
 import {
   DEFAULT_PREFERENCES,
   inQuietHours,
@@ -34,6 +35,7 @@ import {
 } from './push.service.js';
 
 const app = createApp();
+const server = testServer(app);
 const api = '/api/v1';
 
 const device = (name = 'Notify Device') => ({
@@ -51,7 +53,7 @@ const deviceIds: Record<string, string> = {};
 beforeAll(async () => {
   org = await createTestOrg();
   for (const [role, user] of Object.entries(org.users)) {
-    const res = await request(app)
+    const res = await request(server)
       .post(`${api}/auth/login`)
       .send({ email: user.email, password: user.password, device: device(`${role} phone`) });
     tokens[role] = res.body.data.tokens.accessToken;
@@ -65,13 +67,13 @@ afterAll(async () => {
 });
 
 const get = (path: string, role = 'ADMIN') =>
-  request(app).get(`${api}${path}`).set('Authorization', `Bearer ${tokens[role]}`);
+  request(server).get(`${api}${path}`).set('Authorization', `Bearer ${tokens[role]}`);
 const post = (path: string, role = 'ADMIN') =>
-  request(app).post(`${api}${path}`).set('Authorization', `Bearer ${tokens[role]}`);
+  request(server).post(`${api}${path}`).set('Authorization', `Bearer ${tokens[role]}`);
 const patch = (path: string, role = 'ADMIN') =>
-  request(app).patch(`${api}${path}`).set('Authorization', `Bearer ${tokens[role]}`);
+  request(server).patch(`${api}${path}`).set('Authorization', `Bearer ${tokens[role]}`);
 const del = (path: string, role = 'ADMIN') =>
-  request(app).delete(`${api}${path}`).set('Authorization', `Bearer ${tokens[role]}`);
+  request(server).delete(`${api}${path}`).set('Authorization', `Bearer ${tokens[role]}`);
 
 /**
  * Enrol a spare device for a role and return its id and access token.
@@ -89,7 +91,7 @@ async function enrol(role: string) {
     data: { revokedAt: new Date(), revokedReason: 'test fixture: releasing a device slot' },
   });
 
-  const res = await request(app)
+  const res = await request(server)
     .post(`${api}/auth/login`)
     .send({ email: user.email, password: user.password, device: device('Spare handset') });
   expect(res.status).toBe(200);
@@ -140,7 +142,7 @@ describe('renaming a device', () => {
   it('404s for a device in another organisation', async () => {
     const other = await createTestOrg();
     try {
-      const theirLogin = await request(app)
+      const theirLogin = await request(server)
         .post(`${api}/auth/login`)
         .send({
           email: other.users.INSPECTOR!.email,
@@ -208,7 +210,7 @@ describe('revoking a device', () => {
     const spare = await enrol('INSPECTOR');
     await del(`/devices/${spare.id}`, 'INSPECTOR').expect(204);
 
-    const res = await request(app)
+    const res = await request(server)
       .get(`${api}/inspections`)
       .set('Authorization', `Bearer ${spare.token}`);
     // The whole point of revocation: the phone in somebody else's pocket stops
@@ -244,13 +246,13 @@ describe('push tokens and sessions', () => {
 
     // One already enrolled in beforeAll, so four more reach the cap of five.
     for (let i = 0; i < 4; i++) {
-      const res = await request(app)
+      const res = await request(server)
         .post(`${api}/auth/login`)
         .send({ email: user.email, password: user.password, device: device(`Handset ${i}`) });
       expect(res.status).toBe(200);
     }
 
-    const sixth = await request(app)
+    const sixth = await request(server)
       .post(`${api}/auth/login`)
       .send({ email: user.email, password: user.password, device: device('One too many') });
 

@@ -26,8 +26,10 @@ import { prisma } from '../../db/prisma.js';
 import { hashPassword } from '../../lib/crypto.js';
 import { createTestOrg, type TestOrg } from '../../test/fixtures.js';
 import { strongPassword, unique } from '../../test/harness.js';
+import { testServer } from '../../test/http.js';
 
 const app = createApp();
+const server = testServer(app);
 const api = '/api/v1';
 
 const device = () => ({
@@ -75,7 +77,7 @@ async function scratchUser(role = 'INSPECTOR') {
 }
 
 const login = (email: string, password: string) =>
-  request(app).post(`${api}/auth/login`).send({ email, password, device: device() });
+  request(server).post(`${api}/auth/login`).send({ email, password, device: device() });
 
 describe('failed attempts and lockout', () => {
   it('locks the account after the configured number of wrong passwords', async () => {
@@ -131,13 +133,13 @@ describe('changing a password', () => {
     const refreshToken = session.body.data.tokens.refreshToken as string;
 
     // The token works right now.
-    await request(app)
+    await request(server)
       .get(`${api}/auth/me`)
       .set('Authorization', `Bearer ${accessToken}`)
       .expect(200);
 
     const next = strongPassword();
-    const changed = await request(app)
+    const changed = await request(server)
       .post(`${api}/auth/change-password`)
       .set('Authorization', `Bearer ${accessToken}`)
       .send({ currentPassword: user.password, newPassword: next });
@@ -160,13 +162,13 @@ describe('changing a password', () => {
 
     // Somebody changing their password to end an attacker's session gets
     // nothing if the attacker's token outlives the change.
-    const after = await request(app)
+    const after = await request(server)
       .get(`${api}/auth/me`)
       .set('Authorization', `Bearer ${accessToken}`);
     expect(after.status).toBe(401);
 
     // Refresh tokens are revoked outright, with no timing subtlety.
-    const refreshed = await request(app).post(`${api}/auth/refresh`).send({ refreshToken });
+    const refreshed = await request(server).post(`${api}/auth/refresh`).send({ refreshToken });
     expect(refreshed.status).toBe(401);
 
     // And the new password works.
@@ -177,7 +179,7 @@ describe('changing a password', () => {
     const user = await scratchUser();
     const session = await login(user.email, user.password).expect(200);
 
-    const res = await request(app)
+    const res = await request(server)
       .post(`${api}/auth/change-password`)
       .set('Authorization', `Bearer ${session.body.data.tokens.accessToken}`)
       .send({ currentPassword: strongPassword(), newPassword: strongPassword() });
@@ -191,7 +193,7 @@ describe('changing a password', () => {
     const user = await scratchUser();
     const session = await login(user.email, user.password).expect(200);
 
-    const res = await request(app)
+    const res = await request(server)
       .post(`${api}/auth/change-password`)
       .set('Authorization', `Bearer ${session.body.data.tokens.accessToken}`)
       .send({ currentPassword: user.password, newPassword: 'password123' });
@@ -206,7 +208,7 @@ describe('changing a password', () => {
     const session = await login(user.email, user.password).expect(200);
     const next = strongPassword();
 
-    await request(app)
+    await request(server)
       .post(`${api}/auth/change-password`)
       .set('Authorization', `Bearer ${session.body.data.tokens.accessToken}`)
       .send({ currentPassword: user.password, newPassword: next })
@@ -222,7 +224,7 @@ describe('who am I', () => {
     const user = await scratchUser('MANAGER');
     const session = await login(user.email, user.password).expect(200);
 
-    const res = await request(app)
+    const res = await request(server)
       .get(`${api}/auth/me`)
       .set('Authorization', `Bearer ${session.body.data.tokens.accessToken}`);
 
@@ -238,7 +240,7 @@ describe('who am I', () => {
   });
 
   it('is refused without a token', async () => {
-    expect((await request(app).get(`${api}/auth/me`)).status).toBe(401);
+    expect((await request(server).get(`${api}/auth/me`)).status).toBe(401);
   });
 
   it('is refused with a token from another installation’s secret', async () => {
@@ -252,7 +254,9 @@ describe('who am I', () => {
       Buffer.from('not-a-real-signature').toString('base64url'),
     ].join('.');
 
-    const res = await request(app).get(`${api}/auth/me`).set('Authorization', `Bearer ${forged}`);
+    const res = await request(server)
+      .get(`${api}/auth/me`)
+      .set('Authorization', `Bearer ${forged}`);
     expect(res.status).toBe(401);
   });
 });
@@ -263,7 +267,7 @@ describe('account status changes take effect immediately', () => {
     const session = await login(user.email, user.password).expect(200);
     const accessToken = session.body.data.tokens.accessToken as string;
 
-    await request(app)
+    await request(server)
       .get(`${api}/auth/me`)
       .set('Authorization', `Bearer ${accessToken}`)
       .expect(200);
@@ -272,7 +276,7 @@ describe('account status changes take effect immediately', () => {
 
     // Status is checked against the database on every request precisely so a
     // 15-minute token cannot keep a suspended account working.
-    const after = await request(app)
+    const after = await request(server)
       .get(`${api}/auth/me`)
       .set('Authorization', `Bearer ${accessToken}`);
     expect(after.status).toBeGreaterThanOrEqual(401);
@@ -308,7 +312,7 @@ describe('logout', () => {
     const first = await login(user.email, user.password).expect(200);
     const second = await login(user.email, user.password).expect(200);
 
-    await request(app)
+    await request(server)
       .post(`${api}/auth/logout`)
       .set('Authorization', `Bearer ${first.body.data.tokens.accessToken}`)
       .send({ refreshToken: first.body.data.tokens.refreshToken })
@@ -316,7 +320,7 @@ describe('logout', () => {
 
     // Signing out of a phone must not sign somebody out of the tablet they are
     // holding, halfway through an inspection.
-    const stillValid = await request(app)
+    const stillValid = await request(server)
       .post(`${api}/auth/refresh`)
       .send({ refreshToken: second.body.data.tokens.refreshToken });
     expect(stillValid.status).toBe(200);
@@ -325,7 +329,7 @@ describe('logout', () => {
 
 describe('input validation at the edge', () => {
   it('rejects a malformed email before it reaches the database', async () => {
-    const res = await request(app)
+    const res = await request(server)
       .post(`${api}/auth/login`)
       .send({ email: 'not-an-email', password: strongPassword(), device: device() });
     expect(res.status).toBe(422);
@@ -333,7 +337,7 @@ describe('input validation at the edge', () => {
 
   it('rejects an unknown platform', async () => {
     const user = await scratchUser();
-    const res = await request(app)
+    const res = await request(server)
       .post(`${api}/auth/login`)
       .send({
         email: user.email,
@@ -350,7 +354,7 @@ describe('input validation at the edge', () => {
   });
 
   it('rejects a body that is not an object at all', async () => {
-    const res = await request(app)
+    const res = await request(server)
       .post(`${api}/auth/login`)
       .set('Content-Type', 'application/json')
       .send('"a string"');

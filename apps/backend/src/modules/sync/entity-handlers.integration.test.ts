@@ -33,8 +33,10 @@ import {
   type TestOrg,
 } from '../../test/fixtures.js';
 import { unique } from '../../test/harness.js';
+import { testServer } from '../../test/http.js';
 
 const app = createApp();
+const server = testServer(app);
 const api = '/api/v1';
 
 interface Client {
@@ -49,7 +51,7 @@ let admin: Client;
 let lamport = 0;
 
 async function enrol(email: string, password: string): Promise<Client> {
-  const res = await request(app)
+  const res = await request(server)
     .post(`${api}/auth/login`)
     .send({
       email,
@@ -95,7 +97,7 @@ function operation(
 }
 
 const push = (client: Client, operations: unknown[]) =>
-  request(app)
+  request(server)
     .post(`${api}/sync/push`)
     .set('Authorization', `Bearer ${client.token}`)
     .send({ protocolVersion: 1, deviceId: client.deviceId, cursor: 0, operations });
@@ -513,7 +515,7 @@ describe('the batch contract', () => {
   });
 
   it('rejects a protocol version it does not speak', async () => {
-    const res = await request(app)
+    const res = await request(server)
       .post(`${api}/sync/push`)
       .set('Authorization', `Bearer ${inspector.token}`)
       .send({ protocolVersion: 99, deviceId: inspector.deviceId, cursor: 0, operations: [] });
@@ -527,7 +529,7 @@ describe('the batch contract', () => {
   });
 
   it('refuses a push naming a device the caller does not hold', async () => {
-    const res = await request(app)
+    const res = await request(server)
       .post(`${api}/sync/push`)
       .set('Authorization', `Bearer ${inspector.token}`)
       .send({ protocolVersion: 1, deviceId: admin.deviceId, cursor: 0, operations: [] });
@@ -540,7 +542,7 @@ describe('what a device receives back', () => {
   it('sees its own writes in a subsequent pull', async () => {
     const inspectionId = await newInspection(inspector, 'Visible in pull');
 
-    const res = await request(app)
+    const res = await request(server)
       .get(`${api}/sync/pull?protocolVersion=1&since=0&limit=500`)
       .set('Authorization', `Bearer ${inspector.token}`);
 
@@ -558,7 +560,7 @@ describe('what a device receives back', () => {
       );
       const theirInspection = await newInspectionFor(other, theirClient);
 
-      const res = await request(app)
+      const res = await request(server)
         .get(`${api}/sync/pull?protocolVersion=1&since=0&limit=500`)
         .set('Authorization', `Bearer ${inspector.token}`);
 

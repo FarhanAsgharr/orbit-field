@@ -30,10 +30,12 @@ import { createApp } from '../../app.js';
 import { prisma } from '../../db/prisma.js';
 import { createInspection, createTestOrg, type TestOrg } from '../../test/fixtures.js';
 import { unique } from '../../test/harness.js';
+import { testServer } from '../../test/http.js';
 import { attachmentKey, storage } from './storage.js';
 import { pruneExpiredUploads } from './uploads.routes.js';
 
 const app = createApp();
+const server = testServer(app);
 const api = '/api/v1';
 const sha = (buf: Buffer) => createHash('sha256').update(buf).digest('hex');
 
@@ -47,7 +49,7 @@ let lamport = 0;
 beforeAll(async () => {
   org = await createTestOrg();
   const inspector = org.users.INSPECTOR!;
-  const login = await request(app)
+  const login = await request(server)
     .post(`${api}/auth/login`)
     .send({
       email: inspector.email,
@@ -75,7 +77,7 @@ afterAll(async () => {
 async function registerAttachment(payload: Buffer): Promise<string> {
   const attachmentId = ulid();
   lamport += 1;
-  const res = await request(app)
+  const res = await request(server)
     .post(`${api}/sync/push`)
     .set('Authorization', `Bearer ${token}`)
     .send({
@@ -111,13 +113,13 @@ async function registerAttachment(payload: Buffer): Promise<string> {
 }
 
 const openSession = (attachmentId: string, payload: Buffer, chunkSize: number) =>
-  request(app)
+  request(server)
     .post(`${api}/uploads`)
     .set('Authorization', `Bearer ${token}`)
     .send({ attachmentId, sizeBytes: payload.length, checksum: sha(payload), chunkSize });
 
 const sendChunk = (uploadId: string, index: number, slice: Buffer) =>
-  request(app)
+  request(server)
     .post(`${api}/uploads/${uploadId}/chunks/${index}`)
     .set('Authorization', `Bearer ${token}`)
     .send({ data: slice.toString('base64'), checksum: sha(slice) });
@@ -179,7 +181,7 @@ describe('session lifecycle', () => {
     const uploadId = opened.body.data.uploadId as string;
     await sendChunk(uploadId, 0, payload.subarray(0, 100)).expect(200);
 
-    const status = await request(app)
+    const status = await request(server)
       .get(`${api}/uploads/${uploadId}`)
       .set('Authorization', `Bearer ${token}`);
 
@@ -197,7 +199,7 @@ describe('session lifecycle', () => {
 
     await sendChunk(uploadId, 0, payload.subarray(0, 100)).expect(200);
 
-    const cancelled = await request(app)
+    const cancelled = await request(server)
       .delete(`${api}/uploads/${uploadId}`)
       .set('Authorization', `Bearer ${token}`);
     expect([200, 204]).toContain(cancelled.status);
@@ -211,7 +213,7 @@ describe('session lifecycle', () => {
   });
 
   it('404s for an upload id that was never opened', async () => {
-    const res = await request(app)
+    const res = await request(server)
       .get(`${api}/uploads/${ulid()}`)
       .set('Authorization', `Bearer ${token}`);
     expect(res.status).toBe(404);
@@ -229,7 +231,7 @@ describe('session lifecycle', () => {
 
   it('refuses a session for an attachment that does not exist', async () => {
     const payload = randomBytes(50);
-    const res = await request(app)
+    const res = await request(server)
       .post(`${api}/uploads`)
       .set('Authorization', `Bearer ${token}`)
       .send({ attachmentId: ulid(), sizeBytes: payload.length, checksum: sha(payload) });
@@ -253,7 +255,7 @@ describe('session lifecycle', () => {
       });
 
       const payload = randomBytes(10);
-      const res = await request(app)
+      const res = await request(server)
         .post(`${api}/uploads`)
         .set('Authorization', `Bearer ${token}`)
         .send({
@@ -274,7 +276,7 @@ describe('session lifecycle', () => {
     const payload = randomBytes(20);
     const attachmentId = await registerAttachment(payload);
 
-    const res = await request(app)
+    const res = await request(server)
       .post(`${api}/uploads`)
       .set('Authorization', `Bearer ${token}`)
       .send({ attachmentId, sizeBytes: payload.length, checksum: 'not-a-digest' });
@@ -284,7 +286,7 @@ describe('session lifecycle', () => {
 
   it('rejects a declared size of zero', async () => {
     const attachmentId = await registerAttachment(Buffer.alloc(0));
-    const res = await request(app)
+    const res = await request(server)
       .post(`${api}/uploads`)
       .set('Authorization', `Bearer ${token}`)
       .send({ attachmentId, sizeBytes: 0, checksum: sha(Buffer.alloc(0)) });
@@ -336,7 +338,7 @@ describe('serving attachment content', () => {
     const payload = randomBytes(64);
     const attachmentId = await registerAttachment(payload);
 
-    const res = await request(app)
+    const res = await request(server)
       .get(`${api}/uploads/attachments/${attachmentId}/content`)
       .set('Authorization', `Bearer ${token}`);
 
@@ -344,14 +346,14 @@ describe('serving attachment content', () => {
   });
 
   it('404s for an attachment that does not exist at all', async () => {
-    const res = await request(app)
+    const res = await request(server)
       .get(`${api}/uploads/attachments/${ulid()}/content`)
       .set('Authorization', `Bearer ${token}`);
     expect(res.status).toBe(404);
   });
 
   it('requires authentication', async () => {
-    const res = await request(app).get(`${api}/uploads/attachments/${ulid()}/content`);
+    const res = await request(server).get(`${api}/uploads/attachments/${ulid()}/content`);
     expect(res.status).toBe(401);
   });
 });

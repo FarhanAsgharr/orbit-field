@@ -21,8 +21,10 @@ import { originAllowed } from '../config/env.js';
 import { prisma } from '../db/prisma.js';
 import { createTestOrg, type TestOrg } from '../test/fixtures.js';
 import { unique } from '../test/harness.js';
+import { testServer } from '../test/http.js';
 
 const app = createApp();
+const server = testServer(app);
 const api = '/api/v1';
 
 let org: TestOrg;
@@ -31,7 +33,7 @@ let token: string;
 beforeAll(async () => {
   org = await createTestOrg();
   const user = org.users.ADMIN!;
-  const res = await request(app)
+  const res = await request(server)
     .post(`${api}/auth/login`)
     .send({
       email: user.email,
@@ -88,7 +90,7 @@ describe('origin allowlist matching', () => {
 
 describe('content type enforcement', () => {
   it('accepts JSON', async () => {
-    const res = await request(app)
+    const res = await request(server)
       .post(`${api}/inspections/bulk`)
       .set('Authorization', `Bearer ${token}`)
       .set('Content-Type', 'application/json')
@@ -98,7 +100,7 @@ describe('content type enforcement', () => {
   });
 
   it('refuses a form encoding an HTML page could send cross-origin', async () => {
-    const res = await request(app)
+    const res = await request(server)
       .post(`${api}/inspections/bulk`)
       .set('Authorization', `Bearer ${token}`)
       .set('Content-Type', 'application/x-www-form-urlencoded')
@@ -111,7 +113,7 @@ describe('content type enforcement', () => {
   });
 
   it('refuses multipart for the same reason', async () => {
-    const res = await request(app)
+    const res = await request(server)
       .post(`${api}/inspections/bulk`)
       .set('Authorization', `Bearer ${token}`)
       .set('Content-Type', 'multipart/form-data; boundary=x')
@@ -121,7 +123,7 @@ describe('content type enforcement', () => {
   });
 
   it('lets a bodyless request through regardless of content type', async () => {
-    const res = await request(app)
+    const res = await request(server)
       .get(`${api}/inspections`)
       .set('Authorization', `Bearer ${token}`);
     expect(res.status).toBe(200);
@@ -130,7 +132,7 @@ describe('content type enforcement', () => {
 
 describe('request sanity limits', () => {
   it('rejects an absurdly long URL rather than passing it downstream', async () => {
-    const res = await request(app)
+    const res = await request(server)
       .get(`${api}/inspections?search=${'x'.repeat(5000)}`)
       .set('Authorization', `Bearer ${token}`);
 
@@ -141,14 +143,14 @@ describe('request sanity limits', () => {
   });
 
   it('accepts a URL of reasonable length', async () => {
-    const res = await request(app)
+    const res = await request(server)
       .get(`${api}/inspections?search=${'x'.repeat(100)}`)
       .set('Authorization', `Bearer ${token}`);
     expect(res.status).toBe(200);
   });
 
   it('rejects a percent-encoded null byte', async () => {
-    const res = await request(app).get('/health/live?x=%00abc');
+    const res = await request(server).get('/health/live?x=%00abc');
 
     // The encoded spelling is the one that reaches a decoder downstream; a
     // literal NUL cannot survive an HTTP request line, so testing only for
@@ -158,7 +160,7 @@ describe('request sanity limits', () => {
   });
 
   it('answers an early-middleware rejection with the JSON envelope, not a stack trace', async () => {
-    const res = await request(app).get(`/health/live?x=${'y'.repeat(5000)}`);
+    const res = await request(server).get(`/health/live?x=${'y'.repeat(5000)}`);
 
     // `requestSanity` runs before the logger is attached to the request. The
     // error handler used to dereference `req.log` unconditionally and throw,
@@ -174,7 +176,7 @@ describe('request sanity limits', () => {
 
 describe('response headers', () => {
   it('never lets an intermediary cache a response carrying inspection data', async () => {
-    const res = await request(app)
+    const res = await request(server)
       .get(`${api}/inspections`)
       .set('Authorization', `Bearer ${token}`);
 
@@ -183,7 +185,7 @@ describe('response headers', () => {
   });
 
   it('switches off the browser features the API has no use for', async () => {
-    const res = await request(app).get('/health/live');
+    const res = await request(server).get('/health/live');
 
     expect(res.headers['permissions-policy']).toMatch(/camera=\(\)/);
     expect(res.headers['permissions-policy']).toMatch(/geolocation=\(\)/);
@@ -191,7 +193,7 @@ describe('response headers', () => {
   });
 
   it('does not leak the server implementation', async () => {
-    const res = await request(app).get('/health/live');
+    const res = await request(server).get('/health/live');
     expect(res.headers['x-powered-by']).toBeUndefined();
   });
 });

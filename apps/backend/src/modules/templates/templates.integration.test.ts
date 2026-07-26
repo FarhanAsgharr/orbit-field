@@ -21,8 +21,10 @@ import { createApp } from '../../app.js';
 import { prisma } from '../../db/prisma.js';
 import { createTestOrg, type TestOrg } from '../../test/fixtures.js';
 import { unique } from '../../test/harness.js';
+import { testServer } from '../../test/http.js';
 
 const app = createApp();
+const server = testServer(app);
 const api = '/api/v1';
 
 const device = () => ({
@@ -39,7 +41,7 @@ const tokens: Record<string, string> = {};
 beforeAll(async () => {
   org = await createTestOrg();
   for (const [role, user] of Object.entries(org.users)) {
-    const res = await request(app)
+    const res = await request(server)
       .post(`${api}/auth/login`)
       .send({ email: user.email, password: user.password, device: device() });
     tokens[role] = res.body.data.tokens.accessToken;
@@ -52,13 +54,13 @@ afterAll(async () => {
 });
 
 const as = (role: string) => (path: string) =>
-  request(app).get(`${api}${path}`).set('Authorization', `Bearer ${tokens[role]}`);
+  request(server).get(`${api}${path}`).set('Authorization', `Bearer ${tokens[role]}`);
 const post = (path: string, role = 'ADMIN') =>
-  request(app).post(`${api}${path}`).set('Authorization', `Bearer ${tokens[role]}`);
+  request(server).post(`${api}${path}`).set('Authorization', `Bearer ${tokens[role]}`);
 const patch = (path: string, role = 'ADMIN') =>
-  request(app).patch(`${api}${path}`).set('Authorization', `Bearer ${tokens[role]}`);
+  request(server).patch(`${api}${path}`).set('Authorization', `Bearer ${tokens[role]}`);
 const del = (path: string, role = 'ADMIN') =>
-  request(app).delete(`${api}${path}`).set('Authorization', `Bearer ${tokens[role]}`);
+  request(server).delete(`${api}${path}`).set('Authorization', `Bearer ${tokens[role]}`);
 const get = (path: string, role = 'ADMIN') => as(role)(path);
 
 /**

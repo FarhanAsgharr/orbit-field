@@ -8,6 +8,8 @@
  * service minted an OTP, wrote a log line, and delivered nothing.
  */
 
+import type { Server } from 'node:http';
+
 import { SMTPServer } from 'smtp-server';
 import request from 'supertest';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
@@ -21,6 +23,7 @@ const api = '/api/v1';
 let smtpServer: SMTPServer;
 const inbox: string[] = [];
 let app: import('express').Express;
+let server: Server;
 let org: TestOrg;
 
 const device = () => ({
@@ -71,12 +74,17 @@ beforeAll(async () => {
 
   const { createApp } = await import('../../app.js');
   app = createApp();
+  // One listening server for the file, rather than one per request — see
+  // test/http.ts for why supertest's default caused intermittent hang-ups.
+  server = app.listen(0);
+  server.unref();
   org = await createTestOrg();
 });
 
 afterAll(async () => {
   await org.cleanup();
   await prisma.$disconnect();
+  await new Promise<void>((resolve) => server.close(() => resolve()));
   await new Promise<void>((resolve) => smtpServer.close(() => resolve()));
 });
 
@@ -85,7 +93,7 @@ describe('POST /auth/forgot-password', () => {
     inbox.length = 0;
     const user = org.users.INSPECTOR!;
 
-    const requested = await request(app)
+    const requested = await request(server)
       .post(`${api}/auth/forgot-password`)
       .send({ email: user.email });
     expect(requested.status).toBe(202);
@@ -96,7 +104,7 @@ describe('POST /auth/forgot-password', () => {
 
     // The delivered code must be the one the server will accept — a mail
     // carrying a stale or unrelated code is worse than no mail at all.
-    const verified = await request(app)
+    const verified = await request(server)
       .post(`${api}/auth/verify-otp`)
       .send({ email: user.email, code, purpose: 'PASSWORD_RESET' });
 
@@ -106,7 +114,7 @@ describe('POST /auth/forgot-password', () => {
 
   it('sends nothing for an unknown address but answers identically', async () => {
     inbox.length = 0;
-    const res = await request(app)
+    const res = await request(server)
       .post(`${api}/auth/forgot-password`)
       .send({ email: `${unique('ghost')}@test.invalid` });
 
@@ -120,20 +128,20 @@ describe('POST /auth/forgot-password', () => {
     inbox.length = 0;
     const user = org.users.VIEWER!;
 
-    await request(app).post(`${api}/auth/forgot-password`).send({ email: user.email });
+    await request(server).post(`${api}/auth/forgot-password`).send({ email: user.email });
     const code = codeFrom(inbox[0]!);
 
-    const verified = await request(app)
+    const verified = await request(server)
       .post(`${api}/auth/verify-otp`)
       .send({ email: user.email, code, purpose: 'PASSWORD_RESET' });
 
     const newPassword = `Rst${Date.now().toString(36)}Xy1`;
-    const reset = await request(app)
+    const reset = await request(server)
       .post(`${api}/auth/reset-password`)
       .send({ actionToken: verified.body.data.actionToken, newPassword });
     expect(reset.status).toBeLessThan(300);
 
-    const login = await request(app)
+    const login = await request(server)
       .post(`${api}/auth/login`)
       .send({ email: user.email, password: newPassword, device: device() });
     expect(login.status).toBe(200);
@@ -145,21 +153,23 @@ describe('POST /auth/magic-link', () => {
     inbox.length = 0;
     const user = org.users.MANAGER!;
 
-    const requested = await request(app).post(`${api}/auth/magic-link`).send({ email: user.email });
+    const requested = await request(server)
+      .post(`${api}/auth/magic-link`)
+      .send({ email: user.email });
     expect(requested.status).toBe(202);
     expect(inbox).toHaveLength(1);
 
     const token = /token=([A-Za-z0-9_-]+)/.exec(decodeQuotedPrintable(inbox[0]!))?.[1];
     expect(token).toBeTruthy();
 
-    const first = await request(app)
+    const first = await request(server)
       .post(`${api}/auth/magic-link/consume`)
       .send({ token, device: device() });
     expect(first.status).toBe(200);
     expect(first.body.data.tokens.accessToken).toBeTruthy();
 
     // Single use: a link sitting in an inbox must not remain a live credential.
-    const second = await request(app)
+    const second = await request(server)
       .post(`${api}/auth/magic-link/consume`)
       .send({ token, device: device() });
     expect(second.status).toBeGreaterThanOrEqual(400);
@@ -167,7 +177,7 @@ describe('POST /auth/magic-link', () => {
 
   it('does not reveal whether an address exists', async () => {
     inbox.length = 0;
-    const res = await request(app)
+    const res = await request(server)
       .post(`${api}/auth/magic-link`)
       .send({ email: `${unique('nobody')}@test.invalid` });
     expect(res.status).toBe(202);
@@ -175,7 +185,7 @@ describe('POST /auth/magic-link', () => {
   });
 
   it('rejects a token that was never issued', async () => {
-    const res = await request(app)
+    const res = await request(server)
       .post(`${api}/auth/magic-link/consume`)
       .send({ token: 'a'.repeat(64), device: device() });
     expect(res.status).toBeGreaterThanOrEqual(400);
@@ -186,11 +196,11 @@ describe('POST /users — invitation email', () => {
   it('emails an invitation when no password is supplied, and reports delivery', async () => {
     inbox.length = 0;
     const admin = org.users.ADMIN!;
-    const login = await request(app)
+    const login = await request(server)
       .post(`${api}/auth/login`)
       .send({ email: admin.email, password: admin.password, device: device() });
 
-    const res = await request(app)
+    const res = await request(server)
       .post(`${api}/users`)
       .set('Authorization', `Bearer ${login.body.data.tokens.accessToken}`)
       .send({
@@ -212,11 +222,11 @@ describe('POST /users — invitation email', () => {
   it('sends no invitation when the administrator supplies a password', async () => {
     inbox.length = 0;
     const admin = org.users.ADMIN!;
-    const login = await request(app)
+    const login = await request(server)
       .post(`${api}/auth/login`)
       .send({ email: admin.email, password: admin.password, device: device() });
 
-    const res = await request(app)
+    const res = await request(server)
       .post(`${api}/users`)
       .set('Authorization', `Bearer ${login.body.data.tokens.accessToken}`)
       .send({

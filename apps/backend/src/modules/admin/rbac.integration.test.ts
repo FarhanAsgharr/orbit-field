@@ -20,8 +20,10 @@ import { createApp } from '../../app.js';
 import { prisma } from '../../db/prisma.js';
 import { createTestOrg, type TestOrg } from '../../test/fixtures.js';
 import { strongPassword, unique } from '../../test/harness.js';
+import { testServer } from '../../test/http.js';
 
 const app = createApp();
+const server = testServer(app);
 const api = '/api/v1';
 
 const device = () => ({
@@ -38,7 +40,7 @@ const tokens: Record<string, string> = {};
 beforeAll(async () => {
   org = await createTestOrg();
   for (const [role, user] of Object.entries(org.users)) {
-    const res = await request(app)
+    const res = await request(server)
       .post(`${api}/auth/login`)
       .send({ email: user.email, password: user.password, device: device() });
     tokens[role] = res.body.data.tokens.accessToken;
@@ -51,7 +53,7 @@ afterAll(async () => {
 });
 
 const get = (path: string, role: string) =>
-  request(app).get(`${api}${path}`).set('Authorization', `Bearer ${tokens[role]}`);
+  request(server).get(`${api}${path}`).set('Authorization', `Bearer ${tokens[role]}`);
 
 describe('administrative endpoints', () => {
   const adminOnly = ['/users', '/admin/audit-logs', '/analytics/summary'];
@@ -82,7 +84,7 @@ describe('shared endpoints', () => {
 
 describe('POST /users — privilege escalation', () => {
   const invite = (role: string, body: Record<string, unknown>) =>
-    request(app).post(`${api}/users`).set('Authorization', `Bearer ${tokens[role]}`).send(body);
+    request(server).post(`${api}/users`).set('Authorization', `Bearer ${tokens[role]}`).send(body);
 
   it('lets an ADMIN create a role below their own', async () => {
     const res = await invite('ADMIN', {
@@ -198,7 +200,7 @@ describe('tenant isolation', () => {
 
 describe('first-login password change', () => {
   const invite = (role: string, body: Record<string, unknown>) =>
-    request(app).post(`${api}/users`).set('Authorization', `Bearer ${tokens[role]}`).send(body);
+    request(server).post(`${api}/users`).set('Authorization', `Bearer ${tokens[role]}`).send(body);
 
   it('flags an account whose password the administrator chose', async () => {
     const email = `${unique('forced')}@test.invalid`;
@@ -212,7 +214,7 @@ describe('first-login password change', () => {
     });
     expect(created.status).toBe(201);
 
-    const login = await request(app)
+    const login = await request(server)
       .post(`${api}/auth/login`)
       .send({ email, password, device: device() });
 
@@ -225,7 +227,7 @@ describe('first-login password change', () => {
 
   it('does not flag an account that set its own password', async () => {
     const user = org.users.INSPECTOR!;
-    const login = await request(app)
+    const login = await request(server)
       .post(`${api}/auth/login`)
       .send({ email: user.email, password: user.password, device: device() });
     expect(login.body.data.user.mustChangePassword).toBe(false);
@@ -242,19 +244,19 @@ describe('first-login password change', () => {
       password: initial,
     });
 
-    const first = await request(app)
+    const first = await request(server)
       .post(`${api}/auth/login`)
       .send({ email, password: initial, device: device() });
     expect(first.body.data.user.mustChangePassword).toBe(true);
 
     const chosen = strongPassword();
-    const changed = await request(app)
+    const changed = await request(server)
       .post(`${api}/auth/change-password`)
       .set('Authorization', `Bearer ${first.body.data.tokens.accessToken}`)
       .send({ currentPassword: initial, newPassword: chosen });
     expect(changed.status).toBeLessThan(300);
 
-    const second = await request(app)
+    const second = await request(server)
       .post(`${api}/auth/login`)
       .send({ email, password: chosen, device: device() });
     expect(second.body.data.user.mustChangePassword).toBe(false);

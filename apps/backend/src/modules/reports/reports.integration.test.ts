@@ -22,8 +22,10 @@ import { createApp } from '../../app.js';
 import { prisma } from '../../db/prisma.js';
 import { createInspection, createTestOrg, type TestOrg } from '../../test/fixtures.js';
 import { unique } from '../../test/harness.js';
+import { testServer } from '../../test/http.js';
 
 const app = createApp();
+const server = testServer(app);
 const api = '/api/v1';
 
 const device = () => ({
@@ -41,7 +43,7 @@ const tokens: Record<string, string> = {};
 beforeAll(async () => {
   org = await createTestOrg();
   for (const [role, user] of Object.entries(org.users)) {
-    const res = await request(app)
+    const res = await request(server)
       .post(`${api}/auth/login`)
       .send({ email: user.email, password: user.password, device: device() });
     tokens[role] = res.body.data.tokens.accessToken;
@@ -60,9 +62,9 @@ afterAll(async () => {
 });
 
 const get = (path: string, role = 'ADMIN') =>
-  request(app).get(`${api}${path}`).set('Authorization', `Bearer ${tokens[role]}`);
+  request(server).get(`${api}${path}`).set('Authorization', `Bearer ${tokens[role]}`);
 const binary = (path: string, role = 'ADMIN') =>
-  request(app)
+  request(server)
     .get(`${api}${path}`)
     .set('Authorization', `Bearer ${tokens[role]}`)
     .buffer(true)

@@ -25,8 +25,10 @@ import { createApp } from '../../app.js';
 import { prisma } from '../../db/prisma.js';
 import { createTestOrg, type TestOrg } from '../../test/fixtures.js';
 import { unique } from '../../test/harness.js';
+import { testServer } from '../../test/http.js';
 
 const app = createApp();
+const server = testServer(app);
 const api = '/api/v1';
 
 interface Client {
@@ -41,7 +43,7 @@ let bravo: Client;
 let lamport = 0;
 
 async function enrol(email: string, password: string): Promise<Client> {
-  const res = await request(app)
+  const res = await request(server)
     .post(`${api}/auth/login`)
     .send({
       email,
@@ -86,13 +88,13 @@ function operation(
 }
 
 const push = (client: Client, operations: unknown[]) =>
-  request(app)
+  request(server)
     .post(`${api}/sync/push`)
     .set('Authorization', `Bearer ${client.token}`)
     .send({ protocolVersion: 1, deviceId: client.deviceId, cursor: 0, operations });
 
 const pull = (client: Client, since = 0, limit = 500) =>
-  request(app)
+  request(server)
     .get(`${api}/sync/pull?protocolVersion=1&since=${since}&limit=${limit}`)
     .set('Authorization', `Bearer ${client.token}`);
 
@@ -130,7 +132,7 @@ afterAll(async () => {
 
 describe('POST /sync/push', () => {
   it('requires authentication', async () => {
-    const res = await request(app)
+    const res = await request(server)
       .post(`${api}/sync/push`)
       .send({ protocolVersion: 1, deviceId: alpha.deviceId, cursor: 0, operations: [] });
     expect(res.status).toBe(401);
@@ -298,7 +300,7 @@ describe('conflicts', () => {
     const clashOp = operation(bravo, 'INSPECTION', 'UPDATE', id, { title: 'Device wins' }, 1);
     await push(bravo, [clashOp]);
 
-    const list = await request(app)
+    const list = await request(server)
       .get(`${api}/sync/conflicts`)
       .set('Authorization', `Bearer ${bravo.token}`);
 
@@ -313,7 +315,7 @@ describe('conflicts', () => {
     const clashOp = operation(bravo, 'INSPECTION', 'UPDATE', id, { title: 'Device value' }, 1);
     await push(bravo, [clashOp]);
 
-    const res = await request(app)
+    const res = await request(server)
       .post(`${api}/sync/conflicts/resolve`)
       .set('Authorization', `Bearer ${bravo.token}`)
       .send({ operationId: clashOp.id, strategy: 'MERGE', fieldChoices: { title: 'LOCAL' } });

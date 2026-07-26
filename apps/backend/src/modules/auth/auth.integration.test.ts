@@ -15,8 +15,10 @@ import { createApp } from '../../app.js';
 import { prisma } from '../../db/prisma.js';
 import { createTestOrg, type TestOrg } from '../../test/fixtures.js';
 import { strongPassword, unique } from '../../test/harness.js';
+import { testServer } from '../../test/http.js';
 
 const app = createApp();
+const server = testServer(app);
 const api = '/api/v1';
 
 const device = (installationId: string) => ({
@@ -41,7 +43,7 @@ afterAll(async () => {
 describe('POST /auth/login', () => {
   it('issues an access and refresh token for valid credentials', async () => {
     const user = org.users.INSPECTOR!;
-    const res = await request(app)
+    const res = await request(server)
       .post(`${api}/auth/login`)
       .send({ email: user.email, password: user.password, device: device(unique('dev')) });
 
@@ -54,7 +56,7 @@ describe('POST /auth/login', () => {
 
   it('never returns the password hash', async () => {
     const user = org.users.ADMIN!;
-    const res = await request(app)
+    const res = await request(server)
       .post(`${api}/auth/login`)
       .send({ email: user.email, password: user.password, device: device(unique('dev')) });
 
@@ -64,10 +66,10 @@ describe('POST /auth/login', () => {
 
   it('rejects a wrong password without revealing whether the account exists', async () => {
     const user = org.users.ADMIN!;
-    const wrongPassword = await request(app)
+    const wrongPassword = await request(server)
       .post(`${api}/auth/login`)
       .send({ email: user.email, password: strongPassword(), device: device(unique('dev')) });
-    const unknownAccount = await request(app)
+    const unknownAccount = await request(server)
       .post(`${api}/auth/login`)
       .send({
         email: `${unique('nobody')}@test.invalid`,
@@ -83,7 +85,7 @@ describe('POST /auth/login', () => {
 
   it('requires a device, because enrolment is what makes offline sync possible', async () => {
     const user = org.users.INSPECTOR!;
-    const res = await request(app)
+    const res = await request(server)
       .post(`${api}/auth/login`)
       .send({ email: user.email, password: user.password });
 
@@ -93,10 +95,10 @@ describe('POST /auth/login', () => {
 
   it('enrols distinct devices for distinct installations', async () => {
     const user = org.users.INSPECTOR!;
-    const first = await request(app)
+    const first = await request(server)
       .post(`${api}/auth/login`)
       .send({ email: user.email, password: user.password, device: device(unique('dev')) });
-    const second = await request(app)
+    const second = await request(server)
       .post(`${api}/auth/login`)
       .send({ email: user.email, password: user.password, device: device(unique('dev')) });
 
@@ -106,10 +108,10 @@ describe('POST /auth/login', () => {
   it('reuses the device record when the same installation signs in again', async () => {
     const user = org.users.MANAGER!;
     const installation = unique('stable-install');
-    const first = await request(app)
+    const first = await request(server)
       .post(`${api}/auth/login`)
       .send({ email: user.email, password: user.password, device: device(installation) });
-    const second = await request(app)
+    const second = await request(server)
       .post(`${api}/auth/login`)
       .send({ email: user.email, password: user.password, device: device(installation) });
 
@@ -119,7 +121,7 @@ describe('POST /auth/login', () => {
   it('refuses a deactivated account', async () => {
     const password = strongPassword();
     const email = `${unique('suspended')}@test.invalid`;
-    await request(app)
+    await request(server)
       .post(`${api}/auth/register`)
       .send({
         email,
@@ -131,7 +133,7 @@ describe('POST /auth/login', () => {
       });
     await prisma.user.updateMany({ where: { email }, data: { status: 'DEACTIVATED' } });
 
-    const res = await request(app)
+    const res = await request(server)
       .post(`${api}/auth/login`)
       .send({ email, password, device: device(unique('dev')) });
 
@@ -146,12 +148,12 @@ describe('POST /auth/login', () => {
 describe('access tokens', () => {
   it('are rejected when the signature is tampered with', async () => {
     const user = org.users.ADMIN!;
-    const login = await request(app)
+    const login = await request(server)
       .post(`${api}/auth/login`)
       .send({ email: user.email, password: user.password, device: device(unique('dev')) });
     const token: string = login.body.data.tokens.accessToken;
 
-    const res = await request(app)
+    const res = await request(server)
       .get(`${api}/users`)
       .set('Authorization', `Bearer ${token.slice(0, -3)}AAA`);
 
@@ -160,13 +162,13 @@ describe('access tokens', () => {
 
   it('are rejected when re-signed with alg=none', async () => {
     const user = org.users.ADMIN!;
-    const login = await request(app)
+    const login = await request(server)
       .post(`${api}/auth/login`)
       .send({ email: user.email, password: user.password, device: device(unique('dev')) });
     const [, payload] = (login.body.data.tokens.accessToken as string).split('.');
     const header = Buffer.from(JSON.stringify({ alg: 'none', typ: 'JWT' })).toString('base64url');
 
-    const res = await request(app)
+    const res = await request(server)
       .get(`${api}/users`)
       .set('Authorization', `Bearer ${header}.${payload}.`);
 
@@ -174,7 +176,7 @@ describe('access tokens', () => {
   });
 
   it('are required — an unauthenticated request is refused', async () => {
-    const res = await request(app).get(`${api}/users`);
+    const res = await request(server).get(`${api}/users`);
     expect(res.status).toBe(401);
     expect(res.body.error.code).toBe('AUTH_REQUIRED');
   });
@@ -183,11 +185,11 @@ describe('access tokens', () => {
 describe('POST /auth/refresh', () => {
   it('exchanges a refresh token for a new access token', async () => {
     const user = org.users.INSPECTOR!;
-    const login = await request(app)
+    const login = await request(server)
       .post(`${api}/auth/login`)
       .send({ email: user.email, password: user.password, device: device(unique('dev')) });
 
-    const res = await request(app).post(`${api}/auth/refresh`).send({
+    const res = await request(server).post(`${api}/auth/refresh`).send({
       refreshToken: login.body.data.tokens.refreshToken,
       deviceId: login.body.data.device.id,
     });
@@ -198,7 +200,7 @@ describe('POST /auth/refresh', () => {
 
   it('rotates: the same refresh token cannot be used twice', async () => {
     const user = org.users.INSPECTOR!;
-    const login = await request(app)
+    const login = await request(server)
       .post(`${api}/auth/login`)
       .send({ email: user.email, password: user.password, device: device(unique('dev')) });
     const body = {
@@ -206,8 +208,8 @@ describe('POST /auth/refresh', () => {
       deviceId: login.body.data.device.id,
     };
 
-    const first = await request(app).post(`${api}/auth/refresh`).send(body);
-    const replay = await request(app).post(`${api}/auth/refresh`).send(body);
+    const first = await request(server).post(`${api}/auth/refresh`).send(body);
+    const replay = await request(server).post(`${api}/auth/refresh`).send(body);
 
     expect(first.status).toBe(200);
     // Replay is how a stolen refresh token gets used; it must not succeed.
@@ -215,7 +217,7 @@ describe('POST /auth/refresh', () => {
   });
 
   it('rejects a refresh token that was never issued', async () => {
-    const res = await request(app)
+    const res = await request(server)
       .post(`${api}/auth/refresh`)
       .send({ refreshToken: 'not-a-real-token', deviceId: '01TESTDEVICE00000000000001' });
 
@@ -227,26 +229,28 @@ describe('POST /auth/refresh', () => {
 describe('POST /auth/logout', () => {
   it('revokes the refresh token it was given', async () => {
     const user = org.users.VIEWER!;
-    const login = await request(app)
+    const login = await request(server)
       .post(`${api}/auth/login`)
       .send({ email: user.email, password: user.password, device: device(unique('dev')) });
     const refreshToken: string = login.body.data.tokens.refreshToken;
     const deviceId: string = login.body.data.device.id;
 
-    const logout = await request(app)
+    const logout = await request(server)
       .post(`${api}/auth/logout`)
       .set('Authorization', `Bearer ${login.body.data.tokens.accessToken}`)
       .send({ refreshToken, deviceId });
     expect(logout.status).toBeLessThan(300);
 
-    const reuse = await request(app).post(`${api}/auth/refresh`).send({ refreshToken, deviceId });
+    const reuse = await request(server)
+      .post(`${api}/auth/refresh`)
+      .send({ refreshToken, deviceId });
     expect(reuse.status).not.toBe(200);
   });
 });
 
 describe('GET /auth/signup-available', () => {
   it('reports whether self-service registration is permitted', async () => {
-    const res = await request(app).get(`${api}/auth/signup-available`);
+    const res = await request(server).get(`${api}/auth/signup-available`);
     expect(res.status).toBe(200);
     expect(typeof res.body.data.available).toBe('boolean');
   });

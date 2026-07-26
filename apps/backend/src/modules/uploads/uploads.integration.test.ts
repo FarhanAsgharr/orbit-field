@@ -19,8 +19,10 @@ import { createApp } from '../../app.js';
 import { prisma } from '../../db/prisma.js';
 import { createInspection, createTestOrg, type TestOrg } from '../../test/fixtures.js';
 import { unique } from '../../test/harness.js';
+import { testServer } from '../../test/http.js';
 
 const app = createApp();
+const server = testServer(app);
 const api = '/api/v1';
 
 let org: TestOrg;
@@ -35,7 +37,7 @@ const sha = (buf: Buffer) => createHash('sha256').update(buf).digest('hex');
 beforeAll(async () => {
   org = await createTestOrg();
   const inspector = org.users.INSPECTOR!;
-  const login = await request(app)
+  const login = await request(server)
     .post(`${api}/auth/login`)
     .send({
       email: inspector.email,
@@ -63,7 +65,7 @@ afterAll(async () => {
 async function registerAttachment(payload: Buffer): Promise<string> {
   const attachmentId = ulid();
   lamport += 1;
-  await request(app)
+  await request(server)
     .post(`${api}/sync/push`)
     .set('Authorization', `Bearer ${token}`)
     .send({
@@ -98,20 +100,20 @@ async function registerAttachment(payload: Buffer): Promise<string> {
 }
 
 const openSession = (attachmentId: string, payload: Buffer, chunkSize: number) =>
-  request(app)
+  request(server)
     .post(`${api}/uploads`)
     .set('Authorization', `Bearer ${token}`)
     .send({ attachmentId, sizeBytes: payload.length, checksum: sha(payload), chunkSize });
 
 const sendChunk = (uploadId: string, index: number, slice: Buffer) =>
-  request(app)
+  request(server)
     .post(`${api}/uploads/${uploadId}/chunks/${index}`)
     .set('Authorization', `Bearer ${token}`)
     .send({ data: slice.toString('base64'), checksum: sha(slice) });
 
 describe('upload sessions', () => {
   it('requires authentication', async () => {
-    const res = await request(app).post(`${api}/uploads`).send({});
+    const res = await request(server).post(`${api}/uploads`).send({});
     expect(res.status).toBe(401);
   });
 
@@ -138,14 +140,14 @@ describe('upload sessions', () => {
       expect((await sendChunk(uploadId, i, slice)).status).toBeLessThan(300);
     }
 
-    const complete = await request(app)
+    const complete = await request(server)
       .post(`${api}/uploads/${uploadId}/complete`)
       .set('Authorization', `Bearer ${token}`)
       .send({ checksum: sha(payload) });
     expect(complete.status).toBeLessThan(300);
     expect(complete.body.data.storageKey).toBeTruthy();
 
-    const download = await request(app)
+    const download = await request(server)
       .get(`${api}/uploads/attachments/${attachmentId}/content`)
       .set('Authorization', `Bearer ${token}`)
       .buffer(true)
@@ -178,7 +180,7 @@ describe('upload sessions', () => {
     const session = await openSession(attachmentId, payload, 128 * 1024);
     const { uploadId } = session.body.data;
 
-    const res = await request(app)
+    const res = await request(server)
       .post(`${api}/uploads/${uploadId}/chunks/0`)
       .set('Authorization', `Bearer ${token}`)
       .send({
@@ -202,7 +204,7 @@ describe('upload sessions', () => {
       await sendChunk(uploadId, i, payload.subarray(i * chunkSize, (i + 1) * chunkSize));
     }
 
-    const res = await request(app)
+    const res = await request(server)
       .post(`${api}/uploads/${uploadId}/complete`)
       .set('Authorization', `Bearer ${token}`)
       .send({ checksum: sha(payload) });
@@ -216,7 +218,7 @@ describe('upload sessions', () => {
 
     const outsider = await createTestOrg();
     try {
-      const login = await request(app)
+      const login = await request(server)
         .post(`${api}/auth/login`)
         .send({
           email: outsider.users.ADMIN!.email,
@@ -230,7 +232,7 @@ describe('upload sessions', () => {
           },
         });
 
-      const res = await request(app)
+      const res = await request(server)
         .get(`${api}/uploads/attachments/${attachmentId}/content`)
         .set('Authorization', `Bearer ${login.body.data.tokens.accessToken}`);
 
