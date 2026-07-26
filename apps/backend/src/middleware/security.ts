@@ -15,7 +15,7 @@
 import { AppError, ErrorCode } from '@orbit/shared';
 import type { NextFunction, Request, Response } from 'express';
 
-import { corsOrigins, env, isProduction } from '../config/env.js';
+import { corsOrigins, env, isProduction, originAllowed } from '../config/env.js';
 
 const UNSAFE_METHODS = new Set(['POST', 'PUT', 'PATCH', 'DELETE']);
 
@@ -37,7 +37,7 @@ export function originGuard(req: Request, _res: Response, next: NextFunction): v
   // the confused-deputy problem this guard addresses.
   if (!origin) return next();
 
-  if (!corsOrigins.includes(origin)) {
+  if (!originAllowed(origin)) {
     throw new AppError(
       ErrorCode.PERMISSION_DENIED,
       'This request came from an origin that is not permitted.',

@@ -18,7 +18,9 @@ import { redis } from '../db/redis.js';
 function store(prefix: string): Options['store'] | undefined {
   try {
     return new RedisStore({
-      prefix: `rl:${prefix}:`,
+      // REDIS_KEY_PREFIX keeps environments that share one Redis database from
+      // counting each other's requests against the same limit.
+      prefix: `${env.REDIS_KEY_PREFIX}rl:${prefix}:`,
       sendCommand: (...args: string[]) => redis.call(...(args as [string, ...string[]])) as never,
     });
   } catch (err) {

@@ -46,6 +46,16 @@ const schema = z.object({
 
   DATABASE_URL: z.string().url(),
   REDIS_URL: z.string().url(),
+  /*
+   * Namespace for every Redis key this process writes.
+   *
+   * Preview and production share one Upstash database on the free tier, and
+   * both write rate-limiter keys. Without a namespace a preview deployment
+   * being load-tested consumes production's sync-limit budget for the same
+   * user id — the limiter would be counting two environments as one caller.
+   * Empty by default so an existing single-environment install is unchanged.
+   */
+  REDIS_KEY_PREFIX: z.string().default(''),
 
   // 32+ bytes of entropy. Short secrets make HS256 brute-forceable offline.
   JWT_ACCESS_SECRET: z.string().min(32, 'JWT_ACCESS_SECRET must be at least 32 characters'),
@@ -208,5 +218,35 @@ export const env: Env = load();
 export const isProduction = env.NODE_ENV === 'production';
 export const isTest = env.NODE_ENV === 'test';
 
-export const corsOrigins: string[] | true =
-  env.CORS_ORIGINS === '*' ? true : env.CORS_ORIGINS.split(',').map((o) => o.trim());
+/**
+ * Turn one allowlist entry into something matchable.
+ *
+ * A plain entry stays a string and is compared exactly. An entry containing
+ * `*` becomes an anchored pattern in which each `*` matches one hostname label
+ * — `https://*.vercel.app` matches `https://orbit-abc123.vercel.app` but not
+ * `https://a.b.vercel.app`, and not `https://evil.com/x.vercel.app`, because
+ * the pattern is anchored at both ends and `*` never crosses a dot.
+ *
+ * This exists for preview deployments: they get a fresh hostname on every
+ * commit, so no fixed list can name them in advance, and without a wildcard a
+ * preview console could never call its own preview API. Note the wildcard is
+ * only ever as broad as the suffix given to it — a bare `*` is still refused
+ * in production by the check above.
+ */
+function toMatcher(entry: string): string | RegExp {
+  if (!entry.includes('*')) return entry;
+  const pattern = entry
+    .split('*')
+    .map((part) => part.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'))
+    .join('[^.]+');
+  return new RegExp(`^${pattern}$`);
+}
+
+export const corsOrigins: (string | RegExp)[] | true =
+  env.CORS_ORIGINS === '*' ? true : env.CORS_ORIGINS.split(',').map((o) => toMatcher(o.trim()));
+
+/** Whether an `Origin` header value is permitted. */
+export function originAllowed(origin: string): boolean {
+  if (corsOrigins === true) return true;
+  return corsOrigins.some((m) => (typeof m === 'string' ? m === origin : m.test(origin)));
+}
