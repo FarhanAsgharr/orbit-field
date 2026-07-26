@@ -35,7 +35,10 @@ import { requireAuth, requirePermission } from '../../middleware/auth.js';
 import { auth, clientIp } from '../../middleware/context.js';
 import { asyncHandler } from '../../middleware/error.js';
 import { schemas, validate } from '../../middleware/validate.js';
-import { notifyInspectionReviewed } from '../notifications/push.service.js';
+import {
+  notifyInspectionAssigned,
+  notifyInspectionReviewed,
+} from '../notifications/push.service.js';
 import { recordChange } from '../sync/change-log.js';
 
 const router: Router = Router();
@@ -256,6 +259,419 @@ router.get(
         page,
       ),
     });
+  }),
+);
+
+/**
+ * Allocate the next inspection number for an organisation.
+ *
+ * A single atomic UPDATE, so two administrators scheduling work at the same
+ * moment cannot be handed the same reference. The sequence restarts each
+ * calendar year, which is what the `INS-2026-000001` shape implies and what
+ * every operator reading it will assume.
+ */
+async function allocateNumber(tx: Prisma.TransactionClient, orgId: string): Promise<string> {
+  const rows = await tx.$queryRaw<
+    Array<{ number_sequence: number; number_prefix: string; number_year: number }>
+  >`
+    UPDATE organizations
+       SET "numberSequence" = CASE WHEN "numberYear" = EXTRACT(YEAR FROM NOW())::int
+                                   THEN "numberSequence" + 1 ELSE 1 END,
+           "numberYear"     = EXTRACT(YEAR FROM NOW())::int
+     WHERE id = ${orgId}
+    RETURNING "numberSequence" AS number_sequence, "numberPrefix" AS number_prefix, "numberYear" AS number_year
+  `;
+  const row = rows[0]!;
+  return `${row.number_prefix}-${row.number_year}-${String(row.number_sequence).padStart(6, '0')}`;
+}
+
+/**
+ * Reference data an inspection may point at, checked inside this organisation.
+ *
+ * Every id on the body is attacker-controlled, and each of these is a
+ * cross-tenant read if it goes unchecked — scheduling work against another
+ * company's site would put their address on this organisation's report.
+ */
+async function resolveReferences(
+  orgId: string,
+  body: { templateId: string; projectId?: string | null; siteId?: string | null; assignedToId?: string | null },
+): Promise<{ templateVersionId: string; clientId: string | null }> {
+  const template = await prisma.template.findFirst({
+    where: { id: body.templateId, orgId, deletedAt: null },
+    select: { activeVersionId: true },
+  });
+  if (!template) {
+    throw new AppError(ErrorCode.VALIDATION_FAILED, 'That checklist was not found.', {
+      fields: { templateId: 'Not found in this organisation.' },
+    });
+  }
+  if (!template.activeVersionId) {
+    // A draft template has no questions an inspector could answer.
+    throw new AppError(ErrorCode.VALIDATION_FAILED, 'That checklist has not been published yet.', {
+      fields: { templateId: 'Publish it before scheduling work against it.' },
+    });
+  }
+
+  let clientId: string | null = null;
+
+  if (body.projectId) {
+    const project = await prisma.project.findFirst({
+      where: { id: body.projectId, orgId, deletedAt: null },
+      select: { clientId: true },
+    });
+    if (!project) {
+      throw new AppError(ErrorCode.VALIDATION_FAILED, 'That project was not found.', {
+        fields: { projectId: 'Not found in this organisation.' },
+      });
+    }
+    // Derived rather than accepted from the body: the client is a property of
+    // the project, and letting a caller state a different one would put the
+    // wrong company on the report.
+    clientId = project.clientId;
+  }
+
+  if (body.siteId) {
+    const site = await prisma.site.findFirst({
+      where: { id: body.siteId, orgId, deletedAt: null },
+      select: { clientId: true },
+    });
+    if (!site) {
+      throw new AppError(ErrorCode.VALIDATION_FAILED, 'That site was not found.', {
+        fields: { siteId: 'Not found in this organisation.' },
+      });
+    }
+    clientId ??= site.clientId;
+  }
+
+  if (body.assignedToId) {
+    const assignee = await prisma.user.findFirst({
+      where: { id: body.assignedToId, orgId, deletedAt: null, status: 'ACTIVE' },
+      select: { id: true },
+    });
+    if (!assignee) {
+      throw new AppError(ErrorCode.VALIDATION_FAILED, 'That inspector was not found.', {
+        fields: { assignedToId: 'Not an active member of this organisation.' },
+      });
+    }
+  }
+
+  return { templateVersionId: template.activeVersionId, clientId };
+}
+
+const writableFields = {
+  title: z.string().min(1).max(300).trim(),
+  description: z.string().max(5000).nullable().optional(),
+  notes: z.string().max(5000).nullable().optional(),
+  templateId: schemas.ulid,
+  projectId: schemas.ulid.nullable().optional(),
+  siteId: schemas.ulid.nullable().optional(),
+  assetId: schemas.ulid.nullable().optional(),
+  assignedToId: schemas.ulid.nullable().optional(),
+  priority: z.enum(['LOW', 'NORMAL', 'HIGH', 'CRITICAL']).default('NORMAL'),
+  dueAt: z.string().datetime({ offset: true }).nullable().optional(),
+  category: z.string().max(120).nullable().optional(),
+  department: z.string().max(120).nullable().optional(),
+  tags: z.array(z.string().max(40)).max(20).optional(),
+  status: z.enum(['DRAFT', 'SCHEDULED']).default('SCHEDULED'),
+};
+
+/**
+ * Schedule an inspection and assign it to somebody.
+ *
+ * The counterpart to the device-created inspection the sync engine already
+ * handles. Both end in the same row and the same change-log entry; the
+ * difference is only who started it — an inspector standing in front of the
+ * asset, or an administrator planning next week.
+ *
+ * Gated on `INSPECTION_ASSIGN` rather than `INSPECTION_CREATE`. Inspectors hold
+ * the latter, because creating work they are standing in front of is their job;
+ * what they must not do is hand work to somebody else.
+ *
+ * Only DRAFT or SCHEDULED are accepted as a starting status. Anything further
+ * along asserts that work has happened — an inspection created directly as
+ * APPROVED would be a signed-off record nobody carried out.
+ */
+router.post(
+  '/',
+  requireAuth,
+  requirePermission(Permission.INSPECTION_ASSIGN),
+  validate({ body: z.object(writableFields) }),
+  asyncHandler(async (req, res) => {
+    const subject = auth(req);
+    const body = req.validated!.body as z.infer<z.ZodObject<typeof writableFields>>;
+
+    const { templateVersionId, clientId } = await resolveReferences(subject.orgId, body);
+
+    const created = await prisma.$transaction(async (tx) => {
+      const number = await allocateNumber(tx, subject.orgId);
+      const id = ulid();
+
+      const inspection = await tx.inspection.create({
+        data: {
+          id,
+          orgId: subject.orgId,
+          number,
+          templateId: body.templateId,
+          templateVersionId,
+          projectId: body.projectId ?? null,
+          clientId,
+          siteId: body.siteId ?? null,
+          assetId: body.assetId ?? null,
+          title: body.title,
+          description: body.description ?? null,
+          notes: body.notes ?? null,
+          status: body.status as never,
+          priority: body.priority as Priority,
+          category: body.category ?? null,
+          department: body.department ?? null,
+          tags: body.tags ?? [],
+          dueAt: body.dueAt ? new Date(body.dueAt) : null,
+          assignedToId: body.assignedToId ?? null,
+          createdById: subject.userId,
+        },
+      });
+
+      // Without this the inspection exists in the console and on no phone —
+      // the assignee would never receive the work.
+      await recordChange(tx, {
+        orgId: subject.orgId,
+        entity: SyncEntity.INSPECTION,
+        operation: SyncOperation.CREATE,
+        entityId: id,
+        version: inspection.version,
+        row: inspection,
+        projectId: inspection.projectId,
+        assignedToId: inspection.assignedToId,
+        actorUserId: subject.userId,
+        actorDeviceId: subject.deviceId,
+      });
+
+      await tx.auditLog.create({
+        data: {
+          id: ulid(),
+          orgId: subject.orgId,
+          userId: subject.userId,
+          action: 'RECORD_CREATED',
+          entity: 'Inspection',
+          entityId: id,
+          metadata: { number, assignedToId: body.assignedToId ?? null },
+          ipAddress: clientIp(req),
+          requestId: req.requestId,
+        },
+      });
+
+      return inspection;
+    });
+
+    // After the commit: a push failure must not roll back scheduled work.
+    if (created.assignedToId) {
+      void notifyInspectionAssigned({
+        orgId: subject.orgId,
+        assigneeId: created.assignedToId,
+        inspectionId: created.id,
+        number: created.number,
+        title: created.title,
+        siteName: null,
+        dueAt: created.dueAt,
+      }).catch(() => undefined);
+    }
+
+    res.status(201).json({ data: created });
+  }),
+);
+
+/**
+ * Edit a scheduled inspection, including reassigning it.
+ *
+ * Deliberately refuses once work has been submitted. Changing the checklist or
+ * the site under a completed inspection would rewrite what was inspected after
+ * somebody signed for it — the answers stay attached to a record that now
+ * describes something else. Reviewing is how a submitted inspection changes.
+ */
+router.patch(
+  '/:id',
+  requireAuth,
+  requirePermission(Permission.INSPECTION_UPDATE_ANY),
+  validate({
+    params: z.object({ id: schemas.ulid }),
+    body: z.object(writableFields).partial(),
+  }),
+  asyncHandler(async (req, res) => {
+    const subject = auth(req);
+    const { id } = req.validated!.params as { id: string };
+    const body = req.validated!.body as Partial<z.infer<z.ZodObject<typeof writableFields>>>;
+
+    const existing = await prisma.inspection.findFirst({
+      where: { id, orgId: subject.orgId, deletedAt: null },
+    });
+    if (!existing) throw new AppError(ErrorCode.NOT_FOUND, 'That inspection was not found.');
+
+    const OPEN: string[] = [
+      InspectionStatus.DRAFT,
+      InspectionStatus.SCHEDULED,
+      InspectionStatus.IN_PROGRESS,
+      InspectionStatus.REJECTED,
+    ];
+    if (!OPEN.includes(existing.status)) {
+      throw new AppError(
+        ErrorCode.CONFLICT,
+        `This inspection is ${existing.status.toLowerCase().replace(/_/g, ' ')} and can no longer be edited. Reopen or review it instead.`,
+      );
+    }
+
+    // Re-resolve only what is being changed, against the org.
+    const { templateVersionId, clientId } = await resolveReferences(subject.orgId, {
+      templateId: body.templateId ?? existing.templateId,
+      projectId: body.projectId === undefined ? existing.projectId : body.projectId,
+      siteId: body.siteId === undefined ? existing.siteId : body.siteId,
+      assignedToId: body.assignedToId ?? undefined,
+    });
+
+    const updated = await prisma.$transaction(async (tx) => {
+      const row = await tx.inspection.update({
+        where: { id },
+        data: {
+          ...(body.title !== undefined ? { title: body.title } : {}),
+          ...(body.description !== undefined ? { description: body.description } : {}),
+          ...(body.notes !== undefined ? { notes: body.notes } : {}),
+          ...(body.templateId !== undefined ? { templateId: body.templateId, templateVersionId } : {}),
+          ...(body.projectId !== undefined ? { projectId: body.projectId, clientId } : {}),
+          ...(body.siteId !== undefined ? { siteId: body.siteId } : {}),
+          ...(body.assetId !== undefined ? { assetId: body.assetId } : {}),
+          ...(body.assignedToId !== undefined ? { assignedToId: body.assignedToId } : {}),
+          ...(body.priority !== undefined ? { priority: body.priority as Priority } : {}),
+          ...(body.category !== undefined ? { category: body.category } : {}),
+          ...(body.department !== undefined ? { department: body.department } : {}),
+          ...(body.tags !== undefined ? { tags: body.tags } : {}),
+          ...(body.status !== undefined ? { status: body.status as never } : {}),
+          ...(body.dueAt !== undefined ? { dueAt: body.dueAt ? new Date(body.dueAt) : null } : {}),
+          version: { increment: 1 },
+        },
+      });
+
+      await recordChange(tx, {
+        orgId: subject.orgId,
+        entity: SyncEntity.INSPECTION,
+        operation: SyncOperation.UPDATE,
+        entityId: id,
+        version: row.version,
+        row,
+        projectId: row.projectId,
+        assignedToId: row.assignedToId,
+        actorUserId: subject.userId,
+        actorDeviceId: subject.deviceId,
+      });
+
+      await tx.auditLog.create({
+        data: {
+          id: ulid(),
+          orgId: subject.orgId,
+          userId: subject.userId,
+          action: 'RECORD_UPDATED',
+          entity: 'Inspection',
+          entityId: id,
+          changes: {
+            before: { assignedToId: existing.assignedToId, status: existing.status },
+            after: body,
+          } as never,
+          ipAddress: clientIp(req),
+          requestId: req.requestId,
+        },
+      });
+
+      return row;
+    });
+
+    // Tell the new assignee, but only when the assignment actually moved.
+    if (updated.assignedToId && updated.assignedToId !== existing.assignedToId) {
+      void notifyInspectionAssigned({
+        orgId: subject.orgId,
+        assigneeId: updated.assignedToId,
+        inspectionId: updated.id,
+        number: updated.number,
+        title: updated.title,
+        siteName: null,
+        dueAt: updated.dueAt,
+      }).catch(() => undefined);
+    }
+
+    res.json({ data: updated });
+  }),
+);
+
+/**
+ * Delete an inspection.
+ *
+ * Soft, always. The row carries answers, photographs and signatures that a
+ * report may already have been produced from, and a hard delete would remove
+ * the evidence behind a document somebody has been given. The tombstone is what
+ * removes it from every device.
+ *
+ * Refused once work has been submitted — at that point it is a compliance
+ * record, and archiving is the correct way to get it out of the way.
+ */
+router.delete(
+  '/:id',
+  requireAuth,
+  requirePermission(Permission.INSPECTION_DELETE),
+  validate({ params: z.object({ id: schemas.ulid }) }),
+  asyncHandler(async (req, res) => {
+    const subject = auth(req);
+    const { id } = req.validated!.params as { id: string };
+
+    const existing = await prisma.inspection.findFirst({
+      where: { id, orgId: subject.orgId, deletedAt: null },
+      select: { id: true, number: true, status: true, version: true },
+    });
+    if (!existing) throw new AppError(ErrorCode.NOT_FOUND, 'That inspection was not found.');
+
+    const DELETABLE: string[] = [
+      InspectionStatus.DRAFT,
+      InspectionStatus.SCHEDULED,
+      InspectionStatus.IN_PROGRESS,
+    ];
+    if (!DELETABLE.includes(existing.status)) {
+      throw new AppError(
+        ErrorCode.CONFLICT,
+        'Submitted work cannot be deleted — it is a compliance record. Archive it instead.',
+      );
+    }
+
+    await prisma.$transaction(async (tx) => {
+      const row = await tx.inspection.update({
+        where: { id },
+        data: { deletedAt: new Date(), version: { increment: 1 } },
+      });
+
+      await recordChange(tx, {
+        orgId: subject.orgId,
+        entity: SyncEntity.INSPECTION,
+        operation: SyncOperation.DELETE,
+        entityId: id,
+        version: row.version,
+        row: null,
+        projectId: row.projectId,
+        assignedToId: row.assignedToId,
+        actorUserId: subject.userId,
+        actorDeviceId: subject.deviceId,
+      });
+
+      await tx.auditLog.create({
+        data: {
+          id: ulid(),
+          orgId: subject.orgId,
+          userId: subject.userId,
+          action: 'RECORD_DELETED',
+          entity: 'Inspection',
+          entityId: id,
+          metadata: { number: existing.number, status: existing.status },
+          ipAddress: clientIp(req),
+          requestId: req.requestId,
+        },
+      });
+    });
+
+    res.status(204).end();
   }),
 );
 

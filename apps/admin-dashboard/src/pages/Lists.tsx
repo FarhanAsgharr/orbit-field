@@ -13,6 +13,7 @@ import React, { useState } from 'react';
 import { Link } from 'react-router-dom';
 
 import { type Column, DataTable } from '../components/DataTable';
+import { InspectionForm } from '../components/InspectionForm';
 import { PasswordInput } from '../components/PasswordInput';
 import {
   Badge,
@@ -56,8 +57,10 @@ interface InspectionRow {
 }
 
 export function Inspections(): React.ReactElement {
+  const { can } = useSession();
   const [status, setStatus] = useState<string>('');
   const [outcome, setOutcome] = useState<string>('');
+  const [scheduling, setScheduling] = useState(false);
 
   const columns: Array<Column<InspectionRow>> = [
     {
@@ -143,6 +146,18 @@ export function Inspections(): React.ReactElement {
       render: (row) => (row.score !== null ? `${Math.round(row.score)}%` : '—'),
     },
     {
+      key: 'actions',
+      header: '',
+      width: '70px',
+      render: (row) => (
+        // Opening the record is the action; everything an administrator can do
+        // to an inspection lives there, next to the context needed to decide.
+        <Link className="btn btn--ghost btn--sm" to={`/inspections/${row.id}`}>
+          Open
+        </Link>
+      ),
+    },
+    {
       key: 'dueAt',
       header: 'Due',
       sortable: true,
@@ -171,6 +186,21 @@ export function Inspections(): React.ReactElement {
         </div>
       </header>
 
+      {scheduling ? (
+        <div
+          className="modal__backdrop"
+          role="presentation"
+          onClick={(e) => {
+            if (e.target === e.currentTarget) setScheduling(false);
+          }}
+        >
+          <InspectionForm
+            onDone={() => setScheduling(false)}
+            onCancel={() => setScheduling(false)}
+          />
+        </div>
+      ) : null}
+
       <DataTable<InspectionRow>
         endpoint="/inspections"
         queryKey={['inspections', status, outcome]}
@@ -180,7 +210,14 @@ export function Inspections(): React.ReactElement {
         extraQuery={{ status: status || undefined, outcome: outcome || undefined }}
         defaultSort={{ by: 'updatedAt', dir: 'desc' }}
         emptyTitle="No inspections yet"
-        emptyBody="Work created in the field app will appear here as soon as a device syncs."
+        emptyBody="Schedule one here, or wait for work created in the field app to sync."
+        toolbarAction={
+          can(Permission.INSPECTION_ASSIGN) ? (
+            <button className="btn" onClick={() => setScheduling(true)}>
+              Schedule inspection
+            </button>
+          ) : null
+        }
         filters={
           <>
             <select

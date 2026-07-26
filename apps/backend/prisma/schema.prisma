@@ -179,16 +179,16 @@ enum NotificationChannel {
 // ---------------------------------------------------------------------------
 
 model Organization {
-  id        String  @id @db.VarChar(26)
-  name      String  @db.VarChar(200)
-  slug      String  @unique @db.VarChar(80)
-  logoUrl   String? @db.VarChar(500)
-  timezone  String  @default("UTC") @db.VarChar(64)
-  locale    String  @default("en") @db.VarChar(16)
-  currency  String  @default("USD") @db.VarChar(3)
+  id       String  @id @db.VarChar(26)
+  name     String  @db.VarChar(200)
+  slug     String  @unique @db.VarChar(80)
+  logoUrl  String? @db.VarChar(500)
+  timezone String  @default("UTC") @db.VarChar(64)
+  locale   String  @default("en") @db.VarChar(16)
+  currency String  @default("USD") @db.VarChar(3)
 
   // Org-level toggles: GPS enforcement, password policy, retention, branding.
-  settings  Json    @default("{}")
+  settings Json @default("{}")
 
   // Per-org monotonic counter handed out to every accepted mutation. Kept on the
   // org row and bumped inside the same transaction as the write, so a delta pull
@@ -200,12 +200,12 @@ model Organization {
   numberSequence Int    @default(0)
   numberYear     Int    @default(0)
 
-  isActive  Boolean  @default(true)
-  version   Int      @default(1)
-  syncCursor BigInt  @default(0)
-  createdAt DateTime @default(now()) @db.Timestamptz(6)
-  updatedAt DateTime @updatedAt @db.Timestamptz(6)
-  deletedAt DateTime? @db.Timestamptz(6)
+  isActive   Boolean   @default(true)
+  version    Int       @default(1)
+  syncCursor BigInt    @default(0)
+  createdAt  DateTime  @default(now()) @db.Timestamptz(6)
+  updatedAt  DateTime  @updatedAt @db.Timestamptz(6)
+  deletedAt  DateTime? @db.Timestamptz(6)
 
   users         User[]
   devices       Device[]
@@ -229,41 +229,40 @@ model Organization {
 }
 
 model User {
-  id             String  @id @db.VarChar(26)
-  orgId          String  @db.VarChar(26)
-  email          String  @db.VarChar(320)
+  id              String    @id @db.VarChar(26)
+  orgId           String    @db.VarChar(26)
+  email           String    @db.VarChar(320)
   emailVerifiedAt DateTime? @db.Timestamptz(6)
-  phone          String? @db.VarChar(32)
-  firstName      String  @db.VarChar(100)
-  lastName       String  @db.VarChar(100)
-  avatarUrl      String? @db.VarChar(500)
+  phone           String?   @db.VarChar(32)
+  firstName       String    @db.VarChar(100)
+  lastName        String    @db.VarChar(100)
+  avatarUrl       String?   @db.VarChar(500)
 
   // Argon2id hash. Never leaves the server, never appears in a select-all.
-  passwordHash   String? @db.VarChar(255)
+  passwordHash       String?   @db.VarChar(255)
   // Previous hashes, newest first, for password-reuse enforcement.
-  passwordHistory Json   @default("[]")
-  passwordChangedAt DateTime? @db.Timestamptz(6)
+  passwordHistory    Json      @default("[]")
+  passwordChangedAt  DateTime? @db.Timestamptz(6)
   /**
    * Set when an administrator chose the password rather than the user.
-   *
    * An admin-created account starts with a credential its owner did not pick
    * and which was transmitted out of band — over chat, on paper, spoken aloud.
    * Until the user replaces it, that password is known to at least two people
    * and possibly written down somewhere. The session is issued as normal so the
    * app is usable, but every client is told to force a change first.
    */
-  mustChangePassword Boolean @default(false)
+  mustChangePassword Boolean   @default(false)
 
-  role           Role       @default(INSPECTOR)
-  extraPermissions   String[] @default([])
-  revokedPermissions String[] @default([])
-  status         UserStatus @default(INVITED)
+  role               Role       @default(INSPECTOR)
+  extraPermissions   String[]   @default([])
+  revokedPermissions String[]   @default([])
+  status             UserStatus @default(INVITED)
 
-  department     String? @db.VarChar(120)
-  jobTitle       String? @db.VarChar(120)
+  department         String? @db.VarChar(120)
+  jobTitle           String? @db.VarChar(120)
   registrationNumber String? @db.VarChar(80)
-  timezone       String? @db.VarChar(64)
-  locale         String? @db.VarChar(16)
+  timezone           String? @db.VarChar(64)
+  locale             String? @db.VarChar(16)
 
   // Per-user push preferences: enabled categories, quiet hours, sound.
   // Stored as JSON because it is read and written whole and never queried by
@@ -271,34 +270,34 @@ model User {
   notificationPreferences Json @default("{}")
 
   // Brute-force protection, evaluated before the password is even hashed.
-  failedLoginAttempts Int @default(0)
-  lockedUntil    DateTime? @db.Timestamptz(6)
-  lastLoginAt    DateTime? @db.Timestamptz(6)
-  lastLoginIp    String?   @db.Inet
+  failedLoginAttempts Int       @default(0)
+  lockedUntil         DateTime? @db.Timestamptz(6)
+  lastLoginAt         DateTime? @db.Timestamptz(6)
+  lastLoginIp         String?   @db.Inet
 
-  version    Int      @default(1)
-  syncCursor BigInt   @default(0)
-  createdAt  DateTime @default(now()) @db.Timestamptz(6)
-  updatedAt  DateTime @updatedAt @db.Timestamptz(6)
-  deletedAt  DateTime? @db.Timestamptz(6)
-  lastWriterDeviceId String? @db.VarChar(26)
-  lastWriterUserId   String? @db.VarChar(26)
+  version            Int       @default(1)
+  syncCursor         BigInt    @default(0)
+  createdAt          DateTime  @default(now()) @db.Timestamptz(6)
+  updatedAt          DateTime  @updatedAt @db.Timestamptz(6)
+  deletedAt          DateTime? @db.Timestamptz(6)
+  lastWriterDeviceId String?   @db.VarChar(26)
+  lastWriterUserId   String?   @db.VarChar(26)
 
   organization Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
 
-  devices            Device[]
-  refreshTokens      RefreshToken[]
-  otpCodes           OtpCode[]
-  projectMemberships ProjectMember[]
-  managedProjects    Project[]           @relation("ProjectManager")
-  assignedInspections Inspection[]       @relation("InspectionAssignee")
-  createdInspections  Inspection[]       @relation("InspectionCreator")
-  reviewedInspections Inspection[]       @relation("InspectionReviewer")
-  auditLogs          AuditLog[]
-  notifications      Notification[]
-  createdTemplates   Template[]
-  syncSessions       SyncSession[]
-  conflicts          SyncConflictRecord[]
+  devices             Device[]
+  refreshTokens       RefreshToken[]
+  otpCodes            OtpCode[]
+  projectMemberships  ProjectMember[]
+  managedProjects     Project[]            @relation("ProjectManager")
+  assignedInspections Inspection[]         @relation("InspectionAssignee")
+  createdInspections  Inspection[]         @relation("InspectionCreator")
+  reviewedInspections Inspection[]         @relation("InspectionReviewer")
+  auditLogs           AuditLog[]
+  notifications       Notification[]
+  createdTemplates    Template[]
+  syncSessions        SyncSession[]
+  conflicts           SyncConflictRecord[]
 
   // Email is unique per organisation, not globally — the same contractor may
   // legitimately hold accounts with two client organisations.
@@ -320,26 +319,26 @@ model Device {
   appVersion     String  @db.VarChar(40)
   model          String? @db.VarChar(80)
 
-  pushToken      String? @db.VarChar(400)
+  pushToken           String?   @db.VarChar(400)
   // SPKI public key from the secure enclave, used for biometric login. The
   // private half never leaves the device, so a stolen database cannot forge it.
-  biometricPublicKey String? @db.Text
+  biometricPublicKey  String?   @db.Text
   biometricEnrolledAt DateTime? @db.Timestamptz(6)
 
-  lastSyncCursor BigInt   @default(0)
+  lastSyncCursor BigInt    @default(0)
   lastSeenAt     DateTime? @db.Timestamptz(6)
   lastSyncAt     DateTime? @db.Timestamptz(6)
   revokedAt      DateTime? @db.Timestamptz(6)
   revokedReason  String?   @db.VarChar(200)
 
-  version    Int      @default(1)
-  syncCursor BigInt   @default(0)
-  createdAt  DateTime @default(now()) @db.Timestamptz(6)
-  updatedAt  DateTime @updatedAt @db.Timestamptz(6)
+  version    Int       @default(1)
+  syncCursor BigInt    @default(0)
+  createdAt  DateTime  @default(now()) @db.Timestamptz(6)
+  updatedAt  DateTime  @updatedAt @db.Timestamptz(6)
   deletedAt  DateTime? @db.Timestamptz(6)
 
-  organization  Organization  @relation(fields: [orgId], references: [id], onDelete: Cascade)
-  user          User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  organization  Organization   @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  user          User           @relation(fields: [userId], references: [id], onDelete: Cascade)
   refreshTokens RefreshToken[]
   syncSessions  SyncSession[]
 
@@ -354,27 +353,27 @@ model Device {
 // ---------------------------------------------------------------------------
 
 model RefreshToken {
-  id        String   @id @db.VarChar(26)
-  userId    String   @db.VarChar(26)
-  deviceId  String?  @db.VarChar(26)
+  id       String  @id @db.VarChar(26)
+  userId   String  @db.VarChar(26)
+  deviceId String? @db.VarChar(26)
 
   // SHA-256 of the token. Storing the raw token would make a database leak
   // equivalent to handing out live sessions.
-  tokenHash String   @unique @db.VarChar(64)
+  tokenHash String @unique @db.VarChar(64)
 
   // Rotation chain: each refresh issues a successor and marks its parent used.
   // Presenting an already-used token means the token was stolen, so the whole
   // family is revoked. This is the standard reuse-detection defence.
-  familyId  String   @db.VarChar(26)
-  usedAt    DateTime? @db.Timestamptz(6)
-  replacedById String? @db.VarChar(26)
+  familyId     String    @db.VarChar(26)
+  usedAt       DateTime? @db.Timestamptz(6)
+  replacedById String?   @db.VarChar(26)
 
-  expiresAt DateTime @db.Timestamptz(6)
-  revokedAt DateTime? @db.Timestamptz(6)
-  revokedReason String? @db.VarChar(120)
-  userAgent String?  @db.VarChar(400)
-  ipAddress String?  @db.Inet
-  createdAt DateTime @default(now()) @db.Timestamptz(6)
+  expiresAt     DateTime  @db.Timestamptz(6)
+  revokedAt     DateTime? @db.Timestamptz(6)
+  revokedReason String?   @db.VarChar(120)
+  userAgent     String?   @db.VarChar(400)
+  ipAddress     String?   @db.Inet
+  createdAt     DateTime  @default(now()) @db.Timestamptz(6)
 
   user   User    @relation(fields: [userId], references: [id], onDelete: Cascade)
   device Device? @relation(fields: [deviceId], references: [id], onDelete: SetNull)
@@ -386,17 +385,17 @@ model RefreshToken {
 }
 
 model OtpCode {
-  id        String     @id @db.VarChar(26)
-  userId    String     @db.VarChar(26)
-  purpose   OtpPurpose
+  id          String     @id @db.VarChar(26)
+  userId      String     @db.VarChar(26)
+  purpose     OtpPurpose
   // HMAC of the code, so a database read cannot reveal a live OTP.
-  codeHash  String     @db.VarChar(64)
-  attempts  Int        @default(0)
-  maxAttempts Int      @default(5)
-  expiresAt DateTime   @db.Timestamptz(6)
-  consumedAt DateTime? @db.Timestamptz(6)
-  createdAt DateTime   @default(now()) @db.Timestamptz(6)
-  ipAddress String?    @db.Inet
+  codeHash    String     @db.VarChar(64)
+  attempts    Int        @default(0)
+  maxAttempts Int        @default(5)
+  expiresAt   DateTime   @db.Timestamptz(6)
+  consumedAt  DateTime?  @db.Timestamptz(6)
+  createdAt   DateTime   @default(now()) @db.Timestamptz(6)
+  ipAddress   String?    @db.Inet
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
@@ -410,24 +409,24 @@ model OtpCode {
 // ---------------------------------------------------------------------------
 
 model Client {
-  id      String  @id @db.VarChar(26)
-  orgId   String  @db.VarChar(26)
-  name    String  @db.VarChar(200)
-  code    String? @db.VarChar(40)
+  id           String  @id @db.VarChar(26)
+  orgId        String  @db.VarChar(26)
+  name         String  @db.VarChar(200)
+  code         String? @db.VarChar(40)
   contactName  String? @db.VarChar(120)
   contactEmail String? @db.VarChar(320)
   contactPhone String? @db.VarChar(32)
-  address String? @db.Text
-  logoUrl String? @db.VarChar(500)
-  isActive Boolean @default(true)
+  address      String? @db.Text
+  logoUrl      String? @db.VarChar(500)
+  isActive     Boolean @default(true)
 
-  version    Int      @default(1)
-  syncCursor BigInt   @default(0)
-  createdAt  DateTime @default(now()) @db.Timestamptz(6)
-  updatedAt  DateTime @updatedAt @db.Timestamptz(6)
-  deletedAt  DateTime? @db.Timestamptz(6)
-  lastWriterDeviceId String? @db.VarChar(26)
-  lastWriterUserId   String? @db.VarChar(26)
+  version            Int       @default(1)
+  syncCursor         BigInt    @default(0)
+  createdAt          DateTime  @default(now()) @db.Timestamptz(6)
+  updatedAt          DateTime  @updatedAt @db.Timestamptz(6)
+  deletedAt          DateTime? @db.Timestamptz(6)
+  lastWriterDeviceId String?   @db.VarChar(26)
+  lastWriterUserId   String?   @db.VarChar(26)
 
   organization Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
   projects     Project[]
@@ -441,28 +440,28 @@ model Client {
 }
 
 model Project {
-  id          String  @id @db.VarChar(26)
-  orgId       String  @db.VarChar(26)
-  clientId    String? @db.VarChar(26)
-  name        String  @db.VarChar(200)
-  code        String  @db.VarChar(40)
-  description String? @db.Text
+  id          String    @id @db.VarChar(26)
+  orgId       String    @db.VarChar(26)
+  clientId    String?   @db.VarChar(26)
+  name        String    @db.VarChar(200)
+  code        String    @db.VarChar(40)
+  description String?   @db.Text
   startDate   DateTime? @db.Timestamptz(6)
   endDate     DateTime? @db.Timestamptz(6)
-  managerId   String? @db.VarChar(26)
-  isActive    Boolean @default(true)
+  managerId   String?   @db.VarChar(26)
+  isActive    Boolean   @default(true)
 
-  version    Int      @default(1)
-  syncCursor BigInt   @default(0)
-  createdAt  DateTime @default(now()) @db.Timestamptz(6)
-  updatedAt  DateTime @updatedAt @db.Timestamptz(6)
-  deletedAt  DateTime? @db.Timestamptz(6)
-  lastWriterDeviceId String? @db.VarChar(26)
-  lastWriterUserId   String? @db.VarChar(26)
+  version            Int       @default(1)
+  syncCursor         BigInt    @default(0)
+  createdAt          DateTime  @default(now()) @db.Timestamptz(6)
+  updatedAt          DateTime  @updatedAt @db.Timestamptz(6)
+  deletedAt          DateTime? @db.Timestamptz(6)
+  lastWriterDeviceId String?   @db.VarChar(26)
+  lastWriterUserId   String?   @db.VarChar(26)
 
-  organization Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
-  client       Client?      @relation(fields: [clientId], references: [id], onDelete: SetNull)
-  manager      User?        @relation("ProjectManager", fields: [managerId], references: [id], onDelete: SetNull)
+  organization Organization    @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  client       Client?         @relation(fields: [clientId], references: [id], onDelete: SetNull)
+  manager      User?           @relation("ProjectManager", fields: [managerId], references: [id], onDelete: SetNull)
   members      ProjectMember[]
   sites        Site[]
   inspections  Inspection[]
@@ -487,28 +486,28 @@ model ProjectMember {
 }
 
 model Site {
-  id        String  @id @db.VarChar(26)
-  orgId     String  @db.VarChar(26)
-  projectId String? @db.VarChar(26)
-  clientId  String? @db.VarChar(26)
-  name      String  @db.VarChar(200)
-  code      String? @db.VarChar(40)
-  address   String? @db.Text
-  latitude  Float?
-  longitude Float?
+  id                   String  @id @db.VarChar(26)
+  orgId                String  @db.VarChar(26)
+  projectId            String? @db.VarChar(26)
+  clientId             String? @db.VarChar(26)
+  name                 String  @db.VarChar(200)
+  code                 String? @db.VarChar(40)
+  address              String? @db.Text
+  latitude             Float?
+  longitude            Float?
   geofenceRadiusMeters Int?
-  timezone  String? @db.VarChar(64)
-  contactName String? @db.VarChar(120)
-  contactPhone String? @db.VarChar(32)
-  isActive  Boolean @default(true)
+  timezone             String? @db.VarChar(64)
+  contactName          String? @db.VarChar(120)
+  contactPhone         String? @db.VarChar(32)
+  isActive             Boolean @default(true)
 
-  version    Int      @default(1)
-  syncCursor BigInt   @default(0)
-  createdAt  DateTime @default(now()) @db.Timestamptz(6)
-  updatedAt  DateTime @updatedAt @db.Timestamptz(6)
-  deletedAt  DateTime? @db.Timestamptz(6)
-  lastWriterDeviceId String? @db.VarChar(26)
-  lastWriterUserId   String? @db.VarChar(26)
+  version            Int       @default(1)
+  syncCursor         BigInt    @default(0)
+  createdAt          DateTime  @default(now()) @db.Timestamptz(6)
+  updatedAt          DateTime  @updatedAt @db.Timestamptz(6)
+  deletedAt          DateTime? @db.Timestamptz(6)
+  lastWriterDeviceId String?   @db.VarChar(26)
+  lastWriterUserId   String?   @db.VarChar(26)
 
   organization Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
   project      Project?     @relation(fields: [projectId], references: [id], onDelete: SetNull)
@@ -523,29 +522,29 @@ model Site {
 }
 
 model Asset {
-  id            String  @id @db.VarChar(26)
-  orgId         String  @db.VarChar(26)
-  siteId        String? @db.VarChar(26)
-  parentAssetId String? @db.VarChar(26)
-  name          String  @db.VarChar(200)
-  tag           String  @db.VarChar(120)
-  category      String? @db.VarChar(120)
-  manufacturer  String? @db.VarChar(120)
-  model         String? @db.VarChar(120)
-  serialNumber  String? @db.VarChar(120)
+  id            String    @id @db.VarChar(26)
+  orgId         String    @db.VarChar(26)
+  siteId        String?   @db.VarChar(26)
+  parentAssetId String?   @db.VarChar(26)
+  name          String    @db.VarChar(200)
+  tag           String    @db.VarChar(120)
+  category      String?   @db.VarChar(120)
+  manufacturer  String?   @db.VarChar(120)
+  model         String?   @db.VarChar(120)
+  serialNumber  String?   @db.VarChar(120)
   installedAt   DateTime? @db.Timestamptz(6)
   latitude      Float?
   longitude     Float?
-  metadata      Json    @default("{}")
-  isActive      Boolean @default(true)
+  metadata      Json      @default("{}")
+  isActive      Boolean   @default(true)
 
-  version    Int      @default(1)
-  syncCursor BigInt   @default(0)
-  createdAt  DateTime @default(now()) @db.Timestamptz(6)
-  updatedAt  DateTime @updatedAt @db.Timestamptz(6)
-  deletedAt  DateTime? @db.Timestamptz(6)
-  lastWriterDeviceId String? @db.VarChar(26)
-  lastWriterUserId   String? @db.VarChar(26)
+  version            Int       @default(1)
+  syncCursor         BigInt    @default(0)
+  createdAt          DateTime  @default(now()) @db.Timestamptz(6)
+  updatedAt          DateTime  @updatedAt @db.Timestamptz(6)
+  deletedAt          DateTime? @db.Timestamptz(6)
+  lastWriterDeviceId String?   @db.VarChar(26)
+  lastWriterUserId   String?   @db.VarChar(26)
 
   organization Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
   site         Site?        @relation(fields: [siteId], references: [id], onDelete: SetNull)
@@ -564,25 +563,25 @@ model Asset {
 // ---------------------------------------------------------------------------
 
 model Template {
-  id          String  @id @db.VarChar(26)
-  orgId       String  @db.VarChar(26)
-  name        String  @db.VarChar(200)
-  description String? @db.Text
-  category    String? @db.VarChar(120)
-  discipline  String? @db.VarChar(120)
+  id              String   @id @db.VarChar(26)
+  orgId           String   @db.VarChar(26)
+  name            String   @db.VarChar(200)
+  description     String?  @db.Text
+  category        String?  @db.VarChar(120)
+  discipline      String?  @db.VarChar(120)
   defaultPriority Priority @default(NORMAL)
-  activeVersionId String? @db.VarChar(26)
-  isArchived  Boolean @default(false)
-  createdById String  @db.VarChar(26)
+  activeVersionId String?  @db.VarChar(26)
+  isArchived      Boolean  @default(false)
+  createdById     String   @db.VarChar(26)
 
-  version    Int      @default(1)
-  syncCursor BigInt   @default(0)
-  createdAt  DateTime @default(now()) @db.Timestamptz(6)
-  updatedAt  DateTime @updatedAt @db.Timestamptz(6)
+  version    Int       @default(1)
+  syncCursor BigInt    @default(0)
+  createdAt  DateTime  @default(now()) @db.Timestamptz(6)
+  updatedAt  DateTime  @updatedAt @db.Timestamptz(6)
   deletedAt  DateTime? @db.Timestamptz(6)
 
-  organization Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
-  createdBy    User         @relation(fields: [createdById], references: [id])
+  organization Organization      @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  createdBy    User              @relation(fields: [createdById], references: [id])
   versions     TemplateVersion[]
   inspections  Inspection[]
 
@@ -604,17 +603,17 @@ model TemplateVersion {
   // template needs exactly this blob — no join fan-out over a slow link.
   definition Json
 
-  scoring    Json   @default("{}")
+  scoring            Json     @default("{}")
   requiredSignatures String[] @default([])
 
-  publishedAt DateTime? @db.Timestamptz(6)
-  publishedById String? @db.VarChar(26)
-  retiredAt   DateTime? @db.Timestamptz(6)
-  changeNote  String?  @db.Text
+  publishedAt   DateTime? @db.Timestamptz(6)
+  publishedById String?   @db.VarChar(26)
+  retiredAt     DateTime? @db.Timestamptz(6)
+  changeNote    String?   @db.Text
 
-  syncCursor BigInt   @default(0)
-  createdAt  DateTime @default(now()) @db.Timestamptz(6)
-  updatedAt  DateTime @updatedAt @db.Timestamptz(6)
+  syncCursor BigInt    @default(0)
+  createdAt  DateTime  @default(now()) @db.Timestamptz(6)
+  updatedAt  DateTime  @updatedAt @db.Timestamptz(6)
   deletedAt  DateTime? @db.Timestamptz(6)
 
   template    Template     @relation(fields: [templateId], references: [id], onDelete: Cascade)
@@ -642,48 +641,51 @@ model Inspection {
   siteId    String? @db.VarChar(26)
   assetId   String? @db.VarChar(26)
 
-  title    String            @db.VarChar(300)
-  status   InspectionStatus  @default(DRAFT)
-  outcome  InspectionOutcome @default(PENDING)
-  priority Priority          @default(NORMAL)
-  category   String? @db.VarChar(120)
-  department String? @db.VarChar(120)
+  title       String            @db.VarChar(300)
+  // What this inspection is for, set when an administrator schedules it.
+  // `notes` is separate and belongs to whoever carries it out.
+  description String?           @db.Text
+  status      InspectionStatus  @default(DRAFT)
+  outcome     InspectionOutcome @default(PENDING)
+  priority    Priority          @default(NORMAL)
+  category    String?           @db.VarChar(120)
+  department  String?           @db.VarChar(120)
 
   assignedToId String? @db.VarChar(26)
   createdById  String  @db.VarChar(26)
   reviewedById String? @db.VarChar(26)
 
-  startedAt    DateTime? @db.Timestamptz(6)
-  scheduledFor DateTime? @db.Timestamptz(6)
-  dueAt        DateTime? @db.Timestamptz(6)
-  completedAt  DateTime? @db.Timestamptz(6)
-  submittedAt  DateTime? @db.Timestamptz(6)
-  reviewedAt   DateTime? @db.Timestamptz(6)
-  rejectionReason String? @db.Text
+  startedAt       DateTime? @db.Timestamptz(6)
+  scheduledFor    DateTime? @db.Timestamptz(6)
+  dueAt           DateTime? @db.Timestamptz(6)
+  completedAt     DateTime? @db.Timestamptz(6)
+  submittedAt     DateTime? @db.Timestamptz(6)
+  reviewedAt      DateTime? @db.Timestamptz(6)
+  rejectionReason String?   @db.Text
 
-  startLocation Json?
-  endLocation   Json?
+  startLocation          Json?
+  endLocation            Json?
   distanceFromSiteMeters Float?
 
-  notes String? @db.Text
+  notes String?  @db.Text
   tags  String[] @default([])
 
-  score           Float?
-  totalFields     Int @default(0)
-  answeredFields  Int @default(0)
-  failedFields    Int @default(0)
-  criticalFailures Int @default(0)
+  score            Float?
+  totalFields      Int    @default(0)
+  answeredFields   Int    @default(0)
+  failedFields     Int    @default(0)
+  criticalFailures Int    @default(0)
 
-  isArchived Boolean @default(false)
+  isArchived       Boolean @default(false)
   duplicatedFromId String? @db.VarChar(26)
 
-  version    Int      @default(1)
-  syncCursor BigInt   @default(0)
-  createdAt  DateTime @default(now()) @db.Timestamptz(6)
-  updatedAt  DateTime @updatedAt @db.Timestamptz(6)
-  deletedAt  DateTime? @db.Timestamptz(6)
-  lastWriterDeviceId String? @db.VarChar(26)
-  lastWriterUserId   String? @db.VarChar(26)
+  version            Int       @default(1)
+  syncCursor         BigInt    @default(0)
+  createdAt          DateTime  @default(now()) @db.Timestamptz(6)
+  updatedAt          DateTime  @updatedAt @db.Timestamptz(6)
+  deletedAt          DateTime? @db.Timestamptz(6)
+  lastWriterDeviceId String?   @db.VarChar(26)
+  lastWriterUserId   String?   @db.VarChar(26)
 
   organization    Organization    @relation(fields: [orgId], references: [id], onDelete: Cascade)
   template        Template        @relation(fields: [templateId], references: [id])
@@ -724,20 +726,20 @@ model InspectionResponse {
   value   Json?
   comment String? @db.Text
 
-  score            Float?
-  isFailure        Boolean @default(false)
-  isNotApplicable  Boolean @default(false)
-  location         Json?
-  answeredAt       DateTime? @db.Timestamptz(6)
-  answeredById     String? @db.VarChar(26)
+  score           Float?
+  isFailure       Boolean   @default(false)
+  isNotApplicable Boolean   @default(false)
+  location        Json?
+  answeredAt      DateTime? @db.Timestamptz(6)
+  answeredById    String?   @db.VarChar(26)
 
-  version    Int      @default(1)
-  syncCursor BigInt   @default(0)
-  createdAt  DateTime @default(now()) @db.Timestamptz(6)
-  updatedAt  DateTime @updatedAt @db.Timestamptz(6)
-  deletedAt  DateTime? @db.Timestamptz(6)
-  lastWriterDeviceId String? @db.VarChar(26)
-  lastWriterUserId   String? @db.VarChar(26)
+  version            Int       @default(1)
+  syncCursor         BigInt    @default(0)
+  createdAt          DateTime  @default(now()) @db.Timestamptz(6)
+  updatedAt          DateTime  @updatedAt @db.Timestamptz(6)
+  deletedAt          DateTime? @db.Timestamptz(6)
+  lastWriterDeviceId String?   @db.VarChar(26)
+  lastWriterUserId   String?   @db.VarChar(26)
 
   organization Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
   inspection   Inspection   @relation(fields: [inspectionId], references: [id], onDelete: Cascade)
@@ -785,17 +787,17 @@ model Attachment {
   uploadAttempts  Int       @default(0)
   lastUploadError String?   @db.Text
 
-  version    Int      @default(1)
-  syncCursor BigInt   @default(0)
-  createdAt  DateTime @default(now()) @db.Timestamptz(6)
-  updatedAt  DateTime @updatedAt @db.Timestamptz(6)
-  deletedAt  DateTime? @db.Timestamptz(6)
-  lastWriterDeviceId String? @db.VarChar(26)
-  lastWriterUserId   String? @db.VarChar(26)
+  version            Int       @default(1)
+  syncCursor         BigInt    @default(0)
+  createdAt          DateTime  @default(now()) @db.Timestamptz(6)
+  updatedAt          DateTime  @updatedAt @db.Timestamptz(6)
+  deletedAt          DateTime? @db.Timestamptz(6)
+  lastWriterDeviceId String?   @db.VarChar(26)
+  lastWriterUserId   String?   @db.VarChar(26)
 
-  organization Organization        @relation(fields: [orgId], references: [id], onDelete: Cascade)
-  inspection   Inspection?         @relation(fields: [inspectionId], references: [id], onDelete: Cascade)
-  response     InspectionResponse? @relation(fields: [responseId], references: [id], onDelete: Cascade)
+  organization  Organization        @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  inspection    Inspection?         @relation(fields: [inspectionId], references: [id], onDelete: Cascade)
+  response      InspectionResponse? @relation(fields: [responseId], references: [id], onDelete: Cascade)
   uploadSession UploadSession?
   signature     Signature?
 
@@ -813,18 +815,18 @@ model UploadSession {
   attachmentId String @unique @db.VarChar(26)
   deviceId     String @db.VarChar(26)
 
-  chunkSize   Int
-  totalChunks Int
-  totalBytes  BigInt
+  chunkSize       Int
+  totalChunks     Int
+  totalBytes      BigInt
   // Indices durably persisted. A device that dies mid-upload resumes from here
   // rather than re-sending 30 MB over a 2G link.
-  receivedChunks Int[] @default([])
+  receivedChunks  Int[]   @default([])
   storageUploadId String? @db.VarChar(255)
 
-  expiresAt  DateTime  @db.Timestamptz(6)
+  expiresAt   DateTime  @db.Timestamptz(6)
   completedAt DateTime? @db.Timestamptz(6)
-  createdAt  DateTime  @default(now()) @db.Timestamptz(6)
-  updatedAt  DateTime  @updatedAt @db.Timestamptz(6)
+  createdAt   DateTime  @default(now()) @db.Timestamptz(6)
+  updatedAt   DateTime  @updatedAt @db.Timestamptz(6)
 
   attachment Attachment @relation(fields: [attachmentId], references: [id], onDelete: Cascade)
 
@@ -847,13 +849,13 @@ model Signature {
   location     Json?
   declaration  String?       @db.Text
 
-  version    Int      @default(1)
-  syncCursor BigInt   @default(0)
-  createdAt  DateTime @default(now()) @db.Timestamptz(6)
-  updatedAt  DateTime @updatedAt @db.Timestamptz(6)
-  deletedAt  DateTime? @db.Timestamptz(6)
-  lastWriterDeviceId String? @db.VarChar(26)
-  lastWriterUserId   String? @db.VarChar(26)
+  version            Int       @default(1)
+  syncCursor         BigInt    @default(0)
+  createdAt          DateTime  @default(now()) @db.Timestamptz(6)
+  updatedAt          DateTime  @updatedAt @db.Timestamptz(6)
+  deletedAt          DateTime? @db.Timestamptz(6)
+  lastWriterDeviceId String?   @db.VarChar(26)
+  lastWriterUserId   String?   @db.VarChar(26)
 
   organization Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
   inspection   Inspection   @relation(fields: [inspectionId], references: [id], onDelete: Cascade)
@@ -865,22 +867,22 @@ model Signature {
 }
 
 model Report {
-  id           String @id @db.VarChar(26)
-  orgId        String @db.VarChar(26)
-  inspectionId String @db.VarChar(26)
-  layout       String @default("default") @db.VarChar(80)
-  storageKey   String? @db.VarChar(500)
-  sizeBytes    BigInt?
-  checksum     String? @db.VarChar(64)
+  id                String   @id @db.VarChar(26)
+  orgId             String   @db.VarChar(26)
+  inspectionId      String   @db.VarChar(26)
+  layout            String   @default("default") @db.VarChar(80)
+  storageKey        String?  @db.VarChar(500)
+  sizeBytes         BigInt?
+  checksum          String?  @db.VarChar(64)
   // Set when generated on-device so the app can show it before it uploads.
-  generatedOnDevice Boolean @default(false)
-  generatedById String  @db.VarChar(26)
-  generatedAt   DateTime @default(now()) @db.Timestamptz(6)
-  locale        String   @default("en") @db.VarChar(16)
-  options       Json     @default("{}")
+  generatedOnDevice Boolean  @default(false)
+  generatedById     String   @db.VarChar(26)
+  generatedAt       DateTime @default(now()) @db.Timestamptz(6)
+  locale            String   @default("en") @db.VarChar(16)
+  options           Json     @default("{}")
 
-  createdAt DateTime @default(now()) @db.Timestamptz(6)
-  updatedAt DateTime @updatedAt @db.Timestamptz(6)
+  createdAt DateTime  @default(now()) @db.Timestamptz(6)
+  updatedAt DateTime  @updatedAt @db.Timestamptz(6)
   deletedAt DateTime? @db.Timestamptz(6)
 
   organization Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
@@ -919,8 +921,8 @@ model ChangeLogEntry {
   projectId    String? @db.VarChar(26)
   assignedToId String? @db.VarChar(26)
 
-  actorUserId   String? @db.VarChar(26)
-  actorDeviceId String? @db.VarChar(26)
+  actorUserId   String?  @db.VarChar(26)
+  actorDeviceId String?  @db.VarChar(26)
   createdAt     DateTime @default(now()) @db.Timestamptz(6)
 
   organization Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
@@ -937,19 +939,19 @@ model ChangeLogEntry {
 // not create a second inspection. The operation id is minted on the device and
 // recorded here on first application; a replay returns the stored result.
 model SyncOperationRecord {
-  id       String            @id @db.VarChar(26)
-  orgId    String            @db.VarChar(26)
-  deviceId String            @db.VarChar(26)
-  userId   String            @db.VarChar(26)
-  entity   SyncEntity
+  id        String            @id @db.VarChar(26)
+  orgId     String            @db.VarChar(26)
+  deviceId  String            @db.VarChar(26)
+  userId    String            @db.VarChar(26)
+  entity    SyncEntity
   operation SyncOperationType
-  entityId String            @db.VarChar(26)
+  entityId  String            @db.VarChar(26)
 
-  status       String   @db.VarChar(24)
+  status        String  @db.VarChar(24)
   resultVersion Int?
-  resultCursor BigInt?
-  errorCode    String?  @db.VarChar(60)
-  errorMessage String?  @db.Text
+  resultCursor  BigInt?
+  errorCode     String? @db.VarChar(60)
+  errorMessage  String? @db.Text
 
   lamport   Int
   appliedAt DateTime @default(now()) @db.Timestamptz(6)
@@ -963,13 +965,13 @@ model SyncOperationRecord {
 }
 
 model SyncConflictRecord {
-  id        String     @id @db.VarChar(26)
-  orgId     String     @db.VarChar(26)
-  operationId String   @db.VarChar(26)
-  deviceId  String     @db.VarChar(26)
-  userId    String     @db.VarChar(26)
-  entity    SyncEntity
-  entityId  String     @db.VarChar(26)
+  id          String     @id @db.VarChar(26)
+  orgId       String     @db.VarChar(26)
+  operationId String     @db.VarChar(26)
+  deviceId    String     @db.VarChar(26)
+  userId      String     @db.VarChar(26)
+  entity      SyncEntity
+  entityId    String     @db.VarChar(26)
 
   baseVersion   Int?
   serverVersion Int
@@ -977,10 +979,10 @@ model SyncConflictRecord {
   serverRecord  Json
   diffs         Json
 
-  resolvedAt     DateTime? @db.Timestamptz(6)
-  resolvedById   String?   @db.VarChar(26)
-  resolutionStrategy String? @db.VarChar(20)
-  resolvedRecord Json?
+  resolvedAt         DateTime? @db.Timestamptz(6)
+  resolvedById       String?   @db.VarChar(26)
+  resolutionStrategy String?   @db.VarChar(20)
+  resolvedRecord     Json?
 
   detectedAt DateTime @default(now()) @db.Timestamptz(6)
 
@@ -999,18 +1001,18 @@ model SyncSession {
   deviceId String @db.VarChar(26)
   userId   String @db.VarChar(26)
 
-  trigger      String  @db.VarChar(24)
-  cursorBefore BigInt
-  cursorAfter  BigInt?
-  pushedCount  Int     @default(0)
-  pulledCount  Int     @default(0)
-  conflictCount Int    @default(0)
-  bytesUp      BigInt  @default(0)
-  bytesDown    BigInt  @default(0)
-  outcome      String? @db.VarChar(16)
-  error        String? @db.Text
-  appVersion   String? @db.VarChar(40)
-  networkType  String? @db.VarChar(24)
+  trigger       String  @db.VarChar(24)
+  cursorBefore  BigInt
+  cursorAfter   BigInt?
+  pushedCount   Int     @default(0)
+  pulledCount   Int     @default(0)
+  conflictCount Int     @default(0)
+  bytesUp       BigInt  @default(0)
+  bytesDown     BigInt  @default(0)
+  outcome       String? @db.VarChar(16)
+  error         String? @db.Text
+  appVersion    String? @db.VarChar(40)
+  networkType   String? @db.VarChar(24)
 
   startedAt  DateTime  @default(now()) @db.Timestamptz(6)
   finishedAt DateTime? @db.Timestamptz(6)
@@ -1035,16 +1037,16 @@ model AuditLog {
   userId   String? @db.VarChar(26)
   deviceId String? @db.VarChar(26)
 
-  action     String  @db.VarChar(60)
-  entity     String? @db.VarChar(40)
-  entityId   String? @db.VarChar(26)
+  action    String   @db.VarChar(60)
+  entity    String?  @db.VarChar(40)
+  entityId  String?  @db.VarChar(26)
   // Before/after snapshot for record mutations, redacted of secret fields.
-  changes    Json?
-  metadata   Json?
-  ipAddress  String? @db.Inet
-  userAgent  String? @db.VarChar(400)
-  requestId  String? @db.VarChar(40)
-  createdAt  DateTime @default(now()) @db.Timestamptz(6)
+  changes   Json?
+  metadata  Json?
+  ipAddress String?  @db.Inet
+  userAgent String?  @db.VarChar(400)
+  requestId String?  @db.VarChar(40)
+  createdAt DateTime @default(now()) @db.Timestamptz(6)
 
   organization Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
   user         User?        @relation(fields: [userId], references: [id], onDelete: SetNull)
@@ -1068,14 +1070,14 @@ model Notification {
   data     Json    @default("{}")
   deepLink String? @db.VarChar(300)
 
-  readAt      DateTime? @db.Timestamptz(6)
-  deliveredAt DateTime? @db.Timestamptz(6)
-  failedAt    DateTime? @db.Timestamptz(6)
-  failureReason String? @db.VarChar(300)
+  readAt        DateTime? @db.Timestamptz(6)
+  deliveredAt   DateTime? @db.Timestamptz(6)
+  failedAt      DateTime? @db.Timestamptz(6)
+  failureReason String?   @db.VarChar(300)
 
-  syncCursor BigInt   @default(0)
-  createdAt  DateTime @default(now()) @db.Timestamptz(6)
-  updatedAt  DateTime @updatedAt @db.Timestamptz(6)
+  syncCursor BigInt    @default(0)
+  createdAt  DateTime  @default(now()) @db.Timestamptz(6)
+  updatedAt  DateTime  @updatedAt @db.Timestamptz(6)
   deletedAt  DateTime? @db.Timestamptz(6)
 
   organization Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)

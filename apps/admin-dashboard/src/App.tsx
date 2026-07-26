@@ -8,6 +8,7 @@ import { ApiRequestError } from './lib/api';
 import { SessionProvider, useSession } from './lib/auth';
 import { Analytics } from './pages/Analytics';
 import { Audit, Settings } from './pages/AuditSettings';
+import { InspectionDetail } from './pages/InspectionDetail';
 import { Clients, Devices, Inspections, People, Projects, Sites, Templates } from './pages/Lists';
 import { Login } from './pages/Login';
 import { Overview } from './pages/Overview';
@@ -74,6 +75,7 @@ export function App(): React.ReactElement {
             <Route element={<Protected />}>
               <Route path="/" element={<Overview />} />
               <Route path="/inspections" element={<Inspections />} />
+              <Route path="/inspections/:id" element={<InspectionDetail />} />
               <Route path="/sync" element={<Sync />} />
               <Route path="/analytics" element={<Analytics />} />
               <Route path="/templates" element={<Templates />} />
