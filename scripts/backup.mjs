@@ -18,6 +18,12 @@
  *   DATABASE_URL=postgresql://... node scripts/backup.mjs [--out DIR] [--no-verify]
  *   node scripts/backup.mjs --verify-only path/to/backup.dump
  *
+ * Against a managed Postgres whose pooler will not create databases, point the
+ * restore check at a server that will:
+ *
+ *   DATABASE_URL=<production> VERIFY_DATABASE_URL=<any local postgres> \
+ *     node scripts/backup.mjs
+ *
  * Exit codes: 0 success, 1 backup or verification failed, 2 bad invocation.
  */
 
@@ -42,6 +48,22 @@ const OUT_DIR = value('--out', 'backups');
 const SKIP_VERIFY = flag('--no-verify');
 const RETAIN = Number(value('--retain', '7'));
 
+/*
+ * Where the scratch database for verification is created.
+ *
+ * By default it goes on the same server as the source, which is the simplest
+ * thing that works for a self-hosted Postgres. It does not work for a managed
+ * one: against Supabase's connection pooler `CREATE DATABASE` never returns, so
+ * a run against production hangs indefinitely at exactly the step that makes
+ * the backup trustworthy — and the tempting response is `--no-verify`, which
+ * turns the artefact back into a hope.
+ *
+ * Pointing this at any Postgres you can create databases on — a local one is
+ * fine — keeps verification real. The dump still comes from the source; only
+ * the restore target moves.
+ */
+const VERIFY_INTO = value('--verify-into', process.env.VERIFY_DATABASE_URL ?? null);
+
 function log(step, message) {
   console.log(`  ${step.padEnd(12)} ${message}`);
 }
@@ -62,29 +84,52 @@ async function checksum(file) {
   });
 }
 
-/**
- * Split a Postgres URL into its parts.
+/*
+ * Parameters Prisma understands and libpq does not.
  *
- * The scratch database for verification has to live on the same server as the
- * source, so the URL is rebuilt with a different database name rather than
- * requiring a second connection string an operator would have to keep in sync.
+ * The whole point of taking `DATABASE_URL` is that an operator pastes the same
+ * string the application uses. That string carries Prisma's own parameters, and
+ * `pg_dump` rejects the URL outright — "invalid URI query parameter: schema" —
+ * so without stripping them this script cannot back up the database it is
+ * pointed at. `schema` is not dropped but translated into `--schema` below,
+ * because losing it would silently change what gets dumped.
  */
+const PRISMA_ONLY_PARAMS = [
+  'schema',
+  'pgbouncer',
+  'connection_limit',
+  'connect_timeout',
+  'pool_timeout',
+  'statement_cache_size',
+  'socket_timeout',
+];
+
 function parseUrl(url) {
   const parsed = new URL(url);
+  const schema = parsed.searchParams.get('schema');
+
+  /** The same URL with everything libpq cannot parse removed. */
+  const libpq = (pathname) => {
+    const copy = new URL(url);
+    if (pathname) copy.pathname = pathname;
+    for (const param of PRISMA_ONLY_PARAMS) copy.searchParams.delete(param);
+    return copy.toString();
+  };
+
   return {
-    url,
+    url: libpq(),
+    /** Named schema, when the connection string pins one. */
+    schema,
     database: parsed.pathname.replace(/^\//, '').split('?')[0],
     withDatabase(name) {
-      const copy = new URL(url);
-      copy.pathname = `/${name}`;
-      // pgbouncer and schema hints are meaningless against a scratch database
-      // and `pg_restore` rejects some of them outright.
+      const copy = new URL(libpq(`/${name}`));
+      // Nothing else in the query string is meaningful against a scratch
+      // database, and `pg_restore` rejects some of it outright.
       copy.search = '';
       return copy.toString();
     },
     adminUrl() {
-      const copy = new URL(url);
-      copy.pathname = '/postgres';
+      const copy = new URL(libpq('/postgres'));
       copy.search = '';
       return copy.toString();
     },
@@ -94,13 +139,14 @@ function parseUrl(url) {
 async function pgDump(source, target) {
   // Custom format (-Fc): compressed, and restorable selectively. Plain SQL
   // cannot be restored table-by-table during a partial recovery.
-  await run(
-    'pg_dump',
-    ['--format=custom', '--no-owner', '--no-acl', '--file', target, source.url],
-    {
-      maxBuffer: 1024 * 1024 * 64,
-    },
-  );
+  const args = ['--format=custom', '--no-owner', '--no-acl'];
+  // Preserve the intent of `?schema=`: dump that schema, not every schema on a
+  // shared instance. Preview and production live side by side here, and a
+  // production backup must not quietly contain preview's rows.
+  if (source.schema) args.push(`--schema=${source.schema}`);
+  args.push('--file', target, source.url);
+
+  await run('pg_dump', args, { maxBuffer: 1024 * 1024 * 64 });
 }
 
 /**
@@ -112,7 +158,9 @@ async function pgDump(source, target) {
  */
 async function verifyRestore(source, dumpFile) {
   const scratch = `orbit_verify_${Date.now().toString(36)}`;
-  const admin = source.adminUrl();
+  // The scratch server may be somewhere else entirely — see VERIFY_INTO.
+  const target = VERIFY_INTO ? parseUrl(VERIFY_INTO) : source;
+  const admin = target.adminUrl();
 
   const psql = (url, sql) => run('psql', [url, '-tAc', sql], { maxBuffer: 1024 * 1024 * 16 });
 
@@ -123,7 +171,7 @@ async function verifyRestore(source, dumpFile) {
     // expected and not failures, so exit status alone is not the signal.
     await run(
       'pg_restore',
-      ['--no-owner', '--no-acl', '--dbname', source.withDatabase(scratch), dumpFile],
+      ['--no-owner', '--no-acl', '--dbname', target.withDatabase(scratch), dumpFile],
       { maxBuffer: 1024 * 1024 * 64 },
     ).catch((err) => {
       const text = String(err.stderr ?? '');
@@ -132,7 +180,7 @@ async function verifyRestore(source, dumpFile) {
         throw new Error(`pg_restore reported errors:\n${fatal.slice(0, 5).join('\n')}`);
     });
 
-    const scratchUrl = source.withDatabase(scratch);
+    const scratchUrl = target.withDatabase(scratch);
     const { stdout: tableList } = await psql(
       scratchUrl,
       `SELECT count(*) FROM information_schema.tables
@@ -146,22 +194,40 @@ async function verifyRestore(source, dumpFile) {
     // Compare a handful of counts against the source. Equality is not required
     // (the source keeps changing) but a restored table that is empty while the
     // source is not means the dump did not capture data.
+    /*
+     * Qualify by schema when the connection string pinned one.
+     *
+     * Unqualified names resolve through `search_path`, which does not include a
+     * custom schema — so every probe found nothing, `continue`d, and the run
+     * reported success having compared zero rows. A verification that silently
+     * checks nothing is indistinguishable from one that passes.
+     */
+    const qualify = (table) => (source.schema ? `"${source.schema}"."${table}"` : `"${table}"`);
+
     const probes = ['users', 'inspections', 'organizations'];
     const counts = {};
     for (const table of probes) {
-      const exists = await psql(scratchUrl, `SELECT to_regclass('${table}') IS NOT NULL`).catch(
-        () => ({ stdout: 'f' }),
-      );
+      const exists = await psql(
+        scratchUrl,
+        `SELECT to_regclass('${qualify(table)}') IS NOT NULL`,
+      ).catch(() => ({ stdout: 'f' }));
       if (exists.stdout.trim() !== 't') continue;
 
       const [restored, live] = await Promise.all([
-        psql(scratchUrl, `SELECT count(*) FROM "${table}"`),
-        psql(source.url, `SELECT count(*) FROM "${table}"`).catch(() => ({ stdout: '0' })),
+        psql(scratchUrl, `SELECT count(*) FROM ${qualify(table)}`),
+        psql(source.url, `SELECT count(*) FROM ${qualify(table)}`).catch(() => ({ stdout: '0' })),
       ]);
       counts[table] = {
         restored: Number(restored.stdout.trim()),
         source: Number(live.stdout.trim()),
       };
+    }
+
+    if (Object.keys(counts).length === 0) {
+      throw new Error(
+        'no known table was found in the restored database — the dump may be empty or ' +
+          'the schema is not what this script expects',
+      );
     }
 
     for (const [table, { restored, source: live }] of Object.entries(counts)) {

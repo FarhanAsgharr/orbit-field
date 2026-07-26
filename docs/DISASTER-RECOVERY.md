@@ -11,11 +11,38 @@ Run these now, not during an incident.
 
 ```sh
 # Take a backup and prove it restores, in one command.
-DATABASE_URL="$DIRECT_URL" node scripts/backup.mjs --out backups
+DATABASE_URL="$DIRECT_URL" \
+VERIFY_DATABASE_URL="postgresql://orbit@127.0.0.1:55433/postgres" \
+  node scripts/backup.mjs --out backups
 
 # Confirm every attachment's bytes still match its recorded checksum.
 node scripts/backup-storage.mjs --check
 ```
+
+Two prerequisites, both found by running this against the real deployment:
+
+- **`pg_dump` must match the server's major version.** Supabase runs
+  PostgreSQL 17; a v16 client refuses outright with "aborting because of server
+  version mismatch". On macOS: `brew install postgresql@17` and put
+  `/opt/homebrew/opt/postgresql@17/bin` ahead of the older client on `PATH`.
+
+- **`VERIFY_DATABASE_URL` must point at a Postgres you can create databases
+  on, at the same major version.** The restore check creates a scratch database;
+  against Supabase's connection pooler `CREATE DATABASE` never returns, so
+  without this the run hangs at exactly the step that makes the backup
+  trustworthy. Any local server will do — the dump still comes from production,
+  only the restore target moves. A temporary one is enough:
+
+  ```sh
+  export LC_ALL=C
+  initdb -D /tmp/pg17 -U orbit --auth=trust --locale=C
+  pg_ctl -D /tmp/pg17 -o "-p 55433" -l /tmp/pg17.log start
+  # ... run the backup ...
+  pg_ctl -D /tmp/pg17 stop
+  ```
+
+  A v16 scratch server is not sufficient: a v17 dump sets
+  `transaction_timeout`, which v16 rejects during restore.
 
 `backup.mjs` dumps, records a SHA-256, **restores the dump into a scratch
 database and counts rows**, then drops the scratch database. That third step is
