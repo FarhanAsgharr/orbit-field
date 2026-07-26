@@ -10,7 +10,7 @@ import { Permission } from '@orbit/shared';
 import { type Role, ROLE_RANK } from '@orbit/types';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import React, { useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 
 import { type Column, DataTable } from '../components/DataTable';
 import { InspectionForm } from '../components/InspectionForm';
@@ -1069,6 +1069,8 @@ interface TemplateRow {
 }
 
 export function Templates(): React.ReactElement {
+  const { can } = useSession();
+  const [creating, setCreating] = useState(false);
   const columns: Array<Column<TemplateRow>> = [
     {
       key: 'name',
@@ -1126,6 +1128,16 @@ export function Templates(): React.ReactElement {
           <Badge label="Available" tone="ok" glyph="●" />
         ),
     },
+    {
+      key: 'actions',
+      header: '',
+      width: '70px',
+      render: (row) => (
+        <Link className="btn btn--ghost btn--sm" to={`/templates/${row.id}`}>
+          Open
+        </Link>
+      ),
+    },
   ];
 
   return (
@@ -1140,8 +1152,27 @@ export function Templates(): React.ReactElement {
         </div>
       </header>
 
+      {creating ? (
+        <div
+          className="modal__backdrop"
+          role="presentation"
+          onClick={(e) => {
+            if (e.target === e.currentTarget) setCreating(false);
+          }}
+        >
+          <NewTemplateForm onDone={() => setCreating(false)} onCancel={() => setCreating(false)} />
+        </div>
+      ) : null}
+
       <DataTable<TemplateRow>
         endpoint="/templates"
+        toolbarAction={
+          can(Permission.TEMPLATE_WRITE) ? (
+            <button className="btn" onClick={() => setCreating(true)}>
+              New checklist
+            </button>
+          ) : null
+        }
         queryKey={['templates']}
         columns={columns}
         rowKey={(row) => row.id}
@@ -1151,6 +1182,111 @@ export function Templates(): React.ReactElement {
         emptyBody="A checklist defines the questions an inspector answers on site."
       />
     </>
+  );
+}
+
+/**
+ * Create a checklist.
+ *
+ * Deliberately minimal: a name and a category. The questions are added on the
+ * checklist's own page, where there is room to see them — a builder squeezed
+ * into a 460px modal is how checklists end up with one question.
+ *
+ * It lands as an unpublished draft, which is the server's behaviour too: a new
+ * checklist must be released explicitly before inspectors can be given work
+ * against it.
+ */
+function NewTemplateForm({
+  onDone,
+  onCancel,
+}: {
+  onDone: () => void;
+  onCancel: () => void;
+}): React.ReactElement {
+  const queryClient = useQueryClient();
+  const navigate = useNavigate();
+  const [name, setName] = useState('');
+  const [category, setCategory] = useState('');
+  const [error, setError] = useState<string | null>(null);
+
+  const create = useMutation({
+    mutationFn: () =>
+      api.post<{ id: string }>('/templates', {
+        name: name.trim(),
+        category: category.trim() || null,
+        // One starter question, so the draft is publishable the moment an
+        // author has edited it rather than rejected for being empty.
+        definition: {
+          sections: [
+            {
+              title: 'General',
+              order: 0,
+              fields: [
+                {
+                  key: 'condition_ok',
+                  label: 'Is the condition acceptable?',
+                  type: 'PASS_FAIL',
+                  order: 0,
+                  options: [
+                    { value: 'pass', label: 'Acceptable', score: 1 },
+                    { value: 'fail', label: 'Defect found', score: 0, isFailure: true },
+                  ],
+                  validation: { required: true },
+                },
+              ],
+            },
+          ],
+        },
+      }),
+    onSuccess: (created) => {
+      void queryClient.invalidateQueries({ queryKey: ['templates'] });
+      onDone();
+      navigate(`/templates/${created.id}`);
+    },
+    onError: (e) => setError(e instanceof Error ? e.message : 'Could not create the checklist.'),
+  });
+
+  return (
+    <div className="card modal" role="dialog" aria-modal="true" aria-label="New checklist">
+      <div className="card__head">
+        <h2 className="card__title">New checklist</h2>
+        <button className="btn btn--ghost btn--sm" onClick={onCancel} disabled={create.isPending}>
+          Cancel
+        </button>
+      </div>
+      <div className="card__body stack gap-4">
+        {error ? <ErrorBanner message={error} /> : null}
+        <div className="field">
+          <label className="field__label" htmlFor="tpl-new-name">
+            Name
+          </label>
+          <input
+            id="tpl-new-name"
+            className="input"
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+          />
+        </div>
+        <div className="field">
+          <label className="field__label" htmlFor="tpl-new-cat">
+            Category <span className="muted">(optional)</span>
+          </label>
+          <input
+            id="tpl-new-cat"
+            className="input"
+            value={category}
+            onChange={(e) => setCategory(e.target.value)}
+          />
+        </div>
+        <button
+          className="btn"
+          onClick={() => create.mutate()}
+          disabled={create.isPending || name.trim() === ''}
+        >
+          {create.isPending ? 'Creating…' : 'Create and add questions'}
+        </button>
+      </div>
+    </div>
   );
 }
 

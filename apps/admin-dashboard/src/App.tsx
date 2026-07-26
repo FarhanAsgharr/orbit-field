@@ -22,6 +22,7 @@ import {
 import { Login } from './pages/Login';
 import { Overview } from './pages/Overview';
 import { Sync } from './pages/Sync';
+import { TemplateDetail } from './pages/TemplateDetail';
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -88,6 +89,7 @@ export function App(): React.ReactElement {
               <Route path="/sync" element={<Sync />} />
               <Route path="/analytics" element={<Analytics />} />
               <Route path="/templates" element={<Templates />} />
+              <Route path="/templates/:id" element={<TemplateDetail />} />
               <Route path="/clients" element={<Clients />} />
               <Route path="/projects" element={<Projects />} />
               <Route path="/sites" element={<Sites />} />
