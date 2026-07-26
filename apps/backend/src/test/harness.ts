@@ -29,6 +29,9 @@ import { fileURLToPath } from 'node:url';
 const here = path.dirname(fileURLToPath(import.meta.url));
 const backendRoot = path.resolve(here, '../..');
 
+/** Loopback port the mail-asserting suites bind to capture outbound messages. */
+export const MAIL_CAPTURE_PORT = 52_525;
+
 /**
  * The test database URL.
  *
@@ -92,6 +95,24 @@ export function configureTestEnvironment(): void {
   // because the limiter state lives in Redis and outlives the process.
   process.env.SYNC_RATE_LIMIT_MAX = '100000';
   process.env.UPLOAD_RATE_LIMIT_MAX = '100000';
+  process.env.OTP_RATE_LIMIT_MAX = '100000';
+
+  /*
+   * Mail is pointed at a fixed loopback port rather than left on the `log`
+   * transport.
+   *
+   * `config/env` freezes on first import and the whole app graph pulls it in
+   * transitively, so a test cannot choose a transport in `beforeAll` — by then
+   * the value is fixed. A fixed port is safe because the integration config
+   * runs single-threaded; the suites that assert on delivery bind
+   * `MAIL_CAPTURE_PORT`, and the ones that do not simply fail to connect, which
+   * `sendEmail` reports rather than throws.
+   */
+  process.env.MAIL_TRANSPORT = 'smtp';
+  process.env.SMTP_URL = `smtp://127.0.0.1:${MAIL_CAPTURE_PORT}`;
+  process.env.MAIL_MAX_ATTEMPTS = '1';
+  process.env.APP_BASE_URL = 'http://localhost:5173';
+  process.env.ALLOW_MAGIC_LINK = 'true';
 }
 
 /** Apply migrations to the test database. Idempotent; safe to call per run. */

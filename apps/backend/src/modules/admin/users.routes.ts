@@ -36,7 +36,8 @@ import {
   searchFilter,
   sortArgs,
 } from '../../lib/pagination.js';
-import { revokeUserTokens } from '../../lib/tokens.js';
+import { revokeUserTokens, signActionToken } from '../../lib/tokens.js';
+import { sendInvitationEmail } from '../email/email.service.js';
 import { requireAuth, requirePermission } from '../../middleware/auth.js';
 import { auth, clientIp } from '../../middleware/context.js';
 import { asyncHandler } from '../../middleware/error.js';
@@ -308,7 +309,42 @@ router.post(
       return user;
     });
 
-    res.status(201).json({ data: created });
+    /*
+     * The invitation only goes out when there is no password.
+     *
+     * With one supplied the administrator is handing the credential over
+     * themselves, and a "set your password" email would be a second, confusing
+     * route in. Without one, this email is the recipient's *only* way to reach
+     * the account, so whether it was delivered is reported back rather than
+     * swallowed — an administrator who sees `emailDelivered: false` knows to
+     * pass the details on some other way instead of waiting.
+     */
+    let emailDelivered: boolean | null = null;
+    if (!passwordHash) {
+      const [org, invitedBy] = await Promise.all([
+        prisma.organization.findUnique({
+          where: { id: subject.orgId },
+          select: { name: true },
+        }),
+        prisma.user.findUnique({
+          where: { id: subject.userId },
+          select: { firstName: true, lastName: true },
+        }),
+      ]);
+
+      const result = await sendInvitationEmail({
+        to: body.email,
+        firstName: body.firstName,
+        organisationName: org?.name ?? 'your organisation',
+        invitedByName: invitedBy
+          ? `${invitedBy.firstName} ${invitedBy.lastName}`
+          : 'An administrator',
+        token: signActionToken({ sub: userId, purpose: 'INVITE_ACCEPT' }),
+      });
+      emailDelivered = result.delivered;
+    }
+
+    res.status(201).json({ data: { ...created, emailDelivered } });
   }),
 );
 

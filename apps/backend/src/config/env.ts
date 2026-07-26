@@ -100,6 +100,14 @@ const schema = z.object({
   // and a redeploy. Defaults are the values they previously had.
   SYNC_RATE_LIMIT_MAX: z.coerce.number().int().positive().default(120),
   UPLOAD_RATE_LIMIT_MAX: z.coerce.number().int().positive().default(300),
+  /**
+   * OTP issuance per 15 minutes, per IP.
+   *
+   * Deliberately the tightest limit in the system: every request here sends an
+   * email, so an unthrottled endpoint is both a bill and a way to use this
+   * server to spam a third party. Raise it only with that in mind.
+   */
+  OTP_RATE_LIMIT_MAX: z.coerce.number().int().positive().default(5),
 
   MAX_FAILED_LOGINS: z.coerce.number().int().positive().default(5),
   ACCOUNT_LOCK_MINUTES: z.coerce.number().int().positive().default(15),
@@ -117,8 +125,38 @@ const schema = z.object({
   CORS_ORIGINS: z.string().default('*'),
   TRUST_PROXY: boolish(false),
 
+  /**
+   * Outbound email.
+   *
+   * Two transports, chosen by `MAIL_TRANSPORT`. `resend` needs only an API key
+   * and works from a serverless function without holding a socket open;
+   * `smtp` works with any provider and is what a self-hosted install uses.
+   *
+   * `log` is the default and is not a placeholder: an installation with no mail
+   * provider still has to be able to issue a password reset, so the code is
+   * written to the application log where an administrator can retrieve it. That
+   * is a deliberate, documented degradation rather than a silent failure — the
+   * previous behaviour was to mint an OTP and never deliver it at all.
+   */
+  MAIL_TRANSPORT: z.enum(['resend', 'smtp', 'log']).default('log'),
+  RESEND_API_KEY: z.string().optional(),
   SMTP_URL: z.string().optional(),
   MAIL_FROM: z.string().default('Orbit Field <no-reply@orbitfield.app>'),
+  /** Reply-To, when support goes somewhere other than the sending address. */
+  MAIL_REPLY_TO: z.string().optional(),
+  /**
+   * Base URL for links inside emails — reset, verification, magic link.
+   *
+   * Must be the console origin, not the API: the links are for a human with a
+   * browser. A wrong value here produces mail that looks right and leads
+   * nowhere, so it is validated as a URL rather than accepted as a string.
+   */
+  APP_BASE_URL: z.string().url().default('http://localhost:5173'),
+  /** Attempts per message before giving up. Transient SMTP failures are normal. */
+  MAIL_MAX_ATTEMPTS: z.coerce.number().int().min(1).max(10).default(3),
+  /** Magic-link sign-in. Off by default: it is a second way in, so it is opt-in. */
+  ALLOW_MAGIC_LINK: boolish(false),
+  MAGIC_LINK_TTL_SECONDS: z.coerce.number().int().positive().default(900),
 
   EXPO_ACCESS_TOKEN: z.string().optional(),
 });

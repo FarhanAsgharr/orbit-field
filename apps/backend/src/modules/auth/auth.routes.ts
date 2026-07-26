@@ -241,4 +241,63 @@ router.get(
   }),
 );
 
+/**
+ * Request a single-use sign-in link.
+ *
+ * Rate limited with the OTP limiter and answered with a fixed 202 whichever
+ * way it goes: varying the response by whether the address exists would turn
+ * this into an account-enumeration oracle, exactly as with password reset.
+ */
+router.post(
+  '/magic-link',
+  otpLimiter,
+  validate({ body: z.object({ email: schemas.email }) }),
+  asyncHandler(async (req, res) => {
+    const body = req.validated!.body as { email: string };
+    await authService.requestMagicLink({ email: body.email, meta: meta(req) });
+    res.status(202).json({
+      data: { message: 'If an account exists for that address, a sign-in link has been sent.' },
+    });
+  }),
+);
+
+/** Exchange a magic-link token for a session. Enrols the device like login does. */
+router.post(
+  '/magic-link/consume',
+  authLimiter,
+  validate({
+    body: z.object({
+      token: z.string().min(20).max(200),
+      device: deviceSchema,
+    }),
+  }),
+  asyncHandler(async (req, res) => {
+    const body = req.validated!.body as { token: string; device: z.infer<typeof deviceSchema> };
+    const session = await authService.consumeMagicLink({
+      token: body.token,
+      device: body.device,
+      meta: meta(req),
+    });
+    res.json({ data: session });
+  }),
+);
+
+/**
+ * Resend an email-verification code.
+ *
+ * Deliberately requires an authenticated session rather than taking an address:
+ * an unauthenticated resend endpoint is a way to have this server send mail to
+ * anyone, repeatedly, on request.
+ */
+router.post(
+  '/resend-verification',
+  requireAuth,
+  otpLimiter,
+  asyncHandler(async (req, res) => {
+    const subject = auth(req);
+    await authService.resendEmailVerification({ userId: subject.userId, meta: meta(req) });
+    res.status(202).json({ data: { message: 'A verification code has been sent.' } });
+  }),
+);
+
 export { router as authRouter };

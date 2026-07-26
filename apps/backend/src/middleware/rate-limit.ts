@@ -70,7 +70,7 @@ export const globalLimiter = build(
 export const authLimiter = build('auth', 300, env.AUTH_RATE_LIMIT_MAX, false);
 
 /** OTP issuance — the expensive, abusable path (email/SMS cost). */
-export const otpLimiter = build('otp', 900, 5, false);
+export const otpLimiter = build('otp', 900, env.OTP_RATE_LIMIT_MAX, false);
 
 /**
  * Sync is generous by design. A device returning from a week offline

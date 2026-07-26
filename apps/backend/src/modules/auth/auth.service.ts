@@ -21,6 +21,7 @@ import {
   hashPassword,
   hmac,
   isPasswordReused,
+  randomToken,
   verifyPassword,
 } from '../../lib/crypto.js';
 import {
@@ -32,6 +33,11 @@ import {
   signActionToken,
   verifyActionToken,
 } from '../../lib/tokens.js';
+import {
+  sendEmailVerification,
+  sendMagicLinkEmail,
+  sendPasswordResetEmail,
+} from '../email/email.service.js';
 
 export interface RequestMeta {
   ipAddress: string | null;
@@ -385,7 +391,7 @@ export async function logout(input: {
 export async function forgotPassword(input: { email: string; meta: RequestMeta }): Promise<void> {
   const user = await prisma.user.findFirst({
     where: { email: input.email.toLowerCase().trim(), deletedAt: null },
-    select: { id: true, orgId: true, status: true },
+    select: { id: true, orgId: true, status: true, email: true, firstName: true },
   });
 
   if (!user || user.status === 'DEACTIVATED') return;
@@ -402,8 +408,27 @@ export async function forgotPassword(input: { email: string; meta: RequestMeta }
     },
   });
 
-  // Delivery is the mailer's job. The code is never logged.
-  logger.info({ userId: user.id }, 'password reset code issued');
+  /*
+   * Delivery is attempted, and its failure is not the caller's problem.
+   *
+   * The code is already committed above, so a mail provider outage must not
+   * roll this back or surface an error: the response is a fixed 202 either way,
+   * because varying it would tell an unauthenticated caller whether the address
+   * is registered. A failure is logged and counted; on an install with no
+   * provider the `log` transport writes the code where an administrator can
+   * find it, which is the difference between a degraded reset and one that
+   * silently does nothing — the previous behaviour.
+   */
+  const result = await sendPasswordResetEmail({
+    to: user.email,
+    firstName: user.firstName,
+    code,
+  });
+
+  logger.info(
+    { userId: user.id, delivered: result.delivered, transport: result.transport },
+    'password reset code issued',
+  );
   await audit('AUTH_PASSWORD_RESET', { orgId: user.orgId, userId: user.id, meta: input.meta });
 }
 
@@ -563,3 +588,183 @@ export async function changePassword(input: {
 }
 
 export const ROLE_MATRIX = ROLE_PERMISSIONS;
+
+// ---------------------------------------------------------------------------
+// Magic-link sign-in
+// ---------------------------------------------------------------------------
+
+/**
+ * Issue a single-use sign-in link.
+ *
+ * Same enumeration defence as `forgotPassword`: the caller is unauthenticated,
+ * so the response cannot vary with whether the address is registered. An
+ * unknown address does the same work and returns the same 202.
+ *
+ * The token is random and stored hashed, not a signed JWT. A JWT cannot be
+ * invalidated once issued, which would leave a working credential sitting in
+ * the recipient's inbox until it expired; consuming a row makes single use
+ * enforceable.
+ */
+export async function requestMagicLink(input: { email: string; meta: RequestMeta }): Promise<void> {
+  if (!env.ALLOW_MAGIC_LINK) {
+    throw new AppError(
+      ErrorCode.PERMISSION_DENIED,
+      'Magic-link sign-in is not enabled on this installation.',
+    );
+  }
+
+  const user = await prisma.user.findFirst({
+    where: { email: input.email.toLowerCase().trim(), deletedAt: null },
+    select: { id: true, orgId: true, status: true, email: true, firstName: true },
+  });
+  if (!user || user.status === 'DEACTIVATED') return;
+
+  // 32 bytes of entropy: this token *is* the credential, unlike a 6-digit OTP
+  // which is protected by an attempt counter as well.
+  const token = randomToken();
+
+  await prisma.otpCode.create({
+    data: {
+      id: ulid(),
+      userId: user.id,
+      purpose: 'MAGIC_LINK',
+      codeHash: hmac(token),
+      expiresAt: new Date(Date.now() + env.MAGIC_LINK_TTL_SECONDS * 1000),
+      ipAddress: input.meta.ipAddress,
+      // One guess, because guessing is not the threat model for a 256-bit token
+      // and a retry counter would only slow down legitimate use.
+      maxAttempts: 1,
+    },
+  });
+
+  const result = await sendMagicLinkEmail({
+    to: user.email,
+    firstName: user.firstName,
+    token,
+  });
+
+  logger.info(
+    { userId: user.id, delivered: result.delivered, transport: result.transport },
+    'magic link issued',
+  );
+  await audit('AUTH_MAGIC_LINK_ISSUED', {
+    orgId: user.orgId,
+    userId: user.id,
+    meta: input.meta,
+  });
+}
+
+/**
+ * Exchange a magic-link token for a session.
+ *
+ * The row is consumed before the session is built, so a link raced by two
+ * clicks mints exactly one session.
+ */
+export async function consumeMagicLink(input: {
+  token: string;
+  device: DeviceInfo;
+  meta: RequestMeta;
+}): Promise<AuthSession> {
+  if (!env.ALLOW_MAGIC_LINK) {
+    throw new AppError(
+      ErrorCode.PERMISSION_DENIED,
+      'Magic-link sign-in is not enabled on this installation.',
+    );
+  }
+
+  const record = await prisma.otpCode.findFirst({
+    where: { purpose: 'MAGIC_LINK', codeHash: hmac(input.token), consumedAt: null },
+    orderBy: { createdAt: 'desc' },
+  });
+
+  if (!record || record.expiresAt.getTime() < Date.now()) {
+    throw new AppError(ErrorCode.AUTH_OTP_INVALID, 'That sign-in link is invalid or has expired.');
+  }
+
+  // Conditional update: `consumedAt: null` in the where clause means two
+  // concurrent redemptions cannot both succeed, without needing a transaction.
+  const consumed = await prisma.otpCode.updateMany({
+    where: { id: record.id, consumedAt: null },
+    data: { consumedAt: new Date() },
+  });
+  if (consumed.count === 0) {
+    throw new AppError(ErrorCode.AUTH_OTP_INVALID, 'That sign-in link has already been used.');
+  }
+
+  const user = await prisma.user.findUniqueOrThrow({
+    where: { id: record.userId },
+    select: { id: true, orgId: true, status: true },
+  });
+  if (user.status === 'DEACTIVATED' || user.status === 'SUSPENDED') {
+    throw new AppError(ErrorCode.ACCOUNT_DEACTIVATED, 'This account is not active.');
+  }
+
+  const device = await upsertDevice(user.id, user.orgId, input.device);
+  await prisma.user.update({
+    where: { id: user.id },
+    data: { lastLoginAt: new Date(), lastLoginIp: input.meta.ipAddress, failedLoginAttempts: 0 },
+  });
+  await audit('AUTH_LOGIN', {
+    orgId: user.orgId,
+    userId: user.id,
+    deviceId: device.id,
+    metadata: { method: 'magic-link' },
+    meta: input.meta,
+  });
+
+  return buildSession(user.id, device.id, false, input.meta);
+}
+
+/**
+ * Re-issue an email-verification code for the signed-in user.
+ *
+ * Any outstanding code is consumed first, so the most recent one is the only
+ * one that works — otherwise a user who clicked "resend" three times has three
+ * live codes, and revoking the leaked one does not help.
+ */
+export async function resendEmailVerification(input: {
+  userId: string;
+  meta: RequestMeta;
+}): Promise<void> {
+  const user = await prisma.user.findUniqueOrThrow({
+    where: { id: input.userId },
+    select: { id: true, orgId: true, email: true, firstName: true, emailVerifiedAt: true },
+  });
+
+  if (user.emailVerifiedAt) {
+    throw new AppError(ErrorCode.INVALID_STATE_TRANSITION, 'This address is already verified.');
+  }
+
+  await prisma.otpCode.updateMany({
+    where: { userId: user.id, purpose: 'EMAIL_VERIFICATION', consumedAt: null },
+    data: { consumedAt: new Date() },
+  });
+
+  const code = generateOtp();
+  await prisma.otpCode.create({
+    data: {
+      id: ulid(),
+      userId: user.id,
+      purpose: 'EMAIL_VERIFICATION',
+      codeHash: hmac(code),
+      expiresAt: new Date(Date.now() + env.OTP_TTL_SECONDS * 1000),
+      ipAddress: input.meta.ipAddress,
+    },
+  });
+
+  const result = await sendEmailVerification({
+    to: user.email,
+    firstName: user.firstName,
+    code,
+  });
+
+  logger.info(
+    { userId: user.id, delivered: result.delivered, transport: result.transport },
+    'email verification code issued',
+  );
+  await audit('AUTH_EMAIL_VERIFICATION_SENT', {
+    orgId: user.orgId,
+    userId: user.id,
+    meta: input.meta,
+  });
+}

@@ -160,6 +160,11 @@ enum OtpPurpose {
   PASSWORD_RESET
   DEVICE_ENROLMENT
   STEP_UP_AUTH
+  // Single-use sign-in link. Stored here rather than as a bare signed token so
+  // that consuming it is a database write — a JWT alone cannot be invalidated
+  // once issued, and a sign-in link that still works after use is a credential
+  // sitting in an inbox forever.
+  MAGIC_LINK
 }
 
 enum NotificationChannel {

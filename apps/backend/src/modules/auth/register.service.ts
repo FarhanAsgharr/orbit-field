@@ -25,6 +25,7 @@ import { env } from '../../config/env.js';
 import { logger } from '../../config/logger.js';
 import { prisma } from '../../db/prisma.js';
 import { checkPasswordStrength, DEFAULT_PASSWORD_POLICY, hashPassword } from '../../lib/crypto.js';
+import { sendWelcomeEmail } from '../email/email.service.js';
 import type { RequestMeta } from './auth.service.js';
 
 /**
@@ -419,7 +420,18 @@ export async function registerOrganization(input: RegisterInput): Promise<Regist
     });
   });
 
-  logger.info({ orgId, userId, slug }, 'organisation registered');
+  // Not awaited for its result beyond logging: the organisation exists either
+  // way, and a mail outage must not fail a registration that already committed.
+  const mail = await sendWelcomeEmail({
+    to: email,
+    firstName: input.firstName.trim(),
+    organisationName: organizationName,
+  });
+
+  logger.info(
+    { orgId, userId, slug, welcomeEmailDelivered: mail.delivered },
+    'organisation registered',
+  );
 
   return { organizationId: orgId, userId, templateId };
 }
