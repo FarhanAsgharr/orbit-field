@@ -383,7 +383,15 @@ export function People(): React.ReactElement {
   );
 }
 
-const EMPTY_INVITE = { email: '', firstName: '', lastName: '', role: 'INSPECTOR', password: '' };
+const EMPTY_INVITE = {
+  email: '',
+  firstName: '',
+  lastName: '',
+  role: 'INSPECTOR',
+  password: '',
+  department: '',
+  jobTitle: '',
+};
 
 /**
  * Edit a colleague, or take their access away.
@@ -407,6 +415,7 @@ function EditMemberPanel({
   const queryClient = useQueryClient();
   const { user } = useSession();
   const [form, setForm] = useState({
+    email: member.email,
     firstName: member.firstName,
     lastName: member.lastName,
     role: member.role,
@@ -414,7 +423,23 @@ function EditMemberPanel({
     department: member.department ?? '',
   });
   const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
   const [confirmingRemoval, setConfirmingRemoval] = useState(false);
+  const [newPassword, setNewPassword] = useState('');
+
+  /*
+   * Whether a permanent delete is even possible.
+   *
+   * The server decides — it counts inspections, audit entries, templates and
+   * sync history — and says so on the detail endpoint. Offering "delete
+   * permanently" and then refusing it is a worse way to communicate the rule
+   * than only offering what will work.
+   */
+  const detail = useQuery({
+    queryKey: ['user-detail', member.id],
+    queryFn: () =>
+      api.get<{ deletable: boolean; usage: Record<string, number> }>(`/users/${member.id}`),
+  });
 
   const myRank = ROLE_RANK[(user?.role ?? 'VIEWER') as Role] ?? 0;
   const assignable = (
@@ -429,6 +454,7 @@ function EditMemberPanel({
   const save = useMutation({
     mutationFn: () =>
       api.patch(`/users/${member.id}`, {
+        email: form.email.trim(),
         firstName: form.firstName,
         lastName: form.lastName,
         role: form.role,
@@ -446,7 +472,40 @@ function EditMemberPanel({
       setError(err instanceof Error ? err.message : 'Could not deactivate the account.'),
   });
 
-  const busy = save.isPending || deactivate.isPending;
+  const reactivate = useMutation({
+    mutationFn: () => api.patch(`/users/${member.id}`, { status: 'ACTIVE' }),
+    onSuccess: done,
+    onError: (err) =>
+      setError(err instanceof Error ? err.message : 'Could not reactivate the account.'),
+  });
+
+  const resetPassword = useMutation({
+    mutationFn: () => api.post(`/users/${member.id}/reset-password`, { password: newPassword }),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ['users'] });
+      // Not closed: the administrator still has to pass the new password on.
+      setNotice(
+        'Password reset. They are signed out of every device and must use the new password.',
+      );
+      setError(null);
+    },
+    onError: (err) =>
+      setError(err instanceof Error ? err.message : 'Could not reset the password.'),
+  });
+
+  const destroy = useMutation({
+    mutationFn: () => api.delete(`/users/${member.id}/permanent`),
+    onSuccess: done,
+    onError: (err) =>
+      setError(err instanceof Error ? err.message : 'Could not delete the account.'),
+  });
+
+  const busy =
+    save.isPending ||
+    deactivate.isPending ||
+    reactivate.isPending ||
+    resetPassword.isPending ||
+    destroy.isPending;
 
   if (confirmingRemoval) {
     return (
@@ -497,7 +556,7 @@ function EditMemberPanel({
       </div>
       <div className="card__body stack gap-4">
         {error ? <ErrorBanner message={error} /> : null}
-        <p className="small muted">{member.email}</p>
+        {notice ? <p className="small">{notice}</p> : null}
 
         <div className="row gap-3">
           <div className="field grow">
@@ -522,6 +581,25 @@ function EditMemberPanel({
               onChange={(e) => setForm({ ...form, lastName: e.target.value })}
             />
           </div>
+        </div>
+
+        <div className="field">
+          <label className="field__label" htmlFor="edit-email">
+            Email
+          </label>
+          <input
+            id="edit-email"
+            className="input"
+            type="email"
+            autoComplete="off"
+            value={form.email}
+            onChange={(e) => setForm({ ...form, email: e.target.value })}
+          />
+          {form.email.trim() !== member.email ? (
+            <span className="field__hint">
+              This is how they sign in — tell them before they next open the app.
+            </span>
+          ) : null}
         </div>
 
         <div className="field">
@@ -580,7 +658,43 @@ function EditMemberPanel({
           {save.isPending ? 'Saving…' : 'Save changes'}
         </button>
 
-        {member.status !== 'DEACTIVATED' ? (
+        <hr className="rule" />
+
+        {/* Reset, rather than "send a reset link": there is no mail provider,
+            so the administrator sets the password and hands it over. */}
+        <div className="field">
+          <PasswordInput
+            label="Set a new password"
+            value={newPassword}
+            autoComplete="new-password"
+            onChange={(e) => setNewPassword(e.target.value)}
+            hint="Their old password stops working immediately and every device is signed out."
+          />
+          <button
+            className="btn btn--ghost"
+            onClick={() => {
+              setError(null);
+              setNotice(null);
+              resetPassword.mutate();
+            }}
+            disabled={busy || newPassword === ''}
+          >
+            {resetPassword.isPending ? 'Resetting…' : 'Reset password'}
+          </button>
+        </div>
+
+        <hr className="rule" />
+
+        {member.status === 'DEACTIVATED' ? (
+          <>
+            <p className="small muted">
+              This account is deactivated. They cannot sign in until it is restored.
+            </p>
+            <button className="btn" onClick={() => reactivate.mutate()} disabled={busy}>
+              {reactivate.isPending ? 'Restoring…' : 'Reactivate account'}
+            </button>
+          </>
+        ) : (
           <button
             className="btn btn--ghost"
             onClick={() => {
@@ -589,11 +703,39 @@ function EditMemberPanel({
             }}
             disabled={busy}
           >
-            Remove access…
+            Deactivate account…
           </button>
-        ) : (
-          <p className="small muted">This account is already deactivated.</p>
         )}
+
+        {detail.data?.deletable ? (
+          <button
+            className="btn btn--ghost"
+            onClick={() => {
+              setError(null);
+              // No second dialog: there is nothing to lose. The server has
+              // already confirmed this person has no history at all.
+              if (globalThis.confirm(`Permanently delete ${member.email}? This cannot be undone.`))
+                destroy.mutate();
+            }}
+            disabled={busy}
+          >
+            {destroy.isPending ? 'Deleting…' : 'Delete permanently'}
+          </button>
+        ) : detail.data ? (
+          <p className="small muted">
+            Cannot be deleted permanently — this person has a history in the system (
+            {Object.entries(detail.data.usage)
+              .map(
+                ([k, n]) =>
+                  `${n} ${k
+                    .replace(/([A-Z])/g, ' $1')
+                    .toLowerCase()
+                    .trim()}`,
+              )
+              .join(', ')}
+            ). Deactivating keeps their name on the work they did.
+          </p>
+        ) : null}
       </div>
     </div>
   );
@@ -602,17 +744,12 @@ function EditMemberPanel({
 /**
  * Create a colleague's account.
  *
- * Two ways to hand over the credential, and the right one depends on whether
- * the installation can send mail:
- *
- *  - **Email invitation** — the account is created with no password and the
- *    recipient sets their own through the reset flow. Better, because no
- *    password ever travels through an inbox. Requires `SMTP_URL` on the API;
- *    without it the invitation is never delivered and the account is stranded,
- *    which is why this is not silently the only option.
- *  - **Set a password now** — the account is created active and the
- *    administrator passes the password on directly. The only mode that works
- *    on a deployment with no mail provider.
+ * The administrator sets the password and hands it over directly. There is no
+ * email invitation: this installation has no mail provider, and an invitation
+ * that cannot be delivered creates an account nobody can ever sign in to —
+ * it exists, it has no password, and the app tells the recipient their
+ * credentials are wrong. Requiring a password here makes that state
+ * unreachable.
  *
  * The role list is filtered to what this operator may actually grant. The
  * server enforces the same rule (`canAssignRole`: strictly below your own
@@ -622,12 +759,9 @@ function InviteUserButton(): React.ReactElement {
   const queryClient = useQueryClient();
   const { user } = useSession();
   const [open, setOpen] = useState(false);
-  const [setPasswordNow, setSetPasswordNow] = useState(true);
   const [form, setForm] = useState(EMPTY_INVITE);
   const [error, setError] = useState<string | null>(null);
-  const [created, setCreated] = useState<string | null>(null);
-  /** Set when the account was created but its invitation could not be sent. */
-  const [undelivered, setUndelivered] = useState<string | null>(null);
+  const [created, setCreated] = useState<{ email: string; password: string } | null>(null);
 
   const actorRank = ROLE_RANK[(user?.role ?? 'VIEWER') as Role] ?? 0;
   const assignable = (
@@ -639,46 +773,31 @@ function InviteUserButton(): React.ReactElement {
     setForm(EMPTY_INVITE);
     setError(null);
     setCreated(null);
-    setUndelivered(null);
   };
 
-  const invite = useMutation({
-    mutationFn: () => {
-      const { password, ...rest } = form;
-      // Omit the key entirely rather than sending an empty string: the server
-      // decides INVITED vs ACTIVE on whether the field is present at all.
-      return api.post<{ emailDelivered: boolean | null }>(
-        '/users',
-        setPasswordNow ? { ...rest, password } : rest,
-      );
-    },
-    onSuccess: (result) => {
-      void queryClient.invalidateQueries({ queryKey: ['users'] });
-      if (setPasswordNow) {
-        // Keep the panel open on success: the administrator still has to pass
-        // the password on, and closing it takes the only copy off the screen.
-        setCreated(form.email);
-        setError(null);
-        return;
-      }
+  const ready =
+    form.email.trim() !== '' &&
+    form.firstName.trim() !== '' &&
+    form.lastName.trim() !== '' &&
+    form.password !== '';
 
-      /*
-       * An invitation that was not delivered leaves the account stranded.
-       *
-       * It exists, it has no password, and nothing the recipient can do will
-       * get them in — signing in returns "the email or password is incorrect",
-       * which sends them and their administrator looking for a broken app.
-       *
-       * The API reports delivery precisely so this is knowable. Closing the
-       * panel on a failed send, as this did, is what turned a recoverable
-       * situation into a mystery.
-       */
-      if (result?.emailDelivered === false) {
-        setUndelivered(form.email);
-        setError(null);
-        return;
-      }
-      close();
+  const invite = useMutation({
+    mutationFn: () =>
+      api.post('/users', {
+        email: form.email.trim(),
+        firstName: form.firstName.trim(),
+        lastName: form.lastName.trim(),
+        role: form.role,
+        password: form.password,
+        department: form.department.trim() || null,
+        jobTitle: form.jobTitle.trim() || null,
+      }),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ['users'] });
+      // The panel stays open: the administrator still has to pass the password
+      // on, and closing takes the only copy of it off the screen.
+      setCreated({ email: form.email.trim(), password: form.password });
+      setError(null);
     },
     onError: (err) =>
       setError(err instanceof Error ? err.message : 'Could not create the account.'),
@@ -689,41 +808,6 @@ function InviteUserButton(): React.ReactElement {
       <button className="btn" onClick={() => setOpen(true)}>
         Add someone
       </button>
-    );
-  }
-
-  if (undelivered) {
-    return (
-      <div className="card popover" role="dialog" aria-label="Invitation not sent">
-        <div className="card__head">
-          <h2 className="card__title">Invitation could not be sent</h2>
-          <button className="btn btn--ghost btn--sm" onClick={close}>
-            Done
-          </button>
-        </div>
-        <div className="card__body stack gap-4">
-          <ErrorBanner
-            message={`The account for ${undelivered} was created, but no invitation email went out. This deployment has no mail provider configured, so nothing was delivered.`}
-          />
-          <p className="small muted">
-            Until they have a password, <strong>{undelivered}</strong> cannot sign in — the app will
-            tell them their email or password is incorrect, because the account has no password at
-            all. Delete the account and add them again with <em>Set a password now</em>, then pass
-            the password on directly.
-          </p>
-          <button
-            className="btn"
-            onClick={() => {
-              // Pre-select the mode that works without mail, and keep the name
-              // and email so this is one click rather than a re-type.
-              setUndelivered(null);
-              setSetPasswordNow(true);
-            }}
-          >
-            Set a password instead
-          </button>
-        </div>
-      </div>
     );
   }
 
@@ -738,9 +822,24 @@ function InviteUserButton(): React.ReactElement {
         </div>
         <div className="card__body stack gap-4">
           <p>
-            <strong>{created}</strong> can sign in now with the password you chose. Pass it on
-            directly and ask them to change it — this is the only time it is shown.
+            Give these to <strong>{created.email}</strong>. They sign in to the Orbit Field app on
+            their phone with exactly this email and password.
           </p>
+          <div className="field">
+            <span className="field__label">Email</span>
+            <code className="input" style={{ display: 'block' }}>
+              {created.email}
+            </code>
+          </div>
+          <div className="field">
+            <span className="field__label">Password</span>
+            <code className="input" style={{ display: 'block' }}>
+              {created.password}
+            </code>
+            <span className="field__hint">
+              This is the only time it is shown. If it is lost, use Reset password on their row.
+            </span>
+          </div>
           <button
             className="btn"
             onClick={() => {
@@ -765,19 +864,7 @@ function InviteUserButton(): React.ReactElement {
       </div>
       <div className="card__body stack gap-4">
         {error ? <ErrorBanner message={error} /> : null}
-        <div className="field">
-          <label className="field__label" htmlFor="inv-email">
-            Email
-          </label>
-          <input
-            id="inv-email"
-            className="input"
-            type="email"
-            autoComplete="off"
-            value={form.email}
-            onChange={(e) => setForm({ ...form, email: e.target.value })}
-          />
-        </div>
+
         <div className="row gap-3">
           <div className="field grow">
             <label className="field__label" htmlFor="inv-first">
@@ -802,6 +889,22 @@ function InviteUserButton(): React.ReactElement {
             />
           </div>
         </div>
+
+        <div className="field">
+          <label className="field__label" htmlFor="inv-email">
+            Email
+          </label>
+          <input
+            id="inv-email"
+            className="input"
+            type="email"
+            autoComplete="off"
+            value={form.email}
+            onChange={(e) => setForm({ ...form, email: e.target.value })}
+          />
+          <span className="field__hint">This is the username they sign in with.</span>
+        </div>
+
         <div className="field">
           <label className="field__label" htmlFor="inv-role">
             Role
@@ -818,50 +921,52 @@ function InviteUserButton(): React.ReactElement {
               </option>
             ))}
           </select>
-          <span className="field__hint">Only roles below your own are listed.</span>
         </div>
 
-        <div className="field">
-          <label className="field__label" htmlFor="inv-mode">
-            How they get in
-          </label>
-          <select
-            id="inv-mode"
-            className="select"
-            value={setPasswordNow ? 'password' : 'email'}
-            onChange={(e) => {
-              setSetPasswordNow(e.target.value === 'password');
-              setError(null);
-            }}
-          >
-            <option value="password">Set a password now</option>
-            <option value="email">Email them an invitation</option>
-          </select>
-          <span className="field__hint">
-            {setPasswordNow
-              ? 'The account is active immediately. You pass the password on yourself, and they change it after signing in.'
-              : 'They receive an email and choose their own password — no password is sent. Requires outbound email to be configured on the API.'}
-          </span>
+        <div className="row gap-3">
+          <div className="field grow">
+            <label className="field__label" htmlFor="inv-dept">
+              Department
+            </label>
+            <input
+              id="inv-dept"
+              className="input"
+              value={form.department}
+              onChange={(e) => setForm({ ...form, department: e.target.value })}
+            />
+          </div>
+          <div className="field grow">
+            <label className="field__label" htmlFor="inv-job">
+              Job title
+            </label>
+            <input
+              id="inv-job"
+              className="input"
+              value={form.jobTitle}
+              onChange={(e) => setForm({ ...form, jobTitle: e.target.value })}
+            />
+          </div>
         </div>
 
-        {setPasswordNow ? (
-          <PasswordInput
-            label="Initial password"
-            value={form.password}
-            autoComplete="new-password"
-            onChange={(e) => setForm({ ...form, password: e.target.value })}
-            hint="At least 12 characters, with an uppercase letter, a lowercase letter and a number. It must not contain their name or email."
-          />
-        ) : null}
+        <PasswordInput
+          label="Password"
+          value={form.password}
+          autoComplete="new-password"
+          onChange={(e) => setForm({ ...form, password: e.target.value })}
+          hint="At least 12 characters, with an uppercase letter, a lowercase letter and a number. It must not contain their name or email."
+        />
 
-        <button className="btn" onClick={() => invite.mutate()} disabled={invite.isPending}>
-          {invite.isPending ? 'Saving…' : setPasswordNow ? 'Create account' : 'Send invitation'}
+        <button
+          className="btn"
+          onClick={() => invite.mutate()}
+          disabled={invite.isPending || !ready}
+        >
+          {invite.isPending ? 'Saving…' : 'Create account'}
         </button>
       </div>
     </div>
   );
 }
-
 // ---------------------------------------------------------------------------
 // Checklists
 // ---------------------------------------------------------------------------

@@ -51,14 +51,16 @@ async function register() {
   const email = `${unique('owner')}@test.invalid`;
   const password = strongPassword();
 
-  const res = await request(server).post(`${api}/auth/register`).send({
-    email,
-    password,
-    firstName: 'New',
-    lastName: 'Owner',
-    organizationName: unique('Registered Org'),
-    device: device(),
-  });
+  const res = await request(server)
+    .post(`${api}/auth/register`)
+    .send({
+      email,
+      password,
+      firstName: 'New',
+      lastName: 'Owner',
+      organizationName: unique('Registered Org'),
+      device: device(),
+    });
 
   expect(res.status).toBe(201);
   const orgId = res.body.data.organization.id as string;
@@ -169,6 +171,66 @@ describe('an inspector added to a registered organisation', () => {
     expect(counts.ORGANIZATION).toBe(1);
     expect(counts.USER).toBeGreaterThanOrEqual(2);
     expect(counts.TEMPLATE_VERSION).toBe(1);
+  });
+});
+
+describe('signup is for company owners only', () => {
+  it('always makes the registrant an organisation ADMIN', async () => {
+    const owner = await register();
+    const stored = await prisma.user.findUniqueOrThrow({ where: { id: owner.userId } });
+
+    // Never SUPER_ADMIN: that role acts across organisations in a shared
+    // install, so handing it out at signup would let anyone who registers
+    // reach every tenant.
+    expect(stored.role).toBe('ADMIN');
+  });
+
+  it('ignores a role somebody puts in the request body', async () => {
+    const email = `${unique('sneaky')}@test.invalid`;
+    const res = await request(server)
+      .post(`${api}/auth/register`)
+      .send({
+        email,
+        password: strongPassword(),
+        firstName: 'Would Be',
+        lastName: 'Superuser',
+        organizationName: unique('Escalation Attempt'),
+        role: 'SUPER_ADMIN',
+        device: device(),
+      });
+
+    expect(res.status).toBe(201);
+    created.push(res.body.data.organization.id as string);
+    expect(res.body.data.user.role).toBe('ADMIN');
+  });
+
+  it('cannot be used to join an existing organisation', async () => {
+    const owner = await register();
+    const before = await prisma.user.count({ where: { orgId: owner.orgId } });
+
+    // Registering with the same organisation name makes a *separate*
+    // organisation, which is the point: there is no self-service route into
+    // somebody else's tenant. Inspectors exist only because an administrator
+    // created them.
+    const second = await request(server)
+      .post(`${api}/auth/register`)
+      .send({
+        email: `${unique('outsider')}@test.invalid`,
+        password: strongPassword(),
+        firstName: 'Out',
+        lastName: 'Sider',
+        organizationName: (
+          await prisma.organization.findUniqueOrThrow({ where: { id: owner.orgId } })
+        ).name,
+        device: device(),
+      });
+
+    expect(second.status).toBe(201);
+    const secondOrgId = second.body.data.organization.id as string;
+    created.push(secondOrgId);
+
+    expect(secondOrgId).not.toBe(owner.orgId);
+    expect(await prisma.user.count({ where: { orgId: owner.orgId } })).toBe(before);
   });
 });
 

@@ -220,7 +220,22 @@ router.get(
       }),
     );
 
-    res.json({ data: { ...user, effectivePermissions: permissions } });
+    /*
+     * Whether this person can be permanently deleted, and why not if they
+     * cannot. The console needs it to choose between offering "delete" and
+     * offering "deactivate" — asking, being refused, and reading the reason is
+     * a worse way to find out.
+     */
+    const usage = await usageOf(user.id);
+
+    res.json({
+      data: {
+        ...user,
+        effectivePermissions: permissions,
+        deletable: Object.keys(usage).length === 0,
+        usage,
+      },
+    });
   }),
 );
 
@@ -420,6 +435,7 @@ router.patch(
   validate({
     params: z.object({ id: schemas.ulid }),
     body: z.object({
+      email: schemas.email.optional(),
       firstName: z.string().min(1).max(100).trim().optional(),
       lastName: z.string().min(1).max(100).trim().optional(),
       phone: z.string().max(32).nullable().optional(),
@@ -463,6 +479,24 @@ router.patch(
           ? 'You cannot change your own role or status here.'
           : 'You cannot manage a user at or above your own level.',
       );
+    }
+
+    /*
+     * Email is the credential half of a login, so a change here is a change to
+     * how this person signs in. Uniqueness is per organisation, and letting a
+     * collision reach the database would surface as an opaque 500 rather than
+     * a field error the administrator can act on.
+     */
+    if (typeof body.email === 'string' && body.email !== target.email) {
+      const taken = await prisma.user.findFirst({
+        where: { orgId: subject.orgId, email: body.email, deletedAt: null, id: { not: id } },
+        select: { id: true },
+      });
+      if (taken) {
+        throw new AppError(ErrorCode.DUPLICATE_RESOURCE, 'Another user already has that email.', {
+          fields: { email: 'Already in use in this organisation.' },
+        });
+      }
     }
 
     if (body.role !== undefined) {
@@ -549,6 +583,216 @@ router.patch(
     });
 
     res.json({ data: updated });
+  }),
+);
+
+/**
+ * Everything that constitutes "this person has used the system".
+ *
+ * The deciding question for a permanent delete. Each of these is either
+ * evidence somebody relies on later or a row whose foreign key would be
+ * silently nulled: an inspection's `assignedTo` and `reviewedBy` are
+ * `SetNull`, so deleting the user would leave a completed inspection with
+ * nobody's name on it — the record would still exist and quietly stop saying
+ * who did the work. `createdBy` is `Restrict` and would fail outright.
+ */
+async function usageOf(userId: string): Promise<Record<string, number>> {
+  const [assigned, authored, reviewed, audits, templates, sessions, conflicts] = await Promise.all([
+    prisma.inspection.count({ where: { assignedToId: userId } }),
+    prisma.inspection.count({ where: { createdById: userId } }),
+    prisma.inspection.count({ where: { reviewedById: userId } }),
+    prisma.auditLog.count({ where: { userId } }),
+    prisma.template.count({ where: { createdById: userId } }),
+    prisma.syncSession.count({ where: { userId } }),
+    prisma.syncConflictRecord.count({ where: { userId } }),
+  ]);
+
+  const counts = {
+    assignedInspections: assigned,
+    createdInspections: authored,
+    reviewedInspections: reviewed,
+    auditEntries: audits,
+    createdTemplates: templates,
+    syncSessions: sessions,
+    conflicts,
+  };
+  return Object.fromEntries(Object.entries(counts).filter(([, n]) => n > 0));
+}
+
+/**
+ * Set a colleague's password on their behalf.
+ *
+ * Separate from `PATCH` deliberately: it is the one field whose change must
+ * end every session the account has open, and it earns its own audit action so
+ * "who reset whose password, and when" is answerable without reading a diff.
+ *
+ * Exists because this installation has no mail provider. The reset-by-email
+ * flow cannot deliver a code, so without this an administrator whose inspector
+ * has forgotten their password has no way to help them at all.
+ */
+router.post(
+  '/:id/reset-password',
+  requireAuth,
+  requirePermission(Permission.USER_UPDATE),
+  validate({
+    params: z.object({ id: schemas.ulid }),
+    body: z.object({ password: z.string().min(1).max(200) }),
+  }),
+  asyncHandler(async (req, res) => {
+    const subject = auth(req);
+    const { id } = req.validated!.params as { id: string };
+    const { password } = req.validated!.body as { password: string };
+
+    const target = await prisma.user.findFirst({
+      where: { id, orgId: subject.orgId, deletedAt: null },
+      select: { id: true, role: true, orgId: true, email: true, firstName: true, lastName: true },
+    });
+    if (!target) throw new AppError(ErrorCode.NOT_FOUND, 'That user was not found.');
+
+    if (
+      !canManageUser(subject, { role: target.role as Role, orgId: target.orgId, userId: target.id })
+    ) {
+      throw new AppError(
+        ErrorCode.PERMISSION_DENIED,
+        target.id === subject.userId
+          ? 'Change your own password from your account settings.'
+          : 'You cannot reset the password for a user at or above your own level.',
+      );
+    }
+
+    // The same policy the owner would face changing it themselves — an
+    // administrator-set password must not be the one weak password in the org.
+    const strength = checkPasswordStrength(password, DEFAULT_PASSWORD_POLICY, {
+      email: target.email,
+      firstName: target.firstName,
+      lastName: target.lastName,
+    });
+    if (!strength.valid) {
+      throw new AppError(ErrorCode.VALIDATION_FAILED, strength.errors[0]!, {
+        fields: { password: strength.errors.join(' ') },
+      });
+    }
+
+    await prisma.$transaction(async (tx) => {
+      await tx.user.update({
+        where: { id },
+        data: {
+          passwordHash: await hashPassword(password),
+          // Read by the auth middleware to reject access tokens minted before
+          // this moment; without it the old session survives its full lifetime.
+          passwordChangedAt: new Date(),
+          // Somebody else chose it, and it travelled out of band.
+          mustChangePassword: true,
+          failedLoginAttempts: 0,
+          lockedUntil: null,
+        },
+      });
+
+      await tx.auditLog.create({
+        data: {
+          id: ulid(),
+          orgId: subject.orgId,
+          userId: subject.userId,
+          action: 'AUTH_PASSWORD_RESET',
+          entity: 'User',
+          entityId: id,
+          // Records that it happened and to whom, never the value.
+          metadata: { email: target.email, resetBy: subject.userId },
+          ipAddress: clientIp(req),
+          requestId: req.requestId,
+        },
+      });
+    });
+
+    // Outside the transaction: the old credential must stop working even if
+    // token revocation is slow, and it must not be able to roll the reset back.
+    await revokeUserTokens(id, 'password reset by an administrator');
+
+    res.json({ data: { reset: true, email: target.email } });
+  }),
+);
+
+/**
+ * Permanently delete a colleague who never used the system.
+ *
+ * Refused the moment there is anything to preserve. A compliance record whose
+ * inspector row has been deleted still exists, but it no longer says who
+ * carried out the inspection — that is not a tidier database, it is a broken
+ * audit trail. `usageOf` decides, and its reasons are returned so the refusal
+ * is actionable rather than a flat no.
+ *
+ * The legitimate case this serves is narrow and real: an account created with
+ * a typo in the email, five minutes ago, that nobody has touched.
+ */
+router.delete(
+  '/:id/permanent',
+  requireAuth,
+  requirePermission(Permission.USER_DEACTIVATE),
+  validate({ params: z.object({ id: schemas.ulid }) }),
+  asyncHandler(async (req, res) => {
+    const subject = auth(req);
+    const { id } = req.validated!.params as { id: string };
+
+    const target = await prisma.user.findFirst({
+      where: { id, orgId: subject.orgId },
+      select: { id: true, role: true, orgId: true, email: true },
+    });
+    if (!target) throw new AppError(ErrorCode.NOT_FOUND, 'That user was not found.');
+
+    if (
+      !canManageUser(subject, { role: target.role as Role, orgId: target.orgId, userId: target.id })
+    ) {
+      throw new AppError(ErrorCode.PERMISSION_DENIED, 'You cannot delete this user.');
+    }
+
+    const usage = await usageOf(id);
+    if (Object.keys(usage).length > 0) {
+      throw new AppError(
+        ErrorCode.CONFLICT,
+        'This person has a history in the system and cannot be permanently deleted. Deactivate them instead — their record stays on the work they did.',
+        { fields: Object.fromEntries(Object.entries(usage).map(([k, n]) => [k, String(n)])) },
+      );
+    }
+
+    await prisma.$transaction(async (tx) => {
+      /*
+       * The audit entry is written before the row goes, and deliberately
+       * carries the email rather than only the id: once the user is gone the
+       * id resolves to nothing, and "who was deleted" is the single thing
+       * anyone will want to know afterwards.
+       */
+      await tx.auditLog.create({
+        data: {
+          id: ulid(),
+          orgId: subject.orgId,
+          userId: subject.userId,
+          action: 'RECORD_DELETED',
+          entity: 'User',
+          entityId: id,
+          metadata: { email: target.email, permanent: true, hadHistory: false },
+          ipAddress: clientIp(req),
+          requestId: req.requestId,
+        },
+      });
+
+      // Devices, tokens, memberships and notifications all cascade.
+      await tx.user.delete({ where: { id } });
+    });
+
+    // Devices replay the change log; without this the person stays on every
+    // phone in the organisation forever.
+    await recordChange(prisma, {
+      orgId: subject.orgId,
+      entity: SyncEntity.USER,
+      operation: SyncOperation.DELETE,
+      entityId: id,
+      version: 0,
+      row: null,
+      actorUserId: subject.userId,
+      actorDeviceId: subject.deviceId,
+    });
+
+    res.status(204).end();
   }),
 );
 
