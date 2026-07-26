@@ -35,6 +35,7 @@
 import type { IncomingMessage, ServerResponse } from 'node:http';
 
 import { createApp } from '../dist/app.js';
+import { initSentry } from '../dist/modules/observability/sentry.js';
 import { logger } from '../dist/config/logger.js';
 import { assertProductionSecrets } from '../dist/middleware/security.js';
 
@@ -67,6 +68,12 @@ import { assertProductionSecrets } from '../dist/middleware/security.js';
  * the intended blast radius for a misconfigured deployment.
  */
 assertProductionSecrets();
+
+/*
+ * Before the app is built, so a failure during construction is still reported.
+ * Inert without SENTRY_DSN.
+ */
+initSentry();
 
 /**
  * Built once per instance and reused across invocations.

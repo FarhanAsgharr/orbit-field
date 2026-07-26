@@ -28,6 +28,7 @@
 import type { IncomingMessage, ServerResponse } from 'node:http';
 
 import { logger } from '../../dist/config/logger.js';
+import { increment, setGauge } from '../../dist/modules/observability/metrics.js';
 import { pruneExpiredTokens } from '../../dist/lib/tokens.js';
 import { pruneSyncTables } from '../../dist/modules/sync/sync.service.js';
 import { pruneExpiredUploads } from '../../dist/modules/uploads/uploads.routes.js';

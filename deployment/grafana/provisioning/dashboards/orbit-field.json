@@ -1,0 +1,287 @@
+{
+  "__comment": "Orbit Field service dashboard. Ordered by the question an operator actually asks, top to bottom: is it up, is it serving, can devices sync, is evidence flowing, and is the background work happening. Cause-level detail (memory, heap) sits last because it is diagnostic, not a symptom worth leading with.",
+  "uid": "orbit-field-service",
+  "title": "Orbit Field — service",
+  "tags": ["orbit-field"],
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "30s",
+  "time": { "from": "now-6h", "to": "now" },
+  "panels": [
+    {
+      "type": "row",
+      "title": "Availability",
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 0 }
+    },
+    {
+      "type": "stat",
+      "title": "API",
+      "description": "Scrape success. Zero means field devices cannot sync at all.",
+      "gridPos": { "h": 4, "w": 4, "x": 0, "y": 1 },
+      "targets": [{ "expr": "up{job=\"orbit-api\"}", "refId": "A" }],
+      "fieldConfig": {
+        "defaults": {
+          "mappings": [
+            { "type": "value", "options": { "0": { "text": "DOWN", "color": "red", "index": 0 } } },
+            { "type": "value", "options": { "1": { "text": "UP", "color": "green", "index": 1 } } }
+          ],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "red", "value": null },
+              { "color": "green", "value": 1 }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "type": "stat",
+      "title": "Database",
+      "description": "Every write fails when this is zero. Devices queue locally, so nothing is lost yet.",
+      "gridPos": { "h": 4, "w": 4, "x": 4, "y": 1 },
+      "targets": [{ "expr": "orbit_db_up", "refId": "A" }],
+      "fieldConfig": {
+        "defaults": {
+          "mappings": [
+            { "type": "value", "options": { "0": { "text": "DOWN", "color": "red", "index": 0 } } },
+            { "type": "value", "options": { "1": { "text": "UP", "color": "green", "index": 1 } } }
+          ]
+        }
+      }
+    },
+    {
+      "type": "stat",
+      "title": "Redis",
+      "description": "Degraded, not down: the API falls back to in-memory rate limiting, so limits become per-instance.",
+      "gridPos": { "h": 4, "w": 4, "x": 8, "y": 1 },
+      "targets": [{ "expr": "orbit_redis_up", "refId": "A" }],
+      "fieldConfig": {
+        "defaults": {
+          "mappings": [
+            {
+              "type": "value",
+              "options": { "0": { "text": "DEGRADED", "color": "orange", "index": 0 } }
+            },
+            { "type": "value", "options": { "1": { "text": "UP", "color": "green", "index": 1 } } }
+          ]
+        }
+      }
+    },
+    {
+      "type": "stat",
+      "title": "5xx rate",
+      "description": "Share of requests failing with a server error.",
+      "gridPos": { "h": 4, "w": 6, "x": 12, "y": 1 },
+      "targets": [
+        {
+          "expr": "sum(rate(orbit_http_errors_total{status=~\"5..\"}[5m])) / clamp_min(sum(rate(orbit_http_requests_total[5m])), 0.001)",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "orange", "value": 0.01 },
+              { "color": "red", "value": 0.05 }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "type": "stat",
+      "title": "p95 latency",
+      "gridPos": { "h": 4, "w": 6, "x": 18, "y": 1 },
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.95, sum(rate(orbit_http_request_duration_seconds_bucket[5m])) by (le))",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "orange", "value": 1 },
+              { "color": "red", "value": 3 }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "type": "row",
+      "title": "Traffic",
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 5 }
+    },
+    {
+      "type": "timeseries",
+      "title": "Requests by route",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 6 },
+      "targets": [
+        {
+          "expr": "sum(rate(orbit_http_requests_total[5m])) by (route)",
+          "legendFormat": "{{route}}",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": { "defaults": { "unit": "reqps" } }
+    },
+    {
+      "type": "timeseries",
+      "title": "Latency distribution",
+      "description": "p50, p95 and p99 together — a p95 that looks fine while p99 climbs means a subset of requests is suffering.",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 6 },
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.50, sum(rate(orbit_http_request_duration_seconds_bucket[5m])) by (le))",
+          "legendFormat": "p50",
+          "refId": "A"
+        },
+        {
+          "expr": "histogram_quantile(0.95, sum(rate(orbit_http_request_duration_seconds_bucket[5m])) by (le))",
+          "legendFormat": "p95",
+          "refId": "B"
+        },
+        {
+          "expr": "histogram_quantile(0.99, sum(rate(orbit_http_request_duration_seconds_bucket[5m])) by (le))",
+          "legendFormat": "p99",
+          "refId": "C"
+        }
+      ],
+      "fieldConfig": { "defaults": { "unit": "s" } }
+    },
+    {
+      "type": "row",
+      "title": "Sync — the thing field staff depend on",
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 14 }
+    },
+    {
+      "type": "timeseries",
+      "title": "Sync operations by result",
+      "gridPos": { "h": 8, "w": 8, "x": 0, "y": 15 },
+      "targets": [
+        {
+          "expr": "sum(rate(orbit_sync_operations_total[5m])) by (result)",
+          "legendFormat": "{{result}}",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Conflicts awaiting a human",
+      "description": "These block an inspector's work until somebody decides. A rising line means people are stuck.",
+      "gridPos": { "h": 8, "w": 8, "x": 8, "y": 15 },
+      "targets": [{ "expr": "orbit_unresolved_conflicts", "refId": "A" }]
+    },
+    {
+      "type": "timeseries",
+      "title": "Devices behind / stale",
+      "description": "Behind = cursor trails the server. Stale = no contact in 24h, which usually means a phone in a drawer, occasionally a broken install.",
+      "gridPos": { "h": 8, "w": 8, "x": 16, "y": 15 },
+      "targets": [
+        { "expr": "orbit_devices_behind", "legendFormat": "behind", "refId": "A" },
+        { "expr": "orbit_devices_stale", "legendFormat": "stale", "refId": "B" }
+      ]
+    },
+    {
+      "type": "row",
+      "title": "Evidence and delivery",
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 23 }
+    },
+    {
+      "type": "timeseries",
+      "title": "Uploads",
+      "gridPos": { "h": 8, "w": 8, "x": 0, "y": 24 },
+      "targets": [
+        {
+          "expr": "sum(rate(orbit_uploads_total[5m])) by (outcome)",
+          "legendFormat": "{{outcome}}",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Pending uploads",
+      "description": "Attachments queued or failed across the fleet. Photographs that have not reached the server are evidence that exists on one phone only.",
+      "gridPos": { "h": 8, "w": 8, "x": 8, "y": 24 },
+      "targets": [{ "expr": "orbit_pending_uploads", "refId": "A" }]
+    },
+    {
+      "type": "timeseries",
+      "title": "Email by outcome",
+      "description": "A \"log\" series means no provider is configured and reset codes are only recoverable from the application log.",
+      "gridPos": { "h": 8, "w": 8, "x": 16, "y": 24 },
+      "targets": [
+        {
+          "expr": "sum(rate(orbit_emails_total[15m])) by (outcome)",
+          "legendFormat": "{{outcome}}",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "type": "row",
+      "title": "Background work",
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 32 }
+    },
+    {
+      "type": "stat",
+      "title": "Hours since last successful sweep",
+      "description": "The schedule is daily. A cron that stops firing emits no failure metric at all, so staleness is the only signal there is.",
+      "gridPos": { "h": 5, "w": 8, "x": 0, "y": 33 },
+      "targets": [
+        {
+          "expr": "(time() - max(orbit_background_job_last_success_timestamp{job=\"maintenance\"})) / 3600",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "h",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "orange", "value": 26 },
+              { "color": "red", "value": 48 }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "Rows pruned by sweep",
+      "gridPos": { "h": 5, "w": 8, "x": 8, "y": 33 },
+      "targets": [
+        {
+          "expr": "sum(increase(orbit_background_job_rows_pruned_total[24h])) by (sweep)",
+          "legendFormat": "{{sweep}}",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Process memory",
+      "gridPos": { "h": 5, "w": 8, "x": 16, "y": 33 },
+      "targets": [
+        { "expr": "orbit_process_resident_memory_bytes", "legendFormat": "rss", "refId": "A" },
+        { "expr": "orbit_process_heap_used_bytes", "legendFormat": "heap", "refId": "B" }
+      ],
+      "fieldConfig": { "defaults": { "unit": "bytes" } }
+    }
+  ]
+}

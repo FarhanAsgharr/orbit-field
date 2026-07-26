@@ -27,6 +27,7 @@
     "@orbit/types": "1.0.0",
     "@orbit/utils": "1.0.0",
     "@prisma/client": "^6.1.0",
+    "@sentry/node": "^10.68.0",
     "@types/pdfkit": "^0.13.9",
     "argon2": "^0.41.1",
     "compression": "^1.7.5",

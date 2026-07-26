@@ -12,6 +12,7 @@ import type { NextFunction, Request, Response } from 'express';
 import { ZodError } from 'zod';
 
 import { isProduction } from '../config/env.js';
+import { captureError } from '../modules/observability/sentry.js';
 
 /** 404 for unmatched routes. Registered after all routers. */
 export function notFoundHandler(req: Request, res: Response): void {
@@ -93,6 +94,20 @@ export function errorHandler(
     appError = new AppError(ErrorCode.INTERNAL_ERROR, 'An unexpected error occurred.', {
       isOperational: false,
       cause: err,
+    });
+    /*
+     * Reported only here, in the non-operational branch.
+     *
+     * A 404 or a validation failure is the API working correctly; sending those
+     * to an error tracker buries the one event that matters under thousands
+     * that do not. Only an error nobody anticipated is worth waking somebody
+     * for. Ids are attached, never payloads — see `sentry.ts`.
+     */
+    captureError(err, {
+      requestId: req.requestId,
+      route: req.route?.path ?? req.path,
+      userId: req.auth?.userId,
+      orgId: req.auth?.orgId,
     });
   }
 

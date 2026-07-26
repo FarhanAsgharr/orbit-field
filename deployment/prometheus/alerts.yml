@@ -80,3 +80,54 @@ groups:
         annotations:
           summary: 'API heap above 700 MB'
           description: 'Likely a large export or a leak. Check recent report generation.'
+
+  - name: orbit-email
+    rules:
+      - alert: OrbitEmailDeliveryFailing
+        expr: |
+          sum(rate(orbit_emails_total{outcome="failed"}[15m]))
+          / clamp_min(sum(rate(orbit_emails_total[15m])), 0.001) > 0.2
+        for: 15m
+        labels: { severity: warning }
+        annotations:
+          summary: 'More than a fifth of emails are failing to send'
+          description: >-
+            Password resets and invitations are not arriving. Nobody locked out
+            of an account can get back in, and new users cannot get in at all.
+            Check the provider credentials and any sending quota.
+
+      - alert: OrbitEmailNotConfigured
+        expr: sum(rate(orbit_emails_total{transport="log"}[1h])) > 0
+        for: 1h
+        labels: { severity: warning }
+        annotations:
+          summary: 'Email is being written to the log instead of sent'
+          description: >-
+            MAIL_TRANSPORT is "log", so reset codes are only recoverable by an
+            administrator reading the application log. Intended for evaluation,
+            not for an install with real users.
+
+  - name: orbit-background-jobs
+    rules:
+      # Staleness, not failure. A cron that stops firing emits no failure metric
+      # at all — there is no run to report one — so absence is the signal.
+      - alert: OrbitMaintenanceStale
+        expr: |
+          time() - max(orbit_background_job_last_success_timestamp{job="maintenance"}) > 172800
+        for: 1h
+        labels: { severity: warning }
+        annotations:
+          summary: 'Maintenance sweep has not succeeded in 48 hours'
+          description: >-
+            The schedule is daily. Two missed runs means the cron is not firing
+            or is failing every time. The change log and idempotency ledger grow
+            unbounded until it resumes, and abandoned uploads keep costing
+            storage.
+
+      - alert: OrbitMaintenanceFailing
+        expr: sum(rate(orbit_background_jobs_total{outcome="partial"}[1h])) > 0
+        for: 2h
+        labels: { severity: info }
+        annotations:
+          summary: 'Maintenance sweep is completing with failures'
+          description: 'At least one sweep is erroring. Check the cron logs for which.'

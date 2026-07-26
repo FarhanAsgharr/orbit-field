@@ -158,6 +158,14 @@ const schema = z.object({
   ALLOW_MAGIC_LINK: boolish(false),
   MAGIC_LINK_TTL_SECONDS: z.coerce.number().int().positive().default(900),
 
+  /**
+   * Error reporting. Unset means off — a self-hosted install should not have
+   * to remember to disable a third party receiving its stack traces.
+   */
+  SENTRY_DSN: z.string().optional(),
+  SENTRY_RELEASE: z.string().optional(),
+  SENTRY_TRACES_SAMPLE_RATE: z.coerce.number().min(0).max(1).default(0.1),
+
   EXPO_ACCESS_TOKEN: z.string().optional(),
 });
 
