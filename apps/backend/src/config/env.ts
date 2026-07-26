@@ -95,6 +95,11 @@ const schema = z.object({
   RATE_LIMIT_WINDOW_SECONDS: z.coerce.number().int().positive().default(60),
   RATE_LIMIT_MAX_REQUESTS: z.coerce.number().int().positive().default(300),
   AUTH_RATE_LIMIT_MAX: z.coerce.number().int().positive().default(10),
+  // The sync and upload limiters were hardcoded, so an operator whose fleet
+  // legitimately exceeded them had no way to raise them short of a code change
+  // and a redeploy. Defaults are the values they previously had.
+  SYNC_RATE_LIMIT_MAX: z.coerce.number().int().positive().default(120),
+  UPLOAD_RATE_LIMIT_MAX: z.coerce.number().int().positive().default(300),
 
   MAX_FAILED_LOGINS: z.coerce.number().int().positive().default(5),
   ACCOUNT_LOCK_MINUTES: z.coerce.number().int().positive().default(15),

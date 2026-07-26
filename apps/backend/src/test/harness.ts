@@ -86,6 +86,12 @@ export function configureTestEnvironment(): void {
   // dedicated test that sets this down deliberately.
   process.env.RATE_LIMIT_MAX_REQUESTS = '100000';
   process.env.AUTH_RATE_LIMIT_MAX = '100000';
+  // The sync and upload limiters have their own budgets. Leaving them at the
+  // production defaults made the suite flaky rather than failing: two runs
+  // passed and the third returned 429 from whichever file happened to go last,
+  // because the limiter state lives in Redis and outlives the process.
+  process.env.SYNC_RATE_LIMIT_MAX = '100000';
+  process.env.UPLOAD_RATE_LIMIT_MAX = '100000';
 }
 
 /** Apply migrations to the test database. Idempotent; safe to call per run. */

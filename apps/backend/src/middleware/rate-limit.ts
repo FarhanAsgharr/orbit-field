@@ -77,7 +77,7 @@ export const otpLimiter = build('otp', 900, 5, false);
  * legitimately makes many rapid calls to drain its queue, and throttling that
  * would be indistinguishable from the outage it is recovering from.
  */
-export const syncLimiter = build('sync', 60, 120);
+export const syncLimiter = build('sync', 60, env.SYNC_RATE_LIMIT_MAX);
 
 /** Uploads: chunked, so a single large file is many requests. */
-export const uploadLimiter = build('upload', 60, 300);
+export const uploadLimiter = build('upload', 60, env.UPLOAD_RATE_LIMIT_MAX);
