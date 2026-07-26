@@ -107,6 +107,20 @@ groups:
             administrator reading the application log. Intended for evaluation,
             not for an install with real users.
 
+  # ---------------------------------------------------------------------------
+  # These two only work on a deployment where one process both runs the cron and
+  # serves /metrics — a container, not Vercel Functions.
+  #
+  # Verified on the live serverless deployment: after a successful cron run the
+  # gauge still read 0, because the invocation that ran the sweep and the one
+  # that answered the scrape were different instances with separate memory. The
+  # counters are real, they are simply not visible to a scraper.
+  #
+  # On serverless, monitor the cron externally instead: Vercel's own cron log,
+  # or a heartbeat the job pings on success (Better Stack, Healthchecks.io).
+  # Leaving these enabled there gives an alert that can never fire, which is
+  # worse than no alert because it looks like coverage.
+  # ---------------------------------------------------------------------------
   - name: orbit-background-jobs
     rules:
       # Staleness, not failure. A cron that stops firing emits no failure metric

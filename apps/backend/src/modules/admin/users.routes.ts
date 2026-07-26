@@ -37,11 +37,11 @@ import {
   sortArgs,
 } from '../../lib/pagination.js';
 import { revokeUserTokens, signActionToken } from '../../lib/tokens.js';
-import { sendInvitationEmail } from '../email/email.service.js';
 import { requireAuth, requirePermission } from '../../middleware/auth.js';
 import { auth, clientIp } from '../../middleware/context.js';
 import { asyncHandler } from '../../middleware/error.js';
 import { schemas, validate } from '../../middleware/validate.js';
+import { sendInvitationEmail } from '../email/email.service.js';
 
 const router: Router = Router();
 

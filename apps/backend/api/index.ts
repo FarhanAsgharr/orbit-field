@@ -35,9 +35,9 @@
 import type { IncomingMessage, ServerResponse } from 'node:http';
 
 import { createApp } from '../dist/app.js';
-import { initSentry } from '../dist/modules/observability/sentry.js';
 import { logger } from '../dist/config/logger.js';
 import { assertProductionSecrets } from '../dist/middleware/security.js';
+import { initSentry } from '../dist/modules/observability/sentry.js';
 
 /**
  * BigInt serialisation, again — and this time not through Express.

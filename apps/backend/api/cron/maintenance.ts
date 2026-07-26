@@ -28,8 +28,8 @@
 import type { IncomingMessage, ServerResponse } from 'node:http';
 
 import { logger } from '../../dist/config/logger.js';
-import { increment, setGauge } from '../../dist/modules/observability/metrics.js';
 import { pruneExpiredTokens } from '../../dist/lib/tokens.js';
+import { increment, setGauge } from '../../dist/modules/observability/metrics.js';
 import { pruneSyncTables } from '../../dist/modules/sync/sync.service.js';
 import { pruneExpiredUploads } from '../../dist/modules/uploads/uploads.routes.js';
 
@@ -91,6 +91,39 @@ export default async function handler(req: IncomingMessage, res: ServerResponse)
 
   const durationMs = Date.now() - startedAt;
   const allOk = syncTables.ok && tokens.ok && uploads.ok;
+
+  /*
+   * Recorded as metrics as well as logged.
+   *
+   * A caveat that was measured rather than assumed: on Vercel these are
+   * invisible to a Prometheus scrape. The invocation that runs this sweep and
+   * the one that answers /metrics are different instances with separate memory,
+   * so the gauge set here reads 0 to a scraper — confirmed against the live
+   * deployment. They remain correct in the container deployment, where one
+   * process does both; on serverless the cron must be watched externally
+   * instead. See deployment/prometheus/alerts.yml.
+   */
+  increment('orbit_background_jobs_total', {
+    job: 'maintenance',
+    outcome: allOk ? 'success' : 'partial',
+  });
+  increment(
+    'orbit_background_job_rows_pruned_total',
+    { sweep: 'change_log' },
+    syncTables.result?.changeLog ?? 0,
+  );
+  increment(
+    'orbit_background_job_rows_pruned_total',
+    { sweep: 'operations' },
+    syncTables.result?.operations ?? 0,
+  );
+  increment('orbit_background_job_rows_pruned_total', { sweep: 'tokens' }, tokens.result ?? 0);
+  increment('orbit_background_job_rows_pruned_total', { sweep: 'uploads' }, uploads.result ?? 0);
+  if (allOk) {
+    setGauge('orbit_background_job_last_success_timestamp', Math.floor(Date.now() / 1000), {
+      job: 'maintenance',
+    });
+  }
 
   logger.info(
     {
