@@ -77,7 +77,10 @@ interface TemplateDetailData {
   discipline: string | null;
   activeVersionId: string | null;
   isArchived: boolean;
+  /** Summaries only — these deliberately carry no definition. */
   versions: Version[];
+  /** The resolved version, with its definition. Defaults to the active one. */
+  version: (Version & { definition?: { sections?: EditorSection[] } }) | null;
 }
 
 const passFailOptions = () => [
@@ -105,13 +108,34 @@ export function TemplateDetail(): React.ReactElement {
     null,
   );
 
+  /*
+   * Two requests, because the endpoint splits the data.
+   *
+   * `versions[]` carries summaries with no definition; the questions come back
+   * in a separate `version` object which defaults to the *active* one. An
+   * author works on the newest version, which on a template with a published
+   * release is not the active one — so the definition has to be asked for by
+   * id. Reading `versions[0].definition` returns undefined, and saving that
+   * would replace the checklist with nothing.
+   */
   const query = useQuery({
     queryKey: ['template', id],
     queryFn: () => api.get<TemplateDetailData>(`/templates/${id}`),
   });
 
+  const latestId = query.data?.versions?.[0]?.id;
+  const needsFetch = Boolean(latestId && query.data?.version?.id !== latestId);
+
+  const latestVersion = useQuery({
+    queryKey: ['template-version', id, latestId],
+    enabled: needsFetch,
+    queryFn: () =>
+      api.get<TemplateDetailData>(`/templates/${id}`, { versionId: latestId as string }),
+  });
+
   const refresh = (): void => {
     void queryClient.invalidateQueries({ queryKey: ['template', id] });
+    void queryClient.invalidateQueries({ queryKey: ['template-version', id] });
     void queryClient.invalidateQueries({ queryKey: ['templates'] });
     void queryClient.invalidateQueries({ queryKey: ['ref'] });
   };
@@ -120,7 +144,9 @@ export function TemplateDetail(): React.ReactElement {
   const latest = query.data?.versions?.[0];
   const isDraft = latest ? latest.publishedAt === null : false;
 
-  const editing = sections ?? (latest?.definition?.sections as EditorSection[] | undefined) ?? [];
+  const resolved = needsFetch ? latestVersion.data?.version : query.data?.version;
+  const stored = (resolved?.definition?.sections ?? []) as EditorSection[];
+  const editing = sections ?? stored;
 
   const saveDraft = useMutation({
     mutationFn: () =>
@@ -316,6 +342,8 @@ export function TemplateDetail(): React.ReactElement {
               </button>
             ) : null}
           </div>
+        ) : needsFetch && latestVersion.isLoading ? (
+          <Loading />
         ) : (
           <div className="stack gap-4">
             {editing.map((section, si) => (
