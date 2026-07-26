@@ -344,6 +344,74 @@ describe('reading users and the role catalogue', () => {
   });
 });
 
+describe('user changes reach devices', () => {
+  /*
+   * The console shows a colleague the moment they are added. A phone shows
+   * them only if a change-log entry was written, because a device replays the
+   * change log and nothing else.
+   *
+   * When this was missing, an inspector added by an administrator was invisible
+   * to every device in the organisation — and on a freshly registered
+   * organisation, where the org and its owner were also unpublished, the app
+   * had nothing at all to build local state from. Sign-in returned a token and
+   * the app still could not start, which reads in the field as "the login is
+   * broken".
+   */
+  it('publishes a newly created colleague', async () => {
+    const res = await post('/users').send(newUser());
+    expect(res.status).toBe(201);
+
+    const entry = await prisma.changeLogEntry.findFirst({
+      where: { orgId: org.orgId, entityId: res.body.data.id, entity: 'USER' },
+    });
+    expect(entry).not.toBeNull();
+    expect(entry!.operation).toBe('CREATE');
+    expect((entry!.data as { email?: string }).email).toBe(res.body.data.email);
+  });
+
+  it('never puts a password hash in the change log', async () => {
+    const res = await post('/users').send(newUser({ password: strongPassword() }));
+
+    const entry = await prisma.changeLogEntry.findFirstOrThrow({
+      where: { orgId: org.orgId, entityId: res.body.data.id, entity: 'USER' },
+    });
+    // This row is replicated to every member of the organisation and then sits
+    // on their phones.
+    const payload = JSON.stringify(entry.data);
+    expect(payload).not.toContain('argon2');
+    expect(payload).not.toContain('passwordHash');
+  });
+
+  it('publishes an edit, so a phone stops showing the old name', async () => {
+    const created = await post('/users').send(newUser());
+    const id = created.body.data.id as string;
+
+    await patch(`/users/${id}`).send({ firstName: 'Renamed' }).expect(200);
+
+    const entries = await prisma.changeLogEntry.findMany({
+      where: { orgId: org.orgId, entityId: id, entity: 'USER' },
+      orderBy: { cursor: 'asc' },
+    });
+    expect(entries.map((e) => e.operation)).toContain('UPDATE');
+    expect((entries.at(-1)!.data as { firstName?: string }).firstName).toBe('Renamed');
+  });
+
+  it('publishes a deactivation as an update, keeping the row on the device', async () => {
+    const created = await post('/users').send(newUser());
+    const id = created.body.data.id as string;
+
+    await del(`/users/${id}`).expect(200);
+
+    const last = await prisma.changeLogEntry.findFirstOrThrow({
+      where: { orgId: org.orgId, entityId: id, entity: 'USER' },
+      orderBy: { cursor: 'desc' },
+    });
+    // A tombstone would take the name off historical work that person did.
+    expect(last.operation).toBe('UPDATE');
+    expect((last.data as { status?: string }).status).toBe('DEACTIVATED');
+  });
+});
+
 describe('reference data reaches devices', () => {
   const resources = [
     { path: '/clients', entity: 'CLIENT', body: () => ({ name: unique('Client') }) },

@@ -236,8 +236,21 @@ interface UserRow {
 }
 
 export function People(): React.ReactElement {
-  const { can } = useSession();
+  const { can, user } = useSession();
   const [role, setRole] = useState('');
+  const [editing, setEditing] = useState<UserRow | null>(null);
+
+  /*
+   * Who this operator may act on.
+   *
+   * Mirrors `canManageUser` on the server: strictly below your own rank, and
+   * never yourself. The server enforces it regardless — this only decides
+   * whether to draw a control, because a button whose sole outcome is a 403 is
+   * a worse way to learn the rule than not offering it.
+   */
+  const myRank = ROLE_RANK[(user?.role ?? 'VIEWER') as Role] ?? 0;
+  const manageable = (row: UserRow): boolean =>
+    row.id !== user?.id && myRank > (ROLE_RANK[row.role as Role] ?? 0);
 
   const columns: Array<Column<UserRow>> = [
     {
@@ -302,6 +315,22 @@ export function People(): React.ReactElement {
       numeric: true,
       render: (row) => relativeTime(row.lastLoginAt),
     },
+    {
+      key: 'actions',
+      header: '',
+      width: '90px',
+      render: (row) =>
+        can(Permission.USER_UPDATE) && manageable(row) ? (
+          <button className="btn btn--ghost btn--sm" onClick={() => setEditing(row)}>
+            Edit
+          </button>
+        ) : (
+          // Deliberately blank rather than a disabled button: there is nothing
+          // this operator can do to this person, and an inert control only
+          // invites the question.
+          <span className="muted">—</span>
+        ),
+    },
   ];
 
   return (
@@ -312,6 +341,8 @@ export function People(): React.ReactElement {
           <p className="page__subtitle">Who can sign in, and what they are allowed to do.</p>
         </div>
       </header>
+
+      {editing ? <EditMemberPanel member={editing} onClose={() => setEditing(null)} /> : null}
 
       <DataTable<UserRow>
         endpoint="/users"
@@ -355,6 +386,220 @@ export function People(): React.ReactElement {
 const EMPTY_INVITE = { email: '', firstName: '', lastName: '', role: 'INSPECTOR', password: '' };
 
 /**
+ * Edit a colleague, or take their access away.
+ *
+ * Deactivation rather than deletion, and the wording says so plainly. Audit
+ * trails, historical inspections and signatures all reference the user id, so
+ * removing the row would rewrite who did what — the opposite of what a
+ * compliance record is for. The server refuses a hard delete regardless; this
+ * exists so the person clicking it knows that before they click.
+ *
+ * Role changes end every session that user has open. That is deliberate: their
+ * existing token still asserts the old role until it does.
+ */
+function EditMemberPanel({
+  member,
+  onClose,
+}: {
+  member: UserRow;
+  onClose: () => void;
+}): React.ReactElement {
+  const queryClient = useQueryClient();
+  const { user } = useSession();
+  const [form, setForm] = useState({
+    firstName: member.firstName,
+    lastName: member.lastName,
+    role: member.role,
+    jobTitle: member.jobTitle ?? '',
+    department: member.department ?? '',
+  });
+  const [error, setError] = useState<string | null>(null);
+  const [confirmingRemoval, setConfirmingRemoval] = useState(false);
+
+  const myRank = ROLE_RANK[(user?.role ?? 'VIEWER') as Role] ?? 0;
+  const assignable = (
+    ['ADMIN', 'MANAGER', 'SUPERVISOR', 'INSPECTOR', 'TECHNICIAN', 'VIEWER'] as Role[]
+  ).filter((r) => myRank > ROLE_RANK[r]);
+
+  const done = (): void => {
+    void queryClient.invalidateQueries({ queryKey: ['users'] });
+    onClose();
+  };
+
+  const save = useMutation({
+    mutationFn: () =>
+      api.patch(`/users/${member.id}`, {
+        firstName: form.firstName,
+        lastName: form.lastName,
+        role: form.role,
+        jobTitle: form.jobTitle || null,
+        department: form.department || null,
+      }),
+    onSuccess: done,
+    onError: (err) => setError(err instanceof Error ? err.message : 'Could not save the changes.'),
+  });
+
+  const deactivate = useMutation({
+    mutationFn: () => api.delete<{ openInspections: number }>(`/users/${member.id}`),
+    onSuccess: done,
+    onError: (err) =>
+      setError(err instanceof Error ? err.message : 'Could not deactivate the account.'),
+  });
+
+  const busy = save.isPending || deactivate.isPending;
+
+  if (confirmingRemoval) {
+    return (
+      <div className="card popover" role="dialog" aria-label="Remove access">
+        <div className="card__head">
+          <h2 className="card__title">Remove access</h2>
+          <button className="btn btn--ghost btn--sm" onClick={onClose} disabled={busy}>
+            Cancel
+          </button>
+        </div>
+        <div className="card__body stack gap-4">
+          {error ? <ErrorBanner message={error} /> : null}
+          <p>
+            <strong>
+              {member.firstName} {member.lastName}
+            </strong>{' '}
+            will be signed out of every device immediately and will not be able to sign in again.
+          </p>
+          <p className="small muted">
+            The account is deactivated, not deleted — their name stays on the inspections they
+            carried out and the audit trail stays intact.
+            {member._count.assignedInspections > 0 ? (
+              <>
+                {' '}
+                They currently have{' '}
+                <strong>{member._count.assignedInspections} assigned inspection(s)</strong>, which
+                will need reassigning to somebody else.
+              </>
+            ) : null}
+          </p>
+          <button className="btn btn--danger" onClick={() => deactivate.mutate()} disabled={busy}>
+            {deactivate.isPending ? 'Removing…' : 'Remove access'}
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="card popover" role="dialog" aria-label="Edit person">
+      <div className="card__head">
+        <h2 className="card__title">
+          {member.firstName} {member.lastName}
+        </h2>
+        <button className="btn btn--ghost btn--sm" onClick={onClose} disabled={busy}>
+          Cancel
+        </button>
+      </div>
+      <div className="card__body stack gap-4">
+        {error ? <ErrorBanner message={error} /> : null}
+        <p className="small muted">{member.email}</p>
+
+        <div className="row gap-3">
+          <div className="field grow">
+            <label className="field__label" htmlFor="edit-first">
+              First name
+            </label>
+            <input
+              id="edit-first"
+              className="input"
+              value={form.firstName}
+              onChange={(e) => setForm({ ...form, firstName: e.target.value })}
+            />
+          </div>
+          <div className="field grow">
+            <label className="field__label" htmlFor="edit-last">
+              Last name
+            </label>
+            <input
+              id="edit-last"
+              className="input"
+              value={form.lastName}
+              onChange={(e) => setForm({ ...form, lastName: e.target.value })}
+            />
+          </div>
+        </div>
+
+        <div className="field">
+          <label className="field__label" htmlFor="edit-role">
+            Role
+          </label>
+          <select
+            id="edit-role"
+            className="select"
+            value={form.role}
+            onChange={(e) => setForm({ ...form, role: e.target.value })}
+          >
+            {/* The current role stays selectable even if it is at or above the
+                operator's own rank, so opening the panel cannot silently
+                propose a demotion. */}
+            {Array.from(new Set([member.role, ...assignable])).map((r) => (
+              <option key={r} value={r}>
+                {roleBadge(r).label}
+              </option>
+            ))}
+          </select>
+          {form.role !== member.role ? (
+            <span className="field__hint">
+              Changing the role signs them out everywhere — their current session still claims the
+              old one until it does.
+            </span>
+          ) : null}
+        </div>
+
+        <div className="row gap-3">
+          <div className="field grow">
+            <label className="field__label" htmlFor="edit-job">
+              Job title
+            </label>
+            <input
+              id="edit-job"
+              className="input"
+              value={form.jobTitle}
+              onChange={(e) => setForm({ ...form, jobTitle: e.target.value })}
+            />
+          </div>
+          <div className="field grow">
+            <label className="field__label" htmlFor="edit-dept">
+              Department
+            </label>
+            <input
+              id="edit-dept"
+              className="input"
+              value={form.department}
+              onChange={(e) => setForm({ ...form, department: e.target.value })}
+            />
+          </div>
+        </div>
+
+        <button className="btn" onClick={() => save.mutate()} disabled={busy}>
+          {save.isPending ? 'Saving…' : 'Save changes'}
+        </button>
+
+        {member.status !== 'DEACTIVATED' ? (
+          <button
+            className="btn btn--ghost"
+            onClick={() => {
+              setError(null);
+              setConfirmingRemoval(true);
+            }}
+            disabled={busy}
+          >
+            Remove access…
+          </button>
+        ) : (
+          <p className="small muted">This account is already deactivated.</p>
+        )}
+      </div>
+    </div>
+  );
+}
+
+/**
  * Create a colleague's account.
  *
  * Two ways to hand over the credential, and the right one depends on whether
@@ -381,6 +626,8 @@ function InviteUserButton(): React.ReactElement {
   const [form, setForm] = useState(EMPTY_INVITE);
   const [error, setError] = useState<string | null>(null);
   const [created, setCreated] = useState<string | null>(null);
+  /** Set when the account was created but its invitation could not be sent. */
+  const [undelivered, setUndelivered] = useState<string | null>(null);
 
   const actorRank = ROLE_RANK[(user?.role ?? 'VIEWER') as Role] ?? 0;
   const assignable = (
@@ -392,6 +639,7 @@ function InviteUserButton(): React.ReactElement {
     setForm(EMPTY_INVITE);
     setError(null);
     setCreated(null);
+    setUndelivered(null);
   };
 
   const invite = useMutation({
@@ -399,18 +647,38 @@ function InviteUserButton(): React.ReactElement {
       const { password, ...rest } = form;
       // Omit the key entirely rather than sending an empty string: the server
       // decides INVITED vs ACTIVE on whether the field is present at all.
-      return api.post('/users', setPasswordNow ? { ...rest, password } : rest);
+      return api.post<{ emailDelivered: boolean | null }>(
+        '/users',
+        setPasswordNow ? { ...rest, password } : rest,
+      );
     },
-    onSuccess: () => {
+    onSuccess: (result) => {
       void queryClient.invalidateQueries({ queryKey: ['users'] });
       if (setPasswordNow) {
         // Keep the panel open on success: the administrator still has to pass
         // the password on, and closing it takes the only copy off the screen.
         setCreated(form.email);
         setError(null);
-      } else {
-        close();
+        return;
       }
+
+      /*
+       * An invitation that was not delivered leaves the account stranded.
+       *
+       * It exists, it has no password, and nothing the recipient can do will
+       * get them in — signing in returns "the email or password is incorrect",
+       * which sends them and their administrator looking for a broken app.
+       *
+       * The API reports delivery precisely so this is knowable. Closing the
+       * panel on a failed send, as this did, is what turned a recoverable
+       * situation into a mystery.
+       */
+      if (result?.emailDelivered === false) {
+        setUndelivered(form.email);
+        setError(null);
+        return;
+      }
+      close();
     },
     onError: (err) =>
       setError(err instanceof Error ? err.message : 'Could not create the account.'),
@@ -421,6 +689,41 @@ function InviteUserButton(): React.ReactElement {
       <button className="btn" onClick={() => setOpen(true)}>
         Add someone
       </button>
+    );
+  }
+
+  if (undelivered) {
+    return (
+      <div className="card popover" role="dialog" aria-label="Invitation not sent">
+        <div className="card__head">
+          <h2 className="card__title">Invitation could not be sent</h2>
+          <button className="btn btn--ghost btn--sm" onClick={close}>
+            Done
+          </button>
+        </div>
+        <div className="card__body stack gap-4">
+          <ErrorBanner
+            message={`The account for ${undelivered} was created, but no invitation email went out. This deployment has no mail provider configured, so nothing was delivered.`}
+          />
+          <p className="small muted">
+            Until they have a password, <strong>{undelivered}</strong> cannot sign in — the app will
+            tell them their email or password is incorrect, because the account has no password at
+            all. Delete the account and add them again with <em>Set a password now</em>, then pass
+            the password on directly.
+          </p>
+          <button
+            className="btn"
+            onClick={() => {
+              // Pre-select the mode that works without mail, and keep the name
+              // and email so this is one click rather than a re-type.
+              setUndelivered(null);
+              setSetPasswordNow(true);
+            }}
+          >
+            Set a password instead
+          </button>
+        </div>
+      </div>
     );
   }
 

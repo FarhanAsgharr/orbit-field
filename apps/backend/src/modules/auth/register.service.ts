@@ -350,14 +350,78 @@ export async function registerOrganization(input: RegisterInput): Promise<Regist
       },
     });
 
+    /*
+     * Everything a device needs to bootstrap must reach the change log — not
+     * just the template.
+     *
+     * A device replays the change log and nothing else. This wrote only the
+     * TEMPLATE_VERSION entry, so a phone signing in to a self-registered
+     * organisation pulled a checklist and no organisation, no users, and
+     * nothing to attach work to. Sign-in succeeded at the API and the app had
+     * no local state to build from, which is indistinguishable from "the login
+     * is broken" to the person holding the phone.
+     *
+     * Order matters: a device applies entries in cursor order, and the
+     * organisation has to exist locally before rows that reference it.
+     */
+    const nextCursor = async (): Promise<bigint> => {
+      const rows = await tx.$queryRaw<Array<{ sync_sequence: bigint }>>`
+        UPDATE organizations SET "syncSequence" = "syncSequence" + 1
+         WHERE id = ${orgId}
+        RETURNING "syncSequence" AS sync_sequence
+      `;
+      return rows[0]!.sync_sequence;
+    };
+
+    /* Dates and BigInts have to survive JSON — a device reads this verbatim. */
+    const serialise = (row: unknown): Prisma.InputJsonValue =>
+      JSON.parse(
+        JSON.stringify(row, (_k, v: unknown) => {
+          if (typeof v === 'bigint') return Number(v);
+          if (v instanceof Date) return v.toISOString();
+          return v;
+        }),
+      ) as Prisma.InputJsonValue;
+
+    const publish = async (
+      entity: 'ORGANIZATION' | 'USER',
+      row: { id: string; version?: number },
+      table: string,
+    ): Promise<void> => {
+      const at = await nextCursor();
+      await tx.changeLogEntry.create({
+        data: {
+          cursor: at,
+          orgId,
+          entity,
+          operation: 'CREATE',
+          entityId: row.id,
+          version: row.version ?? 1,
+          data: serialise({ ...row, syncCursor: Number(at) }),
+        },
+      });
+      await tx.$executeRawUnsafe(
+        `UPDATE "${table}" SET "syncCursor" = $1 WHERE id = $2`,
+        at,
+        row.id,
+      );
+    };
+
+    const orgRow = await tx.organization.findUniqueOrThrow({ where: { id: orgId } });
+    await publish('ORGANIZATION', orgRow, 'organizations');
+
+    // Never the password hash: the device holds this row locally and it is
+    // replicated to every future member of the organisation.
+    const {
+      passwordHash: _hash,
+      passwordHistory: _history,
+      ...userRow
+    } = await tx.user.findUniqueOrThrow({ where: { id: userId } });
+    await publish('USER', userRow, 'users');
+
     // The published template must reach devices, so it needs a change-log entry
     // and a cursor like any other replicated row.
-    const cursorRows = await tx.$queryRaw<Array<{ sync_sequence: bigint }>>`
-      UPDATE organizations SET "syncSequence" = "syncSequence" + 1
-       WHERE id = ${orgId}
-      RETURNING "syncSequence" AS sync_sequence
-    `;
-    const cursor = cursorRows[0]!.sync_sequence;
+    const cursor = await nextCursor();
 
     await tx.changeLogEntry.create({
       data: {

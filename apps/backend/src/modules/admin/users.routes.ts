@@ -21,7 +21,7 @@ import {
   Permission,
   ROLE_PERMISSIONS,
 } from '@orbit/shared';
-import { type Role, ROLE_RANK } from '@orbit/types';
+import { type Role, ROLE_RANK, SyncEntity, SyncOperation } from '@orbit/types';
 import { toDisplayString, ulid } from '@orbit/utils';
 import { Prisma } from '@prisma/client';
 import { Router } from 'express';
@@ -42,10 +42,67 @@ import { auth, clientIp } from '../../middleware/context.js';
 import { asyncHandler } from '../../middleware/error.js';
 import { schemas, validate } from '../../middleware/validate.js';
 import { sendInvitationEmail } from '../email/email.service.js';
+import { recordChange } from '../sync/change-log.js';
 
 const router: Router = Router();
 
 /** Never select the password hash or its history. */
+/**
+ * Publish a user to the change log.
+ *
+ * Devices replay the change log and nothing else, so a user created or changed
+ * only in the database is invisible to every phone in the organisation. That is
+ * not cosmetic: an inspector's device needs the user rows to show who assigned
+ * a job and who reviewed it, and a newly added inspector never appears at all.
+ *
+ * The row is filtered, not passed through. `passwordHash` and
+ * `passwordHistory` must never leave the server — this row is replicated to
+ * every member of the organisation and then sits on their phones.
+ */
+async function publishUser(
+  tx: Prisma.TransactionClient,
+  orgId: string,
+  userId: string,
+  operation: 'CREATE' | 'UPDATE',
+  actor: { userId: string; deviceId: string | null },
+): Promise<void> {
+  const row = await tx.user.findUnique({
+    where: { id: userId },
+    select: {
+      id: true,
+      orgId: true,
+      email: true,
+      firstName: true,
+      lastName: true,
+      phone: true,
+      avatarUrl: true,
+      role: true,
+      status: true,
+      department: true,
+      jobTitle: true,
+      registrationNumber: true,
+      timezone: true,
+      locale: true,
+      version: true,
+      createdAt: true,
+      updatedAt: true,
+      deletedAt: true,
+    },
+  });
+  if (!row) return;
+
+  await recordChange(tx, {
+    orgId,
+    entity: SyncEntity.USER,
+    operation: operation === 'CREATE' ? SyncOperation.CREATE : SyncOperation.UPDATE,
+    entityId: userId,
+    version: row.version,
+    row,
+    actorUserId: actor.userId,
+    actorDeviceId: actor.deviceId,
+  });
+}
+
 const userSelect = {
   id: true,
   email: true,
@@ -309,6 +366,10 @@ router.post(
         },
       });
 
+      // Devices replay the change log and nothing else, so a colleague added
+      // here is invisible to every phone until this runs.
+      await publishUser(tx, subject.orgId, userId, 'CREATE', subject);
+
       return user;
     });
 
@@ -480,6 +541,10 @@ router.patch(
         },
       });
 
+      // A renamed or re-roled colleague must reach devices too, or a phone
+      // keeps showing the old name against every job they touched.
+      await publishUser(tx, subject.orgId, id, 'UPDATE', subject);
+
       return user;
     });
 
@@ -537,6 +602,10 @@ router.delete(
           requestId: req.requestId,
         },
       });
+
+      // A DEACTIVATED status replicated as an UPDATE, not a DELETE: the row
+      // has to stay on the device so historical work still shows who did it.
+      await publishUser(tx, subject.orgId, id, 'UPDATE', subject);
     });
 
     await revokeUserTokens(id, 'user deactivated');
