@@ -40,6 +40,31 @@ if (!BASE || !ADMIN_EMAIL || !ADMIN_PASSWORD) {
   process.exit(2);
 }
 
+/*
+ * Extra headers sent with every request, as `Name: value` pairs separated by
+ * newlines or commas.
+ *
+ * This exists so the same suite can be run against a preview deployment. Vercel
+ * puts previews behind an authentication gate, which answers 302 to everything
+ * — so without a way to pass `x-vercel-protection-bypass` the only options are
+ * to leave previews unverified or to switch the gate off, and an unprotected
+ * preview is a copy of the application open to the internet.
+ */
+const EXTRA_HEADERS = Object.fromEntries(
+  (process.env.ORBIT_EXTRA_HEADERS ?? '')
+    .split(/[\n,]/)
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .map((line) => {
+      const at = line.indexOf(':');
+      if (at < 0) {
+        console.error(`Malformed ORBIT_EXTRA_HEADERS entry (expected "Name: value"): ${line}`);
+        process.exit(2);
+      }
+      return [line.slice(0, at).trim(), line.slice(at + 1).trim()];
+    }),
+);
+
 let passed = 0;
 let failed = 0;
 const failures = [];
@@ -76,6 +101,7 @@ async function api(path, options = {}) {
   const response = await fetch(`${BASE}${path}`, {
     method: options.method ?? 'GET',
     headers: {
+      ...EXTRA_HEADERS,
       ...(options.raw ? {} : { 'Content-Type': 'application/json' }),
       ...(options.token ? { Authorization: `Bearer ${options.token}` } : {}),
     },
@@ -186,7 +212,9 @@ async function main() {
 
     section('2. Deployment health');
     const origin = BASE.replace(/\/api\/v1$/, '');
-    const health = await fetch(`${origin}/health`).then((r) => r.json());
+    const health = await fetch(`${origin}/health`, { headers: EXTRA_HEADERS }).then((r) =>
+      r.json(),
+    );
     check('/health reports ok', health.status === 'ok', JSON.stringify(health));
     const signup = await api('/auth/signup-available');
     check(
