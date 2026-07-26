@@ -192,6 +192,7 @@ export function Shell(): React.ReactElement {
               { to: '/clients', label: 'Clients', permission: Permission.CLIENT_READ },
               { to: '/projects', label: 'Projects', permission: Permission.PROJECT_READ },
               { to: '/sites', label: 'Sites', permission: Permission.SITE_READ },
+              { to: '/assets', label: 'Assets', permission: Permission.ASSET_READ },
             ]}
           />
 

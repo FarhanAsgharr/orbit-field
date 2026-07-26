@@ -261,6 +261,10 @@ model User {
   department         String? @db.VarChar(120)
   jobTitle           String? @db.VarChar(120)
   registrationNumber String? @db.VarChar(80)
+  /**
+   * Payroll or badge number, as the company already knows this person.
+   */
+  employeeId         String? @db.VarChar(60)
   timezone           String? @db.VarChar(64)
   locale             String? @db.VarChar(16)
 
@@ -285,19 +289,21 @@ model User {
 
   organization Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
 
-  devices             Device[]
-  refreshTokens       RefreshToken[]
-  otpCodes            OtpCode[]
-  projectMemberships  ProjectMember[]
-  managedProjects     Project[]            @relation("ProjectManager")
-  assignedInspections Inspection[]         @relation("InspectionAssignee")
-  createdInspections  Inspection[]         @relation("InspectionCreator")
-  reviewedInspections Inspection[]         @relation("InspectionReviewer")
-  auditLogs           AuditLog[]
-  notifications       Notification[]
-  createdTemplates    Template[]
-  syncSessions        SyncSession[]
-  conflicts           SyncConflictRecord[]
+  devices               Device[]
+  refreshTokens         RefreshToken[]
+  otpCodes              OtpCode[]
+  projectMemberships    ProjectMember[]
+  managedProjects       Project[]            @relation("ProjectManager")
+  assignedInspections   Inspection[]         @relation("InspectionAssignee")
+  createdInspections    Inspection[]         @relation("InspectionCreator")
+  reviewedInspections   Inspection[]         @relation("InspectionReviewer")
+  supervisedInspections Inspection[]         @relation("InspectionSupervisor")
+  inspectionComments    InspectionComment[]
+  auditLogs             AuditLog[]
+  notifications         Notification[]
+  createdTemplates      Template[]
+  syncSessions          SyncSession[]
+  conflicts             SyncConflictRecord[]
 
   // Email is unique per organisation, not globally — the same contractor may
   // legitimately hold accounts with two client organisations.
@@ -652,16 +658,24 @@ model Inspection {
   department  String?           @db.VarChar(120)
 
   assignedToId String? @db.VarChar(26)
+  /**
+   * The supervisor accountable for reviewing this work when it is submitted.
+   */
+  supervisorId String? @db.VarChar(26)
   createdById  String  @db.VarChar(26)
   reviewedById String? @db.VarChar(26)
 
-  startedAt       DateTime? @db.Timestamptz(6)
-  scheduledFor    DateTime? @db.Timestamptz(6)
-  dueAt           DateTime? @db.Timestamptz(6)
-  completedAt     DateTime? @db.Timestamptz(6)
-  submittedAt     DateTime? @db.Timestamptz(6)
-  reviewedAt      DateTime? @db.Timestamptz(6)
-  rejectionReason String?   @db.Text
+  startedAt                DateTime? @db.Timestamptz(6)
+  scheduledFor             DateTime? @db.Timestamptz(6)
+  dueAt                    DateTime? @db.Timestamptz(6)
+  /// When the visit is planned to start, distinct from when it is due.
+  scheduledAt              DateTime? @db.Timestamptz(6)
+  /// Planned length in minutes, for laying out a day of work.
+  estimatedDurationMinutes Int?
+  completedAt              DateTime? @db.Timestamptz(6)
+  submittedAt              DateTime? @db.Timestamptz(6)
+  reviewedAt               DateTime? @db.Timestamptz(6)
+  rejectionReason          String?   @db.Text
 
   startLocation          Json?
   endLocation            Json?
@@ -687,16 +701,18 @@ model Inspection {
   lastWriterDeviceId String?   @db.VarChar(26)
   lastWriterUserId   String?   @db.VarChar(26)
 
-  organization    Organization    @relation(fields: [orgId], references: [id], onDelete: Cascade)
-  template        Template        @relation(fields: [templateId], references: [id])
-  templateVersion TemplateVersion @relation(fields: [templateVersionId], references: [id])
-  project         Project?        @relation(fields: [projectId], references: [id], onDelete: SetNull)
-  client          Client?         @relation(fields: [clientId], references: [id], onDelete: SetNull)
-  site            Site?           @relation(fields: [siteId], references: [id], onDelete: SetNull)
-  asset           Asset?          @relation(fields: [assetId], references: [id], onDelete: SetNull)
-  assignedTo      User?           @relation("InspectionAssignee", fields: [assignedToId], references: [id], onDelete: SetNull)
-  createdBy       User            @relation("InspectionCreator", fields: [createdById], references: [id])
-  reviewedBy      User?           @relation("InspectionReviewer", fields: [reviewedById], references: [id], onDelete: SetNull)
+  organization    Organization        @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  template        Template            @relation(fields: [templateId], references: [id])
+  templateVersion TemplateVersion     @relation(fields: [templateVersionId], references: [id])
+  project         Project?            @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  client          Client?             @relation(fields: [clientId], references: [id], onDelete: SetNull)
+  site            Site?               @relation(fields: [siteId], references: [id], onDelete: SetNull)
+  asset           Asset?              @relation(fields: [assetId], references: [id], onDelete: SetNull)
+  assignedTo      User?               @relation("InspectionAssignee", fields: [assignedToId], references: [id], onDelete: SetNull)
+  supervisor      User?               @relation("InspectionSupervisor", fields: [supervisorId], references: [id], onDelete: SetNull)
+  comments        InspectionComment[]
+  createdBy       User                @relation("InspectionCreator", fields: [createdById], references: [id])
+  reviewedBy      User?               @relation("InspectionReviewer", fields: [reviewedById], references: [id], onDelete: SetNull)
 
   responses   InspectionResponse[]
   attachments Attachment[]
@@ -900,6 +916,29 @@ model Report {
 // "give me everything for my org with cursor > N". Keeping it separate from the
 // entity tables means a pull is one indexed range scan instead of a dozen
 // per-table queries with per-table watermarks.
+/// A review conversation on an inspection.
+///
+/// "Rejected" on its own tells an inspector they have to go back to site
+/// without telling them what to do differently. The thread is what carries
+/// that, and it has to survive the inspection being resubmitted — so comments
+/// are append-only and never edited.
+model InspectionComment {
+  id           String   @id @db.VarChar(26)
+  orgId        String   @db.VarChar(26)
+  inspectionId String   @db.VarChar(26)
+  authorId     String?  @db.VarChar(26)
+  body         String   @db.Text
+  /// The review decision this comment accompanied, when it came from one.
+  decision     String?  @db.VarChar(30)
+  createdAt    DateTime @default(now()) @db.Timestamptz(6)
+
+  inspection Inspection @relation(fields: [inspectionId], references: [id], onDelete: Cascade)
+  author     User?      @relation(fields: [authorId], references: [id], onDelete: SetNull)
+
+  @@index([orgId, inspectionId, createdAt])
+  @@map("inspection_comments")
+}
+
 model ChangeLogEntry {
   // Cursors are allocated from a PER-ORGANISATION sequence, so `cursor` alone
   // is not unique across the table — two organisations both legitimately hold

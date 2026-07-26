@@ -50,6 +50,7 @@ interface Detail extends InspectionRecord {
   site: { name: string } | null;
   client: { name: string } | null;
   assignedTo: { firstName: string; lastName: string } | null;
+  supervisor: { firstName: string; lastName: string } | null;
   createdBy: { firstName: string; lastName: string } | null;
   reviewedBy: { firstName: string; lastName: string } | null;
   responses?: Array<{
@@ -111,6 +112,69 @@ export function InspectionDetail(): React.ReactElement {
     onError: (e) => setError(e instanceof Error ? e.message : 'Could not duplicate.'),
   });
 
+  /*
+   * The supervisor's decision, and the conversation around it.
+   *
+   * "Rejected" on its own sends somebody back to site without telling them what
+   * to change, so a reason is required for anything that is not an approval —
+   * the server enforces the same rule.
+   */
+  const [decision, setDecision] = useState<'APPROVE' | 'REQUEST_CHANGES' | 'REJECT' | null>(null);
+  const [reason, setReason] = useState('');
+  const [comment, setComment] = useState('');
+
+  const comments = useQuery({
+    queryKey: ['inspection-comments', id],
+    queryFn: () =>
+      api.get<
+        Array<{
+          id: string;
+          body: string;
+          decision: string | null;
+          createdAt: string;
+          author: { firstName: string; lastName: string } | null;
+        }>
+      >(`/inspections/${id}/comments`),
+  });
+
+  const refreshAll = (): void => {
+    refresh();
+    void queryClient.invalidateQueries({ queryKey: ['inspection-comments', id] });
+  };
+
+  const review = useMutation({
+    mutationFn: () =>
+      api.post(`/inspections/${id}/review`, { decision, reason: reason.trim() || undefined }),
+    onSuccess: () => {
+      setDecision(null);
+      setReason('');
+      refreshAll();
+    },
+    onError: (e) => setError(e instanceof Error ? e.message : 'Could not record the decision.'),
+  });
+
+  const addComment = useMutation({
+    mutationFn: () => api.post(`/inspections/${id}/comments`, { body: comment.trim() }),
+    onSuccess: () => {
+      setComment('');
+      refreshAll();
+    },
+    onError: (e) => setError(e instanceof Error ? e.message : 'Could not add the comment.'),
+  });
+
+  const cancel = useMutation({
+    mutationFn: (why: string) =>
+      api.post(`/inspections/${id}/cancel`, { reason: why || undefined }),
+    onSuccess: refreshAll,
+    onError: (e) => setError(e instanceof Error ? e.message : 'Could not cancel.'),
+  });
+
+  const reopen = useMutation({
+    mutationFn: () => api.post(`/inspections/${id}/reopen`, {}),
+    onSuccess: refreshAll,
+    onError: (e) => setError(e instanceof Error ? e.message : 'Could not reopen.'),
+  });
+
   const remove = useMutation({
     mutationFn: () => api.delete(`/inspections/${id}`),
     onSuccess: () => {
@@ -135,7 +199,13 @@ export function InspectionDetail(): React.ReactElement {
   const outcome = outcomeBadge(it.outcome);
   const priority = priorityBadge(it.priority);
   const share = it.totalFields > 0 ? it.answeredFields / it.totalFields : 0;
-  const busy = archive.isPending || duplicate.isPending || remove.isPending;
+  const busy =
+    archive.isPending ||
+    duplicate.isPending ||
+    remove.isPending ||
+    review.isPending ||
+    cancel.isPending ||
+    reopen.isPending;
   // Submitted work is a compliance record; archiving is how it gets out of the
   // way, and the server refuses a delete regardless.
   const deletable = ['DRAFT', 'SCHEDULED', 'IN_PROGRESS'].includes(it.status);
@@ -169,6 +239,24 @@ export function InspectionDetail(): React.ReactElement {
               disabled={busy}
             >
               {it.isArchived ? 'Unarchive' : 'Archive'}
+            </button>
+          ) : null}
+          {can(Permission.INSPECTION_UPDATE_ANY) &&
+          ['DRAFT', 'SCHEDULED', 'IN_PROGRESS', 'REJECTED'].includes(it.status) ? (
+            <button
+              className="btn btn--ghost"
+              onClick={() => {
+                const why = globalThis.prompt('Why is this being cancelled?') ?? '';
+                if (why !== null) cancel.mutate(why);
+              }}
+              disabled={busy}
+            >
+              Cancel visit
+            </button>
+          ) : null}
+          {can(Permission.INSPECTION_REOPEN) && ['CANCELLED', 'APPROVED'].includes(it.status) ? (
+            <button className="btn btn--ghost" onClick={() => reopen.mutate()} disabled={busy}>
+              Reopen
             </button>
           ) : null}
           {can(Permission.INSPECTION_DELETE) && deletable ? (
@@ -252,6 +340,13 @@ export function InspectionDetail(): React.ReactElement {
                 <span className="muted">Unassigned</span>
               )}
             </Row>
+            <Row label="Supervisor">
+              {it.supervisor ? (
+                `${it.supervisor.firstName} ${it.supervisor.lastName}`
+              ) : (
+                <span className="muted">None</span>
+              )}
+            </Row>
             <Row label="Client">{it.client?.name ?? <span className="muted">—</span>}</Row>
             <Row label="Project">{it.project?.name ?? <span className="muted">—</span>}</Row>
             <Row label="Site">{it.site?.name ?? <span className="muted">—</span>}</Row>
@@ -294,6 +389,114 @@ export function InspectionDetail(): React.ReactElement {
           </div>
         </Card>
       ) : null}
+
+      {can(Permission.INSPECTION_REVIEW) && ['SUBMITTED', 'UNDER_REVIEW'].includes(it.status) ? (
+        <Card title="Review">
+          <div className="stack gap-4">
+            <p className="small muted">
+              This work has been submitted and is waiting on a decision.
+            </p>
+            <div className="row gap-2">
+              {(
+                [
+                  ['APPROVE', 'Approve'],
+                  ['REQUEST_CHANGES', 'Request changes'],
+                  ['REJECT', 'Reject'],
+                ] as const
+              ).map(([value, label]) => (
+                <button
+                  key={value}
+                  className={`btn${decision === value ? '' : ' btn--ghost'}`}
+                  onClick={() => setDecision(value)}
+                  disabled={busy}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+
+            {decision ? (
+              <div className="stack gap-3">
+                <div className="field">
+                  <label className="field__label" htmlFor="review-reason">
+                    {decision === 'APPROVE' ? 'Comment (optional)' : 'What needs to change?'}
+                  </label>
+                  <textarea
+                    id="review-reason"
+                    className="input"
+                    rows={3}
+                    value={reason}
+                    onChange={(e) => setReason(e.target.value)}
+                  />
+                  {decision !== 'APPROVE' ? (
+                    <span className="field__hint">
+                      Required. The inspector has to act on this, and “rejected” alone tells them
+                      nothing.
+                    </span>
+                  ) : null}
+                </div>
+                <button
+                  className="btn"
+                  onClick={() => review.mutate()}
+                  disabled={busy || (decision !== 'APPROVE' && reason.trim() === '')}
+                >
+                  {review.isPending
+                    ? 'Recording…'
+                    : `Confirm ${decision.toLowerCase().replace(/_/g, ' ')}`}
+                </button>
+              </div>
+            ) : null}
+          </div>
+        </Card>
+      ) : null}
+
+      <Card title={`Conversation (${comments.data?.length ?? 0})`}>
+        <div className="stack gap-4">
+          {comments.data && comments.data.length > 0 ? (
+            <ul className="stack gap-3">
+              {comments.data.map((c) => (
+                <li key={c.id} className="stack gap-1">
+                  <div className="row gap-2">
+                    <strong>
+                      {c.author ? `${c.author.firstName} ${c.author.lastName}` : 'Removed user'}
+                    </strong>
+                    {c.decision ? (
+                      <Badge
+                        label={c.decision.toLowerCase().replace(/_/g, ' ')}
+                        tone={c.decision === 'APPROVE' ? 'ok' : 'warn'}
+                      />
+                    ) : null}
+                    <span className="muted small">{relativeTime(c.createdAt)}</span>
+                  </div>
+                  <p>{c.body}</p>
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <Empty title="Nothing said yet" body="Review decisions and comments appear here." />
+          )}
+
+          <div className="field">
+            <label className="field__label" htmlFor="new-comment">
+              Add a comment
+            </label>
+            <textarea
+              id="new-comment"
+              className="input"
+              rows={2}
+              value={comment}
+              onChange={(e) => setComment(e.target.value)}
+            />
+          </div>
+          <button
+            className="btn btn--ghost"
+            onClick={() => addComment.mutate()}
+            disabled={busy || comment.trim() === ''}
+          >
+            {addComment.isPending ? 'Posting…' : 'Post comment'}
+          </button>
+        </div>
+      </Card>
 
       <Card title={`Answers (${it.responses?.length ?? 0})`}>
         {it.responses && it.responses.length > 0 ? (

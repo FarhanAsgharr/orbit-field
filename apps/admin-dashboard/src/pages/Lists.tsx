@@ -15,6 +15,7 @@ import { Link } from 'react-router-dom';
 import { type Column, DataTable } from '../components/DataTable';
 import { InspectionForm } from '../components/InspectionForm';
 import { PasswordInput } from '../components/PasswordInput';
+import { useResourceEditor } from '../components/ResourceForm';
 import {
   Badge,
   Bar,
@@ -1168,6 +1169,7 @@ interface ClientRow {
 }
 
 export function Clients(): React.ReactElement {
+  const editor = useResourceEditor('clients');
   const columns: Array<Column<ClientRow>> = [
     {
       key: 'name',
@@ -1225,6 +1227,15 @@ export function Clients(): React.ReactElement {
         />
       ),
     },
+    {
+      key: 'actions',
+      header: '',
+      width: '70px',
+      render: (row) =>
+        editor.editAction(
+          row as unknown as Record<string, string | number | boolean | null> & { id: string },
+        ),
+    },
   ];
 
   return (
@@ -1235,8 +1246,11 @@ export function Clients(): React.ReactElement {
           <p className="page__subtitle">Organisations you carry out inspections for.</p>
         </div>
       </header>
+      {editor.modal}
+
       <DataTable<ClientRow>
         endpoint="/clients"
+        toolbarAction={editor.toolbarAction}
         queryKey={['clients']}
         columns={columns}
         rowKey={(r) => r.id}
@@ -1259,6 +1273,7 @@ interface ProjectRow {
 }
 
 export function Projects(): React.ReactElement {
+  const editor = useResourceEditor('projects');
   const columns: Array<Column<ProjectRow>> = [
     {
       key: 'name',
@@ -1307,6 +1322,15 @@ export function Projects(): React.ReactElement {
         <Badge label={row.isActive ? 'Active' : 'Closed'} tone={row.isActive ? 'ok' : 'neutral'} />
       ),
     },
+    {
+      key: 'actions',
+      header: '',
+      width: '70px',
+      render: (row) =>
+        editor.editAction(
+          row as unknown as Record<string, string | number | boolean | null> & { id: string },
+        ),
+    },
   ];
 
   return (
@@ -1319,8 +1343,11 @@ export function Projects(): React.ReactElement {
           </p>
         </div>
       </header>
+      {editor.modal}
+
       <DataTable<ProjectRow>
         endpoint="/projects"
+        toolbarAction={editor.toolbarAction}
         queryKey={['projects']}
         columns={columns}
         rowKey={(r) => r.id}
@@ -1346,6 +1373,7 @@ interface SiteRow {
 }
 
 export function Sites(): React.ReactElement {
+  const editor = useResourceEditor('sites');
   const columns: Array<Column<SiteRow>> = [
     {
       key: 'name',
@@ -1404,6 +1432,15 @@ export function Sites(): React.ReactElement {
       width: '110px',
       render: (row) => row._count.inspections,
     },
+    {
+      key: 'actions',
+      header: '',
+      width: '70px',
+      render: (row) =>
+        editor.editAction(
+          row as unknown as Record<string, string | number | boolean | null> & { id: string },
+        ),
+    },
   ];
 
   return (
@@ -1416,13 +1453,147 @@ export function Sites(): React.ReactElement {
           </p>
         </div>
       </header>
+      {editor.modal}
+
       <DataTable<SiteRow>
         endpoint="/sites"
+        toolbarAction={editor.toolbarAction}
         queryKey={['sites']}
         columns={columns}
         rowKey={(r) => r.id}
         searchPlaceholder="Search sites"
         emptyTitle="No sites yet"
+      />
+    </>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Assets
+// ---------------------------------------------------------------------------
+
+interface AssetRow {
+  id: string;
+  name: string;
+  tag: string;
+  category: string | null;
+  manufacturer: string | null;
+  model: string | null;
+  serialNumber: string | null;
+  qrCode: string | null;
+  barcode: string | null;
+  isActive: boolean;
+  site: { id: string; name: string } | null;
+}
+
+/**
+ * The equipment inspections are carried out against.
+ *
+ * This page did not exist. Assets had a complete API and were replicated to
+ * devices, but nothing in the console listed or created them — an
+ * administrator could schedule an inspection and had no way to record the pump
+ * it was about.
+ */
+export function Assets(): React.ReactElement {
+  const editor = useResourceEditor('assets');
+
+  const columns: Array<Column<AssetRow>> = [
+    {
+      key: 'name',
+      header: 'Asset',
+      sortable: true,
+      render: (row) => (
+        <div>
+          <div className="table__primary">{row.name}</div>
+          <div className="table__meta num">{row.tag}</div>
+        </div>
+      ),
+    },
+    {
+      key: 'site',
+      header: 'Site',
+      render: (row) => row.site?.name ?? <span className="muted">Unplaced</span>,
+    },
+    {
+      key: 'category',
+      header: 'Type',
+      render: (row) => row.category ?? <span className="muted">—</span>,
+    },
+    {
+      key: 'make',
+      header: 'Make and model',
+      render: (row) =>
+        row.manufacturer || row.model ? (
+          <div>
+            <div>{row.manufacturer ?? '—'}</div>
+            <div className="table__meta">{row.model ?? ''}</div>
+          </div>
+        ) : (
+          <span className="muted">—</span>
+        ),
+    },
+    {
+      key: 'serialNumber',
+      header: 'Serial',
+      render: (row) =>
+        row.serialNumber ? (
+          <span className="num">{row.serialNumber}</span>
+        ) : (
+          <span className="muted">—</span>
+        ),
+    },
+    {
+      key: 'codes',
+      header: 'Scannable',
+      width: '110px',
+      render: (row) =>
+        // What an inspector scans to open the right asset on site.
+        row.qrCode || row.barcode ? (
+          <Badge label={row.qrCode ? 'QR' : 'Barcode'} tone="info" />
+        ) : (
+          <span className="muted">—</span>
+        ),
+    },
+    {
+      key: 'isActive',
+      header: 'Status',
+      width: '100px',
+      render: (row) => (
+        <Badge label={row.isActive ? 'active' : 'retired'} tone={row.isActive ? 'ok' : 'danger'} />
+      ),
+    },
+    {
+      key: 'actions',
+      header: '',
+      width: '70px',
+      render: (row) =>
+        editor.editAction(
+          row as unknown as Record<string, string | number | boolean | null> & { id: string },
+        ),
+    },
+  ];
+
+  return (
+    <>
+      <header className="page__head">
+        <div>
+          <h1 className="page__title">Assets</h1>
+          <p className="page__subtitle">
+            Equipment on site. A QR or barcode lets an inspector open the right one by scanning it.
+          </p>
+        </div>
+      </header>
+      {editor.modal}
+
+      <DataTable<AssetRow>
+        endpoint="/assets"
+        toolbarAction={editor.toolbarAction}
+        queryKey={['assets']}
+        columns={columns}
+        rowKey={(r) => r.id}
+        searchPlaceholder="Search name, tag, serial, or model"
+        emptyTitle="No assets yet"
+        emptyBody="Add the equipment you inspect, so a report can name it."
       />
     </>
   );

@@ -366,13 +366,11 @@ describe('what an inspector may do', () => {
   it('can still create their own work through sync, which is the offline path', async () => {
     // The REST refusal above must not have closed the door the product is
     // built on: an inspector in a basement creating an inspection on device.
-    const login = await request(server)
-      .post(`${api}/auth/login`)
-      .send({
-        email: org.users.INSPECTOR!.email,
-        password: org.users.INSPECTOR!.password,
-        device: device(),
-      });
+    const login = await request(server).post(`${api}/auth/login`).send({
+      email: org.users.INSPECTOR!.email,
+      password: org.users.INSPECTOR!.password,
+      device: device(),
+    });
     const deviceId = login.body.data.device.id as string;
     const token = login.body.data.tokens.accessToken as string;
     const id = ulid();
@@ -439,5 +437,194 @@ describe('the admin list, which the console renders', () => {
     const created = await post('/inspections').send(body());
     const res = await get(`/inspections?assignedToId=${org.users.INSPECTOR!.id}&pageSize=200`);
     expect(res.body.data.items.map((i: { id: string }) => i.id)).toContain(created.body.data.id);
+  });
+});
+
+/**
+ * The supervisor's half of the workflow.
+ *
+ * A submitted inspection is waiting on a person, and what that person sends
+ * back is the only thing the inspector can act on. "Rejected" with no reason
+ * means a second site visit to find out what was wrong, so the thread is not
+ * decoration — it is the instruction.
+ */
+describe('review, comments, cancel and reopen', () => {
+  /** Put an inspection in front of a reviewer. */
+  async function submitted() {
+    const created = await post('/inspections').send(body());
+    const id = created.body.data.id as string;
+    await prisma.inspection.update({ where: { id }, data: { status: 'SUBMITTED' } });
+    return id;
+  }
+
+  it('records an approval with an optional comment', async () => {
+    const id = await submitted();
+
+    const res = await post(`/inspections/${id}/review`).send({
+      decision: 'APPROVE',
+      reason: 'Clear photographs, nothing outstanding.',
+    });
+    expect(res.status).toBe(200);
+    expect(res.body.data.status).toBe('APPROVED');
+
+    const thread = await get(`/inspections/${id}/comments`);
+    expect(thread.body.data).toHaveLength(1);
+    expect(thread.body.data[0].decision).toBe('APPROVE');
+  });
+
+  it('distinguishes "request changes" from a rejection', async () => {
+    const changes = await submitted();
+    const rejected = await submitted();
+
+    await post(`/inspections/${changes}/review`)
+      .send({ decision: 'REQUEST_CHANGES', reason: 'Add the north elevation photograph.' })
+      .expect(200);
+    await post(`/inspections/${rejected}/review`)
+      .send({ decision: 'REJECT', reason: 'Wrong asset inspected.' })
+      .expect(200);
+
+    // Both send the work back — the state machine has one transition for that
+    // — but the intent differs, and intent is what the inspector acts on.
+    for (const id of [changes, rejected]) {
+      const row = await prisma.inspection.findUniqueOrThrow({ where: { id } });
+      expect(row.status).toBe('REJECTED');
+    }
+
+    const a = await get(`/inspections/${changes}/comments`);
+    const b = await get(`/inspections/${rejected}/comments`);
+    expect(a.body.data[0].decision).toBe('REQUEST_CHANGES');
+    expect(b.body.data[0].decision).toBe('REJECT');
+  });
+
+  it('refuses to send work back without saying why', async () => {
+    const id = await submitted();
+
+    for (const decision of ['REJECT', 'REQUEST_CHANGES']) {
+      const res = await post(`/inspections/${id}/review`).send({ decision });
+      expect(res.status).toBe(422);
+    }
+
+    const unchanged = await prisma.inspection.findUniqueOrThrow({ where: { id } });
+    expect(unchanged.status).toBe('SUBMITTED');
+  });
+
+  it('lets anyone who can see the inspection add a comment, including the inspector', async () => {
+    const id = await submitted();
+
+    const mine = await post(`/inspections/${id}/comments`, 'INSPECTOR').send({
+      body: 'The north face was inaccessible — scaffold booked for Thursday.',
+    });
+    expect(mine.status).toBe(201);
+
+    const thread = await get(`/inspections/${id}/comments`, 'INSPECTOR');
+    expect(thread.body.data.map((c: { body: string }) => c.body)).toContain(
+      'The north face was inaccessible — scaffold booked for Thursday.',
+    );
+  });
+
+  it('does not show the thread across an organisation boundary', async () => {
+    const other = await createTestOrg();
+    try {
+      const theirs = await createInspection(other, other.users.INSPECTOR!.id);
+      expect((await get(`/inspections/${theirs}/comments`)).status).toBe(404);
+    } finally {
+      await other.cleanup();
+    }
+  });
+
+  it('cancels a scheduled visit and tells devices', async () => {
+    const created = await post('/inspections').send(body());
+    const id = created.body.data.id as string;
+    const before = (await deltaFor(inspectorToken)).at(-1)?.syncCursor ?? 0;
+
+    const res = await post(`/inspections/${id}/cancel`).send({ reason: 'Customer postponed.' });
+    expect(res.status).toBe(200);
+    expect(res.body.data.status).toBe('CANCELLED');
+
+    // Cancelled is not deleted: the visit was scheduled and called off, and
+    // that is a fact worth keeping.
+    const row = await prisma.inspection.findUniqueOrThrow({ where: { id } });
+    expect(row.deletedAt).toBeNull();
+
+    const entry = (await deltaFor(inspectorToken, before)).find((c) => c.entityId === id);
+    expect(entry?.data?.status).toBe('CANCELLED');
+
+    const thread = await get(`/inspections/${id}/comments`);
+    expect(thread.body.data[0].body).toBe('Customer postponed.');
+  });
+
+  it('reopens a cancelled visit back to scheduled', async () => {
+    const created = await post('/inspections').send(body());
+    const id = created.body.data.id as string;
+    await post(`/inspections/${id}/cancel`).send({}).expect(200);
+
+    const res = await post(`/inspections/${id}/reopen`).send({});
+    expect(res.status).toBe(200);
+    expect(res.body.data.status).toBe('SCHEDULED');
+  });
+
+  it('refuses to cancel work that is already submitted', async () => {
+    const id = await submitted();
+    expect((await post(`/inspections/${id}/cancel`).send({})).status).toBe(409);
+  });
+
+  it('refuses an inspector the review and cancel actions', async () => {
+    const id = await submitted();
+    expect(
+      (await post(`/inspections/${id}/review`, 'INSPECTOR').send({ decision: 'APPROVE' })).status,
+    ).toBe(403);
+    expect((await post(`/inspections/${id}/cancel`, 'INSPECTOR').send({})).status).toBe(403);
+    expect((await post(`/inspections/${id}/reopen`, 'INSPECTOR').send({})).status).toBe(403);
+  });
+});
+
+describe('supervisor assignment and scheduling fields', () => {
+  it('assigns a supervisor alongside the inspector', async () => {
+    const res = await post('/inspections').send(
+      body({
+        supervisorId: org.users.SUPERVISOR!.id,
+        scheduledAt: new Date(Date.now() + 86_400_000).toISOString(),
+        estimatedDurationMinutes: 120,
+      }),
+    );
+
+    expect(res.status).toBe(201);
+    expect(res.body.data.supervisorId).toBe(org.users.SUPERVISOR!.id);
+    expect(res.body.data.estimatedDurationMinutes).toBe(120);
+    expect(res.body.data.scheduledAt).not.toBeNull();
+  });
+
+  it('refuses a supervisor from another organisation', async () => {
+    const other = await createTestOrg();
+    try {
+      const res = await post('/inspections').send({
+        ...body(),
+        supervisorId: other.users.SUPERVISOR!.id,
+      });
+      expect(res.status).toBe(422);
+      expect(res.body.error.fields?.supervisorId).toBeTruthy();
+    } finally {
+      await other.cleanup();
+    }
+  });
+
+  it('returns the supervisor on the detail record', async () => {
+    const created = await post('/inspections').send(
+      body({ supervisorId: org.users.SUPERVISOR!.id }),
+    );
+    const res = await get(`/inspections/${created.body.data.id}`);
+    expect(res.body.data.supervisor?.id).toBe(org.users.SUPERVISOR!.id);
+  });
+
+  it('a supervisor can review but cannot create or delete', async () => {
+    const created = await post('/inspections').send(body());
+    const id = created.body.data.id as string;
+    await prisma.inspection.update({ where: { id }, data: { status: 'SUBMITTED' } });
+
+    expect(
+      (await post(`/inspections/${id}/review`, 'SUPERVISOR').send({ decision: 'APPROVE' })).status,
+    ).toBe(200);
+    expect((await post('/inspections', 'SUPERVISOR').send(body())).status).toBe(201);
+    expect((await del(`/inspections/${id}`, 'SUPERVISOR')).status).toBe(403);
   });
 });

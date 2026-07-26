@@ -184,7 +184,10 @@ export async function createTestOrg(): Promise<TestOrg> {
     data: { id: orgId, name: `Test ${slug}`, slug, timezone: 'UTC', numberPrefix: 'TST' },
   });
 
-  const roles: Role[] = ['SUPER_ADMIN', 'ADMIN', 'MANAGER', 'INSPECTOR', 'VIEWER'];
+  // SUPERVISOR is the role that reviews submitted work, so a fixture without
+  // one cannot exercise the half of the workflow that decides whether an
+  // inspection is accepted.
+  const roles: Role[] = ['SUPER_ADMIN', 'ADMIN', 'MANAGER', 'SUPERVISOR', 'INSPECTOR', 'VIEWER'];
   const users: Record<string, TestUser> = {};
 
   for (const role of roles) {

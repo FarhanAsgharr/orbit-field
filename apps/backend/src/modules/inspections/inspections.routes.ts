@@ -170,6 +170,7 @@ router.get(
         signatures: { where: { deletedAt: null } },
         createdBy: { select: { id: true, firstName: true, lastName: true } },
         reviewedBy: { select: { id: true, firstName: true, lastName: true } },
+        supervisor: { select: { id: true, firstName: true, lastName: true } },
       },
     });
 
@@ -294,7 +295,13 @@ async function allocateNumber(tx: Prisma.TransactionClient, orgId: string): Prom
  */
 async function resolveReferences(
   orgId: string,
-  body: { templateId: string; projectId?: string | null; siteId?: string | null; assignedToId?: string | null },
+  body: {
+    templateId: string;
+    projectId?: string | null;
+    siteId?: string | null;
+    assignedToId?: string | null;
+    supervisorId?: string | null;
+  },
 ): Promise<{ templateVersionId: string; clientId: string | null }> {
   const template = await prisma.template.findFirst({
     where: { id: body.templateId, orgId, deletedAt: null },
@@ -343,6 +350,18 @@ async function resolveReferences(
     clientId ??= site.clientId;
   }
 
+  if (body.supervisorId) {
+    const supervisor = await prisma.user.findFirst({
+      where: { id: body.supervisorId, orgId, deletedAt: null, status: 'ACTIVE' },
+      select: { id: true },
+    });
+    if (!supervisor) {
+      throw new AppError(ErrorCode.VALIDATION_FAILED, 'That supervisor was not found.', {
+        fields: { supervisorId: 'Not an active member of this organisation.' },
+      });
+    }
+  }
+
   if (body.assignedToId) {
     const assignee = await prisma.user.findFirst({
       where: { id: body.assignedToId, orgId, deletedAt: null, status: 'ACTIVE' },
@@ -367,6 +386,9 @@ const writableFields = {
   siteId: schemas.ulid.nullable().optional(),
   assetId: schemas.ulid.nullable().optional(),
   assignedToId: schemas.ulid.nullable().optional(),
+  supervisorId: schemas.ulid.nullable().optional(),
+  scheduledAt: z.string().datetime({ offset: true }).nullable().optional(),
+  estimatedDurationMinutes: z.number().int().positive().max(10_080).nullable().optional(),
   priority: z.enum(['LOW', 'NORMAL', 'HIGH', 'CRITICAL']).default('NORMAL'),
   dueAt: z.string().datetime({ offset: true }).nullable().optional(),
   category: z.string().max(120).nullable().optional(),
@@ -427,6 +449,9 @@ router.post(
           tags: body.tags ?? [],
           dueAt: body.dueAt ? new Date(body.dueAt) : null,
           assignedToId: body.assignedToId ?? null,
+          supervisorId: body.supervisorId ?? null,
+          scheduledAt: body.scheduledAt ? new Date(body.scheduledAt) : null,
+          estimatedDurationMinutes: body.estimatedDurationMinutes ?? null,
           createdById: subject.userId,
         },
       });
@@ -525,6 +550,7 @@ router.patch(
       projectId: body.projectId === undefined ? existing.projectId : body.projectId,
       siteId: body.siteId === undefined ? existing.siteId : body.siteId,
       assignedToId: body.assignedToId ?? undefined,
+      supervisorId: body.supervisorId ?? undefined,
     });
 
     const updated = await prisma.$transaction(async (tx) => {
@@ -534,11 +560,20 @@ router.patch(
           ...(body.title !== undefined ? { title: body.title } : {}),
           ...(body.description !== undefined ? { description: body.description } : {}),
           ...(body.notes !== undefined ? { notes: body.notes } : {}),
-          ...(body.templateId !== undefined ? { templateId: body.templateId, templateVersionId } : {}),
+          ...(body.templateId !== undefined
+            ? { templateId: body.templateId, templateVersionId }
+            : {}),
           ...(body.projectId !== undefined ? { projectId: body.projectId, clientId } : {}),
           ...(body.siteId !== undefined ? { siteId: body.siteId } : {}),
           ...(body.assetId !== undefined ? { assetId: body.assetId } : {}),
           ...(body.assignedToId !== undefined ? { assignedToId: body.assignedToId } : {}),
+          ...(body.supervisorId !== undefined ? { supervisorId: body.supervisorId } : {}),
+          ...(body.estimatedDurationMinutes !== undefined
+            ? { estimatedDurationMinutes: body.estimatedDurationMinutes }
+            : {}),
+          ...(body.scheduledAt !== undefined
+            ? { scheduledAt: body.scheduledAt ? new Date(body.scheduledAt) : null }
+            : {}),
           ...(body.priority !== undefined ? { priority: body.priority as Priority } : {}),
           ...(body.category !== undefined ? { category: body.category } : {}),
           ...(body.department !== undefined ? { department: body.department } : {}),
@@ -672,6 +707,238 @@ router.delete(
     });
 
     res.status(204).end();
+  }),
+);
+
+/**
+ * Move an inspection to a status, replicate it, and record why.
+ *
+ * Cancel and reopen differ only in the target and the audit action, so the
+ * change-log entry and the transaction live in one place — a status change that
+ * skipped the change log would leave the job on the inspector's phone looking
+ * live.
+ */
+async function applyStatus(
+  req: Parameters<typeof auth>[0] & { requestId: string },
+  inspection: { id: string; orgId: string; number: string; status: string },
+  target: InspectionStatus,
+  reason?: string,
+): Promise<unknown> {
+  const subject = auth(req);
+
+  return prisma.$transaction(async (tx) => {
+    const row = await tx.inspection.update({
+      where: { id: inspection.id },
+      data: { status: target as never, version: { increment: 1 } },
+    });
+
+    await recordChange(tx, {
+      orgId: subject.orgId,
+      entity: SyncEntity.INSPECTION,
+      operation: SyncOperation.UPDATE,
+      entityId: inspection.id,
+      version: row.version,
+      row,
+      projectId: row.projectId,
+      assignedToId: row.assignedToId,
+      actorUserId: subject.userId,
+      actorDeviceId: subject.deviceId,
+    });
+
+    if (reason?.trim()) {
+      await tx.inspectionComment.create({
+        data: {
+          id: ulid(),
+          orgId: subject.orgId,
+          inspectionId: inspection.id,
+          authorId: subject.userId,
+          body: reason.trim(),
+          decision: target === InspectionStatus.CANCELLED ? 'CANCELLED' : 'REOPENED',
+        },
+      });
+    }
+
+    await tx.auditLog.create({
+      data: {
+        id: ulid(),
+        orgId: subject.orgId,
+        userId: subject.userId,
+        action: 'RECORD_UPDATED',
+        entity: 'Inspection',
+        entityId: inspection.id,
+        metadata: {
+          number: inspection.number,
+          from: inspection.status,
+          to: target,
+          reason: reason ?? null,
+        },
+        ipAddress: clientIp(req),
+        requestId: req.requestId,
+      },
+    });
+
+    return row;
+  });
+}
+/**
+ * Cancel an inspection, or reopen a cancelled one.
+ *
+ * Distinct from delete and from archive, and the difference matters to whoever
+ * reads the record later: a cancelled visit is one that was scheduled and
+ * deliberately called off — a customer postponed, a site was inaccessible — and
+ * that is a fact worth keeping. Deleting it would say it never existed;
+ * archiving says it is finished.
+ */
+router.post(
+  '/:id/cancel',
+  requireAuth,
+  requirePermission(Permission.INSPECTION_UPDATE_ANY),
+  validate({
+    params: z.object({ id: schemas.ulid }),
+    body: z.object({ reason: z.string().max(2000).optional() }).optional(),
+  }),
+  asyncHandler(async (req, res) => {
+    const subject = auth(req);
+    const { id } = req.validated!.params as { id: string };
+    const reason = (req.validated!.body as { reason?: string } | undefined)?.reason;
+
+    const inspection = await prisma.inspection.findFirst({
+      where: { id, orgId: subject.orgId, deletedAt: null },
+    });
+    if (!inspection) throw new AppError(ErrorCode.NOT_FOUND, 'That inspection was not found.');
+
+    const CANCELLABLE: string[] = [
+      InspectionStatus.DRAFT,
+      InspectionStatus.SCHEDULED,
+      InspectionStatus.IN_PROGRESS,
+      InspectionStatus.REJECTED,
+    ];
+    if (!CANCELLABLE.includes(inspection.status)) {
+      throw new AppError(
+        ErrorCode.CONFLICT,
+        `An inspection that is ${inspection.status.toLowerCase().replace(/_/g, ' ')} cannot be cancelled.`,
+      );
+    }
+
+    const updated = await applyStatus(req, inspection, InspectionStatus.CANCELLED, reason);
+    res.json({ data: updated });
+  }),
+);
+
+/**
+ * Reopen a cancelled inspection, putting it back in the inspector's list.
+ *
+ * Returns to SCHEDULED rather than to whatever it was before: the work has to
+ * be planned again, and its previous progress — if any — is still attached.
+ */
+router.post(
+  '/:id/reopen',
+  requireAuth,
+  requirePermission(Permission.INSPECTION_REOPEN),
+  validate({
+    params: z.object({ id: schemas.ulid }),
+    body: z.object({ reason: z.string().max(2000).optional() }).optional(),
+  }),
+  asyncHandler(async (req, res) => {
+    const subject = auth(req);
+    const { id } = req.validated!.params as { id: string };
+    const reason = (req.validated!.body as { reason?: string } | undefined)?.reason;
+
+    const inspection = await prisma.inspection.findFirst({
+      where: { id, orgId: subject.orgId, deletedAt: null },
+    });
+    if (!inspection) throw new AppError(ErrorCode.NOT_FOUND, 'That inspection was not found.');
+
+    const REOPENABLE: string[] = [InspectionStatus.CANCELLED, InspectionStatus.APPROVED];
+    if (!REOPENABLE.includes(inspection.status)) {
+      throw new AppError(
+        ErrorCode.CONFLICT,
+        'Only a cancelled or approved inspection can be reopened.',
+      );
+    }
+
+    const updated = await applyStatus(req, inspection, InspectionStatus.SCHEDULED, reason);
+    res.json({ data: updated });
+  }),
+);
+
+/** The review conversation, oldest first — this is the record of what was asked. */
+router.get(
+  '/:id/comments',
+  requireAuth,
+  requirePermission(Permission.INSPECTION_READ),
+  validate({ params: z.object({ id: schemas.ulid }) }),
+  asyncHandler(async (req, res) => {
+    const subject = auth(req);
+    const { id } = req.validated!.params as { id: string };
+
+    const inspection = await prisma.inspection.findFirst({
+      where: { id, orgId: subject.orgId, deletedAt: null },
+      select: { id: true, assignedToId: true, projectId: true, createdById: true, orgId: true },
+    });
+    if (!inspection) throw new AppError(ErrorCode.NOT_FOUND, 'That inspection was not found.');
+    // An inspector may read the thread on their own work and nobody else's.
+    if (!canAccessInspection(subject, inspection)) {
+      throw new AppError(ErrorCode.NOT_FOUND, 'That inspection was not found.');
+    }
+
+    const comments = await prisma.inspectionComment.findMany({
+      where: { inspectionId: id },
+      orderBy: { createdAt: 'asc' },
+      select: {
+        id: true,
+        body: true,
+        decision: true,
+        createdAt: true,
+        author: { select: { id: true, firstName: true, lastName: true } },
+      },
+    });
+
+    res.json({ data: comments });
+  }),
+);
+
+/** Add a comment without making a review decision. */
+router.post(
+  '/:id/comments',
+  requireAuth,
+  requirePermission(Permission.INSPECTION_READ),
+  validate({
+    params: z.object({ id: schemas.ulid }),
+    body: z.object({ body: z.string().min(1).max(2000).trim() }),
+  }),
+  asyncHandler(async (req, res) => {
+    const subject = auth(req);
+    const { id } = req.validated!.params as { id: string };
+    const { body } = req.validated!.body as { body: string };
+
+    const inspection = await prisma.inspection.findFirst({
+      where: { id, orgId: subject.orgId, deletedAt: null },
+      select: { id: true, assignedToId: true, projectId: true, createdById: true, orgId: true },
+    });
+    if (!inspection) throw new AppError(ErrorCode.NOT_FOUND, 'That inspection was not found.');
+    if (!canAccessInspection(subject, inspection)) {
+      throw new AppError(ErrorCode.NOT_FOUND, 'That inspection was not found.');
+    }
+
+    const comment = await prisma.inspectionComment.create({
+      data: {
+        id: ulid(),
+        orgId: subject.orgId,
+        inspectionId: id,
+        authorId: subject.userId,
+        body,
+      },
+      select: {
+        id: true,
+        body: true,
+        decision: true,
+        createdAt: true,
+        author: { select: { id: true, firstName: true, lastName: true } },
+      },
+    });
+
+    res.status(201).json({ data: comment });
   }),
 );
 
@@ -835,7 +1102,7 @@ router.post(
   validate({
     params: z.object({ id: schemas.ulid }),
     body: z.object({
-      decision: z.enum(['APPROVE', 'REJECT']),
+      decision: z.enum(['APPROVE', 'REJECT', 'REQUEST_CHANGES']),
       reason: z.string().max(2000).optional(),
     }),
   }),
@@ -843,16 +1110,25 @@ router.post(
     const subject = auth(req);
     const { id } = req.validated!.params as { id: string };
     const { decision, reason } = req.validated!.body as {
-      decision: 'APPROVE' | 'REJECT';
+      decision: 'APPROVE' | 'REJECT' | 'REQUEST_CHANGES';
       reason?: string;
     };
+    /*
+     * REQUEST_CHANGES lands on the same status as REJECT — the inspection goes
+     * back to the inspector either way, and the state machine has one
+     * transition for that. What differs is intent, and intent is what the
+     * person receiving it needs: "this is wrong" and "add the north elevation
+     * photo" call for different responses. The decision is recorded on the
+     * comment and in the audit entry so the two stay distinguishable.
+     */
+    const sendsBack = decision !== 'APPROVE';
 
     const inspection = await prisma.inspection.findFirst({
       where: { id, orgId: subject.orgId, deletedAt: null },
     });
     if (!inspection) throw new AppError(ErrorCode.NOT_FOUND, 'That inspection was not found.');
 
-    if (decision === 'REJECT' && !reason?.trim()) {
+    if (sendsBack && !reason?.trim()) {
       // A rejection without a reason is unusable to the inspector who has to
       // act on it, so it is refused rather than accepted silently.
       throw new AppError(
@@ -890,7 +1166,7 @@ router.post(
           status: target,
           reviewedById: subject.userId,
           reviewedAt: new Date(),
-          rejectionReason: decision === 'REJECT' ? (reason ?? null) : null,
+          rejectionReason: sendsBack ? (reason ?? null) : null,
           version: { increment: 1 },
         },
       });
@@ -908,6 +1184,21 @@ router.post(
         actorDeviceId: subject.deviceId,
       });
 
+      // The thread is what an inspector actually acts on. "Rejected" alone
+      // sends somebody back to site without telling them what to change.
+      if (reason?.trim()) {
+        await tx.inspectionComment.create({
+          data: {
+            id: ulid(),
+            orgId: subject.orgId,
+            inspectionId: id,
+            authorId: subject.userId,
+            body: reason.trim(),
+            decision,
+          },
+        });
+      }
+
       await tx.auditLog.create({
         data: {
           id: ulid(),
@@ -916,7 +1207,7 @@ router.post(
           action: decision === 'APPROVE' ? 'INSPECTION_APPROVED' : 'INSPECTION_REJECTED',
           entity: 'Inspection',
           entityId: id,
-          metadata: { reason: reason ?? null, number: inspection.number },
+          metadata: { decision, reason: reason ?? null, number: inspection.number },
           ipAddress: clientIp(req),
           requestId: req.requestId,
         },

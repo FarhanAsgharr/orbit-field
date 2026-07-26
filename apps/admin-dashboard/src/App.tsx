@@ -9,7 +9,16 @@ import { SessionProvider, useSession } from './lib/auth';
 import { Analytics } from './pages/Analytics';
 import { Audit, Settings } from './pages/AuditSettings';
 import { InspectionDetail } from './pages/InspectionDetail';
-import { Clients, Devices, Inspections, People, Projects, Sites, Templates } from './pages/Lists';
+import {
+  Assets,
+  Clients,
+  Devices,
+  Inspections,
+  People,
+  Projects,
+  Sites,
+  Templates,
+} from './pages/Lists';
 import { Login } from './pages/Login';
 import { Overview } from './pages/Overview';
 import { Sync } from './pages/Sync';
@@ -82,6 +91,7 @@ export function App(): React.ReactElement {
               <Route path="/clients" element={<Clients />} />
               <Route path="/projects" element={<Projects />} />
               <Route path="/sites" element={<Sites />} />
+              <Route path="/assets" element={<Assets />} />
               <Route path="/users" element={<People />} />
               <Route path="/devices" element={<Devices />} />
               <Route path="/audit" element={<Audit />} />
