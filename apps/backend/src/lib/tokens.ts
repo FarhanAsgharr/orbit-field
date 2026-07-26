@@ -29,6 +29,8 @@ export interface AccessTokenClaims {
   xp?: string[];
   rp?: string[];
   type: 'access';
+  /** Issued-at, stamped by `jsonwebtoken`. Seconds since the epoch. */
+  iat?: number;
 }
 
 export interface IssuedTokens {

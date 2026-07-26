@@ -16,7 +16,8 @@
     "db:studio": "prisma studio",
     "db:seed": "tsx prisma/seed.ts",
     "test:integration": "vitest run --config vitest.integration.config.ts",
-    "test:integration:coverage": "vitest run --config vitest.integration.config.ts --coverage"
+    "test:integration:coverage": "vitest run --config vitest.integration.config.ts --coverage",
+    "test:coverage": "vitest run --config vitest.coverage.config.ts --coverage"
   },
   "prisma": {
     "seed": "tsx prisma/seed.ts"

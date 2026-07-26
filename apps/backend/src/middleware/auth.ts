@@ -74,6 +74,31 @@ export const requireAuth = asyncHandler(
       throw new AppError(ErrorCode.ORG_MISMATCH, 'Token does not match this account.');
     }
 
+    /*
+     * A password change ends every session that predates it.
+     *
+     * Refresh tokens are revoked when the password changes, but an access token
+     * is self-contained and stays valid for its full lifetime — so without this
+     * check somebody who changes their password because they believe it is
+     * compromised leaves the attacker holding a working token for up to another
+     * fifteen minutes. Ending the attacker's session is the entire reason they
+     * acted.
+     *
+     * `iat` has one-second resolution and is rounded down, so a token minted in
+     * the same second as the change could compare equal; the strict comparison
+     * keeps that token valid rather than rejecting a session the user has only
+     * just legitimately established.
+     */
+    if (claims.iat !== undefined && user.passwordChangedAt) {
+      const changedAt = Math.floor(user.passwordChangedAt.getTime() / 1000);
+      if (claims.iat < changedAt) {
+        throw new AppError(
+          ErrorCode.AUTH_TOKEN_INVALID,
+          'This session ended when the password was changed. Sign in again.',
+        );
+      }
+    }
+
     if (claims.deviceId) {
       const device = await prisma.device.findUnique({
         where: { id: claims.deviceId },

@@ -12,6 +12,7 @@ import type { NextFunction, Request, Response } from 'express';
 import { ZodError } from 'zod';
 
 import { isProduction } from '../config/env.js';
+import { logger } from '../config/logger.js';
 import { captureError } from '../modules/observability/sentry.js';
 
 /** 404 for unmatched routes. Registered after all routers. */
@@ -113,14 +114,26 @@ export function errorHandler(
 
   const status = appError.status || statusForCode(appError.code);
 
+  /*
+   * `req.log` is attached by the observability middleware, which is not the
+   * first thing in the chain — `requestSanity` and the security headers run
+   * before it. An error raised by one of those reached this handler with
+   * `req.log` still undefined, and the handler threw while trying to log it,
+   * so Express fell back to its own HTML error page: a request with an
+   * over-long URL answered 500 with a stack trace instead of a clean 400.
+   * Falling back to the module logger keeps the envelope intact wherever in
+   * the chain the error came from.
+   */
+  const log = req.log ?? logger;
+
   // 5xx is a defect worth paging on; 4xx is the API doing its job.
   if (status >= 500) {
-    req.log.error(
+    log.error(
       { err: appError.cause ?? appError, code: appError.code, path: req.path, method: req.method },
       appError.message,
     );
   } else {
-    req.log.info({ code: appError.code, status, path: req.path }, appError.message);
+    log.info({ code: appError.code, status, path: req.path }, appError.message);
   }
 
   if (appError.retryAfter !== undefined) {

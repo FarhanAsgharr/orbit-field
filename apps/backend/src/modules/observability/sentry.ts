@@ -20,6 +20,30 @@ import { logger } from '../../config/logger.js';
 
 let initialised = false;
 
+/**
+ * Strip everything that identifies a person or reveals what they inspected.
+ *
+ * Exported so the rule can be asserted directly. It is the difference between
+ * a useful stack trace and a data-protection incident, and a test that
+ * reimplements it proves nothing — it would keep passing after this function
+ * stopped being called.
+ */
+export function scrubEvent<T extends Sentry.ErrorEvent>(event: T): T {
+  // Belt and braces over `sendDefaultPii` — the SDK's idea of PII and a
+  // compliance auditor's are not the same, so the payload is removed here
+  // regardless of what the SDK decided.
+  if (event.request) {
+    delete event.request.data;
+    delete event.request.cookies;
+    delete event.request.query_string;
+    if (event.request.headers) {
+      const { authorization: _a, cookie: _c, ...safe } = event.request.headers;
+      event.request.headers = safe;
+    }
+  }
+  return event;
+}
+
 export function initSentry(): boolean {
   if (initialised) return true;
   if (!env.SENTRY_DSN) {
@@ -39,21 +63,7 @@ export function initSentry(): boolean {
     // sync push body contains an entire inspection.
     sendDefaultPii: false,
 
-    beforeSend(event) {
-      // Belt and braces over sendDefaultPii — the SDK's idea of PII and a
-      // compliance auditor's are not the same, so the payload is removed here
-      // regardless of what the SDK decided.
-      if (event.request) {
-        delete event.request.data;
-        delete event.request.cookies;
-        delete event.request.query_string;
-        if (event.request.headers) {
-          const { authorization: _a, cookie: _c, ...safe } = event.request.headers;
-          event.request.headers = safe;
-        }
-      }
-      return event;
-    },
+    beforeSend: scrubEvent,
   });
 
   initialised = true;

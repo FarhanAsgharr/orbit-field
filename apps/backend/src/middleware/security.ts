@@ -111,9 +111,17 @@ export function requestSanity(req: Request, _res: Response, next: NextFunction):
     throw new AppError(ErrorCode.MALFORMED_REQUEST, 'The request URL is too long.');
   }
 
-  // A null byte in a path or query is never valid and is a classic bypass
-  // attempt against downstream string handling.
-  if (req.originalUrl.includes('\0')) {
+  /*
+   * A null byte in a path or query is never valid and is a classic bypass
+   * attempt against downstream string handling.
+   *
+   * Both spellings are checked. `req.originalUrl` is the raw request target, so
+   * a null byte arrives percent-encoded — a literal `\0` cannot survive an HTTP
+   * request line at all. Testing only for the literal meant this guard could
+   * never fire, and the encoded form is the one that actually reaches a
+   * decoder further down.
+   */
+  if (req.originalUrl.includes('\0') || /%00/i.test(req.originalUrl)) {
     throw new AppError(ErrorCode.MALFORMED_REQUEST, 'The request contains an invalid character.');
   }
 
