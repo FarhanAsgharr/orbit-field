@@ -79,8 +79,22 @@ function required(name) {
  * an administrator discover at their first password change that their password
  * was never policy-compliant.
  */
+/**
+ * Passwords published in this repository.
+ *
+ * `prisma/seed.ts` and the e2e scripts contain a working password in plain
+ * text, and this repository is readable. A production account using one of them
+ * has no password at all — anybody who can read the source can sign in. It was
+ * used on a live SUPER_ADMIN once; refusing it here is what stops that being a
+ * decision somebody has to remember to make.
+ */
+const PUBLISHED_PASSWORDS = new Set(['OrbitField2026!', 'orbit_dev_password', 'password']);
+
 function checkPassword(password, { email, firstName, lastName }) {
   const errors = [];
+  if (PUBLISHED_PASSWORDS.has(password)) {
+    errors.push('is published in this repository and must never be used on a real install');
+  }
   if (password.length < 12) errors.push('must be at least 12 characters');
   if (!/[A-Z]/.test(password)) errors.push('must contain an uppercase letter');
   if (!/[a-z]/.test(password)) errors.push('must contain a lowercase letter');
@@ -410,6 +424,10 @@ async function main() {
           passwordChangedAt: new Date(),
           role: 'SUPER_ADMIN',
           status: 'ACTIVE',
+          // Chosen by whoever ran this script, not by the account's owner, and
+          // passed along out of band — so it is a shared credential until they
+          // replace it, and every client is told to force that.
+          mustChangePassword: true,
           jobTitle: 'Platform Administrator',
           timezone: 'UTC',
         },
@@ -427,6 +445,7 @@ async function main() {
           passwordChangedAt: new Date(),
           role: 'INSPECTOR',
           status: 'ACTIVE',
+          mustChangePassword: true,
           jobTitle: 'Field Inspector',
           timezone: 'UTC',
         },

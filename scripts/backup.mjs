@@ -94,9 +94,13 @@ function parseUrl(url) {
 async function pgDump(source, target) {
   // Custom format (-Fc): compressed, and restorable selectively. Plain SQL
   // cannot be restored table-by-table during a partial recovery.
-  await run('pg_dump', ['--format=custom', '--no-owner', '--no-acl', '--file', target, source.url], {
-    maxBuffer: 1024 * 1024 * 64,
-  });
+  await run(
+    'pg_dump',
+    ['--format=custom', '--no-owner', '--no-acl', '--file', target, source.url],
+    {
+      maxBuffer: 1024 * 1024 * 64,
+    },
+  );
 }
 
 /**
@@ -124,7 +128,8 @@ async function verifyRestore(source, dumpFile) {
     ).catch((err) => {
       const text = String(err.stderr ?? '');
       const fatal = text.split('\n').filter((l) => l.includes('error:') && !l.includes('warning'));
-      if (fatal.length > 0) throw new Error(`pg_restore reported errors:\n${fatal.slice(0, 5).join('\n')}`);
+      if (fatal.length > 0)
+        throw new Error(`pg_restore reported errors:\n${fatal.slice(0, 5).join('\n')}`);
     });
 
     const scratchUrl = source.withDatabase(scratch);
@@ -144,17 +149,19 @@ async function verifyRestore(source, dumpFile) {
     const probes = ['users', 'inspections', 'organizations'];
     const counts = {};
     for (const table of probes) {
-      const exists = await psql(
-        scratchUrl,
-        `SELECT to_regclass('${table}') IS NOT NULL`,
-      ).catch(() => ({ stdout: 'f' }));
+      const exists = await psql(scratchUrl, `SELECT to_regclass('${table}') IS NOT NULL`).catch(
+        () => ({ stdout: 'f' }),
+      );
       if (exists.stdout.trim() !== 't') continue;
 
       const [restored, live] = await Promise.all([
         psql(scratchUrl, `SELECT count(*) FROM "${table}"`),
         psql(source.url, `SELECT count(*) FROM "${table}"`).catch(() => ({ stdout: '0' })),
       ]);
-      counts[table] = { restored: Number(restored.stdout.trim()), source: Number(live.stdout.trim()) };
+      counts[table] = {
+        restored: Number(restored.stdout.trim()),
+        source: Number(live.stdout.trim()),
+      };
     }
 
     for (const [table, { restored, source: live }] of Object.entries(counts)) {
@@ -202,8 +209,10 @@ async function main() {
     if (recorded) {
       const expected = recorded.trim().split(/\s+/)[0];
       if (expected !== actual) {
-        fail(`checksum mismatch — the file has changed since it was written.\n` +
-             `  recorded ${expected}\n  actual   ${actual}`);
+        fail(
+          `checksum mismatch — the file has changed since it was written.\n` +
+            `  recorded ${expected}\n  actual   ${actual}`,
+        );
       }
       log('checksum', 'matches the recorded value');
     } else {
@@ -242,7 +251,9 @@ async function main() {
   log('checksum', digest);
 
   if (!SKIP_VERIFY) {
-    const result = await verifyRestore(source, file).catch((err) => fail(`restore check: ${err.message}`));
+    const result = await verifyRestore(source, file).catch((err) =>
+      fail(`restore check: ${err.message}`),
+    );
     log('restore', `${result.tables} tables restored into a scratch database`);
     for (const [table, c] of Object.entries(result.counts)) {
       log('rows', `${table}: ${c.restored} restored / ${c.source} in source`);

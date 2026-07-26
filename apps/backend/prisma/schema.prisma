@@ -243,6 +243,16 @@ model User {
   // Previous hashes, newest first, for password-reuse enforcement.
   passwordHistory Json   @default("[]")
   passwordChangedAt DateTime? @db.Timestamptz(6)
+  /**
+   * Set when an administrator chose the password rather than the user.
+   *
+   * An admin-created account starts with a credential its owner did not pick
+   * and which was transmitted out of band — over chat, on paper, spoken aloud.
+   * Until the user replaces it, that password is known to at least two people
+   * and possibly written down somewhere. The session is issued as normal so the
+   * app is usable, but every client is told to force a change first.
+   */
+  mustChangePassword Boolean @default(false)
 
   role           Role       @default(INSPECTOR)
   extraPermissions   String[] @default([])

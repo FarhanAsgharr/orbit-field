@@ -518,6 +518,8 @@ export async function resetPassword(input: {
     data: {
       passwordHash: hash,
       passwordChangedAt: new Date(),
+      // Chosen by the owner now, so the shared-credential state is over.
+      mustChangePassword: false,
       passwordHistory: [user.passwordHash, ...history]
         .filter(Boolean)
         .slice(0, policy.historyDepth) as never,
@@ -577,6 +579,7 @@ export async function changePassword(input: {
     data: {
       passwordHash: await hashPassword(input.newPassword),
       passwordChangedAt: new Date(),
+      mustChangePassword: false,
       passwordHistory: [user.passwordHash, ...history]
         .filter(Boolean)
         .slice(0, policy.historyDepth) as never,

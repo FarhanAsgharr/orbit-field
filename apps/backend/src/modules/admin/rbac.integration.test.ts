@@ -195,3 +195,68 @@ describe('tenant isolation', () => {
     }
   });
 });
+
+describe('first-login password change', () => {
+  const invite = (role: string, body: Record<string, unknown>) =>
+    request(app).post(`${api}/users`).set('Authorization', `Bearer ${tokens[role]}`).send(body);
+
+  it('flags an account whose password the administrator chose', async () => {
+    const email = `${unique('forced')}@test.invalid`;
+    const password = strongPassword();
+    const created = await invite('ADMIN', {
+      email,
+      firstName: 'Forced',
+      lastName: 'Change',
+      role: 'VIEWER',
+      password,
+    });
+    expect(created.status).toBe(201);
+
+    const login = await request(app)
+      .post(`${api}/auth/login`)
+      .send({ email, password, device: device() });
+
+    // The session is issued so the app is usable, but the client is told the
+    // credential is shared: the owner did not choose it and it travelled out
+    // of band, so it is known to at least two people until they replace it.
+    expect(login.status).toBe(200);
+    expect(login.body.data.user.mustChangePassword).toBe(true);
+  });
+
+  it('does not flag an account that set its own password', async () => {
+    const user = org.users.INSPECTOR!;
+    const login = await request(app)
+      .post(`${api}/auth/login`)
+      .send({ email: user.email, password: user.password, device: device() });
+    expect(login.body.data.user.mustChangePassword).toBe(false);
+  });
+
+  it('clears the flag once the user changes the password themselves', async () => {
+    const email = `${unique('clears')}@test.invalid`;
+    const initial = strongPassword();
+    await invite('ADMIN', {
+      email,
+      firstName: 'Clears',
+      lastName: 'Flag',
+      role: 'VIEWER',
+      password: initial,
+    });
+
+    const first = await request(app)
+      .post(`${api}/auth/login`)
+      .send({ email, password: initial, device: device() });
+    expect(first.body.data.user.mustChangePassword).toBe(true);
+
+    const chosen = strongPassword();
+    const changed = await request(app)
+      .post(`${api}/auth/change-password`)
+      .set('Authorization', `Bearer ${first.body.data.tokens.accessToken}`)
+      .send({ currentPassword: initial, newPassword: chosen });
+    expect(changed.status).toBeLessThan(300);
+
+    const second = await request(app)
+      .post(`${api}/auth/login`)
+      .send({ email, password: chosen, device: device() });
+    expect(second.body.data.user.mustChangePassword).toBe(false);
+  });
+});

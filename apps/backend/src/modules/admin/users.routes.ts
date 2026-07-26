@@ -273,6 +273,9 @@ router.post(
           status: passwordHash ? 'ACTIVE' : 'INVITED',
           passwordHash,
           passwordChangedAt: passwordHash ? new Date() : null,
+          // The owner did not choose this password and it travelled out of
+          // band, so it is known to at least two people until they replace it.
+          mustChangePassword: Boolean(passwordHash),
           department: body.department ?? null,
           jobTitle: body.jobTitle ?? null,
           registrationNumber: body.registrationNumber ?? null,

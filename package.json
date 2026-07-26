@@ -37,7 +37,8 @@
     "test:e2e:production": "node scripts/e2e-production.mjs",
     "backup": "node scripts/backup.mjs",
     "backup:verify": "node scripts/backup.mjs --verify-only",
-    "backup:storage": "node scripts/backup-storage.mjs --check"
+    "backup:storage": "node scripts/backup-storage.mjs --check",
+    "security:audit": "node scripts/security-audit.mjs"
   },
   "devDependencies": {
     "@eslint/js": "^9.39.5",

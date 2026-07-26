@@ -35,7 +35,9 @@ const LIMIT = args.includes('--limit') ? Number(args[args.indexOf('--limit') + 1
 const required = ['S3_ENDPOINT', 'S3_BUCKET', 'S3_ACCESS_KEY_ID', 'S3_SECRET_ACCESS_KEY'];
 const missing = required.filter((k) => !process.env[k]);
 if (missing.length > 0 || !process.env.DATABASE_URL) {
-  console.error(`Missing configuration: ${[...missing, ...(process.env.DATABASE_URL ? [] : ['DATABASE_URL'])].join(', ')}`);
+  console.error(
+    `Missing configuration: ${[...missing, ...(process.env.DATABASE_URL ? [] : ['DATABASE_URL'])].join(', ')}`,
+  );
   process.exit(2);
 }
 
@@ -128,7 +130,11 @@ async function main() {
       if (attachment.checksum && digest !== attachment.checksum) {
         // The row and the object disagree: one of them is wrong, and either way
         // the evidence attached to that inspection can no longer be trusted.
-        problems.push({ id: attachment.id, key: attachment.storageKey, issue: 'checksum mismatch' });
+        problems.push({
+          id: attachment.id,
+          key: attachment.storageKey,
+          issue: 'checksum mismatch',
+        });
         continue;
       }
       if (attachment.sizeBytes && Number(attachment.sizeBytes) !== bytes.length) {
