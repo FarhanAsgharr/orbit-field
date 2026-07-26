@@ -394,6 +394,46 @@ const EMPTY_INVITE = {
 };
 
 /**
+ * Backdrop for a centred dialog.
+ *
+ * Closes on Escape and on a click outside the panel — both are what people
+ * try first, and a dialog that traps them is worse than one that closes too
+ * eagerly, because every action inside this one is re-openable.
+ */
+function ModalShell({
+  children,
+  onClose,
+  label,
+}: {
+  children: React.ReactNode;
+  onClose: () => void;
+  label: string;
+}): React.ReactElement {
+  React.useEffect(() => {
+    const onKey = (e: KeyboardEvent): void => {
+      if (e.key === 'Escape') onClose();
+    };
+    globalThis.addEventListener('keydown', onKey);
+    return () => globalThis.removeEventListener('keydown', onKey);
+  }, [onClose]);
+
+  return (
+    <div
+      className="modal__backdrop"
+      role="presentation"
+      aria-label={label}
+      onClick={(e) => {
+        // Only a click on the backdrop itself, not one that bubbled up from a
+        // field inside the panel.
+        if (e.target === e.currentTarget) onClose();
+      }}
+    >
+      {children}
+    </div>
+  );
+}
+
+/**
  * Edit a colleague, or take their access away.
  *
  * Deactivation rather than deletion, and the wording says so plainly. Audit
@@ -509,235 +549,241 @@ function EditMemberPanel({
 
   if (confirmingRemoval) {
     return (
-      <div className="card popover" role="dialog" aria-label="Remove access">
+      <ModalShell onClose={onClose} label="Remove access">
+        <div className="card modal" role="dialog" aria-modal="true" aria-label="Remove access">
+          <div className="card__head">
+            <h2 className="card__title">Remove access</h2>
+            <button className="btn btn--ghost btn--sm" onClick={onClose} disabled={busy}>
+              Cancel
+            </button>
+          </div>
+          <div className="card__body stack gap-4">
+            {error ? <ErrorBanner message={error} /> : null}
+            <p>
+              <strong>
+                {member.firstName} {member.lastName}
+              </strong>{' '}
+              will be signed out of every device immediately and will not be able to sign in again.
+            </p>
+            <p className="small muted">
+              The account is deactivated, not deleted — their name stays on the inspections they
+              carried out and the audit trail stays intact.
+              {member._count.assignedInspections > 0 ? (
+                <>
+                  {' '}
+                  They currently have{' '}
+                  <strong>{member._count.assignedInspections} assigned inspection(s)</strong>, which
+                  will need reassigning to somebody else.
+                </>
+              ) : null}
+            </p>
+            <button className="btn btn--danger" onClick={() => deactivate.mutate()} disabled={busy}>
+              {deactivate.isPending ? 'Removing…' : 'Remove access'}
+            </button>
+          </div>
+        </div>
+      </ModalShell>
+    );
+  }
+
+  return (
+    <ModalShell onClose={onClose} label="Edit person">
+      <div className="card modal" role="dialog" aria-modal="true" aria-label="Edit person">
         <div className="card__head">
-          <h2 className="card__title">Remove access</h2>
+          <h2 className="card__title">
+            {member.firstName} {member.lastName}
+          </h2>
           <button className="btn btn--ghost btn--sm" onClick={onClose} disabled={busy}>
             Cancel
           </button>
         </div>
         <div className="card__body stack gap-4">
           {error ? <ErrorBanner message={error} /> : null}
-          <p>
-            <strong>
-              {member.firstName} {member.lastName}
-            </strong>{' '}
-            will be signed out of every device immediately and will not be able to sign in again.
-          </p>
-          <p className="small muted">
-            The account is deactivated, not deleted — their name stays on the inspections they
-            carried out and the audit trail stays intact.
-            {member._count.assignedInspections > 0 ? (
-              <>
-                {' '}
-                They currently have{' '}
-                <strong>{member._count.assignedInspections} assigned inspection(s)</strong>, which
-                will need reassigning to somebody else.
-              </>
+          {notice ? <p className="small">{notice}</p> : null}
+
+          <div className="row gap-3">
+            <div className="field grow">
+              <label className="field__label" htmlFor="edit-first">
+                First name
+              </label>
+              <input
+                id="edit-first"
+                className="input"
+                value={form.firstName}
+                onChange={(e) => setForm({ ...form, firstName: e.target.value })}
+              />
+            </div>
+            <div className="field grow">
+              <label className="field__label" htmlFor="edit-last">
+                Last name
+              </label>
+              <input
+                id="edit-last"
+                className="input"
+                value={form.lastName}
+                onChange={(e) => setForm({ ...form, lastName: e.target.value })}
+              />
+            </div>
+          </div>
+
+          <div className="field">
+            <label className="field__label" htmlFor="edit-email">
+              Email
+            </label>
+            <input
+              id="edit-email"
+              className="input"
+              type="email"
+              autoComplete="off"
+              value={form.email}
+              onChange={(e) => setForm({ ...form, email: e.target.value })}
+            />
+            {form.email.trim() !== member.email ? (
+              <span className="field__hint">
+                This is how they sign in — tell them before they next open the app.
+              </span>
             ) : null}
-          </p>
-          <button className="btn btn--danger" onClick={() => deactivate.mutate()} disabled={busy}>
-            {deactivate.isPending ? 'Removing…' : 'Remove access'}
-          </button>
-        </div>
-      </div>
-    );
-  }
-
-  return (
-    <div className="card popover" role="dialog" aria-label="Edit person">
-      <div className="card__head">
-        <h2 className="card__title">
-          {member.firstName} {member.lastName}
-        </h2>
-        <button className="btn btn--ghost btn--sm" onClick={onClose} disabled={busy}>
-          Cancel
-        </button>
-      </div>
-      <div className="card__body stack gap-4">
-        {error ? <ErrorBanner message={error} /> : null}
-        {notice ? <p className="small">{notice}</p> : null}
-
-        <div className="row gap-3">
-          <div className="field grow">
-            <label className="field__label" htmlFor="edit-first">
-              First name
-            </label>
-            <input
-              id="edit-first"
-              className="input"
-              value={form.firstName}
-              onChange={(e) => setForm({ ...form, firstName: e.target.value })}
-            />
           </div>
-          <div className="field grow">
-            <label className="field__label" htmlFor="edit-last">
-              Last name
+
+          <div className="field">
+            <label className="field__label" htmlFor="edit-role">
+              Role
             </label>
-            <input
-              id="edit-last"
-              className="input"
-              value={form.lastName}
-              onChange={(e) => setForm({ ...form, lastName: e.target.value })}
-            />
-          </div>
-        </div>
-
-        <div className="field">
-          <label className="field__label" htmlFor="edit-email">
-            Email
-          </label>
-          <input
-            id="edit-email"
-            className="input"
-            type="email"
-            autoComplete="off"
-            value={form.email}
-            onChange={(e) => setForm({ ...form, email: e.target.value })}
-          />
-          {form.email.trim() !== member.email ? (
-            <span className="field__hint">
-              This is how they sign in — tell them before they next open the app.
-            </span>
-          ) : null}
-        </div>
-
-        <div className="field">
-          <label className="field__label" htmlFor="edit-role">
-            Role
-          </label>
-          <select
-            id="edit-role"
-            className="select"
-            value={form.role}
-            onChange={(e) => setForm({ ...form, role: e.target.value })}
-          >
-            {/* The current role stays selectable even if it is at or above the
+            <select
+              id="edit-role"
+              className="select"
+              value={form.role}
+              onChange={(e) => setForm({ ...form, role: e.target.value })}
+            >
+              {/* The current role stays selectable even if it is at or above the
                 operator's own rank, so opening the panel cannot silently
                 propose a demotion. */}
-            {Array.from(new Set([member.role, ...assignable])).map((r) => (
-              <option key={r} value={r}>
-                {roleBadge(r).label}
-              </option>
-            ))}
-          </select>
-          {form.role !== member.role ? (
-            <span className="field__hint">
-              Changing the role signs them out everywhere — their current session still claims the
-              old one until it does.
-            </span>
+              {Array.from(new Set([member.role, ...assignable])).map((r) => (
+                <option key={r} value={r}>
+                  {roleBadge(r).label}
+                </option>
+              ))}
+            </select>
+            {form.role !== member.role ? (
+              <span className="field__hint">
+                Changing the role signs them out everywhere — their current session still claims the
+                old one until it does.
+              </span>
+            ) : null}
+          </div>
+
+          <div className="row gap-3">
+            <div className="field grow">
+              <label className="field__label" htmlFor="edit-job">
+                Job title
+              </label>
+              <input
+                id="edit-job"
+                className="input"
+                value={form.jobTitle}
+                onChange={(e) => setForm({ ...form, jobTitle: e.target.value })}
+              />
+            </div>
+            <div className="field grow">
+              <label className="field__label" htmlFor="edit-dept">
+                Department
+              </label>
+              <input
+                id="edit-dept"
+                className="input"
+                value={form.department}
+                onChange={(e) => setForm({ ...form, department: e.target.value })}
+              />
+            </div>
+          </div>
+
+          <button className="btn" onClick={() => save.mutate()} disabled={busy}>
+            {save.isPending ? 'Saving…' : 'Save changes'}
+          </button>
+
+          <hr className="rule" />
+
+          {/* Reset, rather than "send a reset link": there is no mail provider,
+            so the administrator sets the password and hands it over. */}
+          <div className="field">
+            <PasswordInput
+              label="Set a new password"
+              value={newPassword}
+              autoComplete="new-password"
+              onChange={(e) => setNewPassword(e.target.value)}
+              hint="Their old password stops working immediately and every device is signed out."
+            />
+            <button
+              className="btn btn--ghost"
+              onClick={() => {
+                setError(null);
+                setNotice(null);
+                resetPassword.mutate();
+              }}
+              disabled={busy || newPassword === ''}
+            >
+              {resetPassword.isPending ? 'Resetting…' : 'Reset password'}
+            </button>
+          </div>
+
+          <hr className="rule" />
+
+          {member.status === 'DEACTIVATED' ? (
+            <>
+              <p className="small muted">
+                This account is deactivated. They cannot sign in until it is restored.
+              </p>
+              <button className="btn" onClick={() => reactivate.mutate()} disabled={busy}>
+                {reactivate.isPending ? 'Restoring…' : 'Reactivate account'}
+              </button>
+            </>
+          ) : (
+            <button
+              className="btn btn--ghost"
+              onClick={() => {
+                setError(null);
+                setConfirmingRemoval(true);
+              }}
+              disabled={busy}
+            >
+              Deactivate account…
+            </button>
+          )}
+
+          {detail.data?.deletable ? (
+            <button
+              className="btn btn--ghost"
+              onClick={() => {
+                setError(null);
+                // No second dialog: there is nothing to lose. The server has
+                // already confirmed this person has no history at all.
+                if (
+                  globalThis.confirm(`Permanently delete ${member.email}? This cannot be undone.`)
+                )
+                  destroy.mutate();
+              }}
+              disabled={busy}
+            >
+              {destroy.isPending ? 'Deleting…' : 'Delete permanently'}
+            </button>
+          ) : detail.data ? (
+            <p className="small muted">
+              Cannot be deleted permanently — this person has a history in the system (
+              {Object.entries(detail.data.usage)
+                .map(
+                  ([k, n]) =>
+                    `${n} ${k
+                      .replace(/([A-Z])/g, ' $1')
+                      .toLowerCase()
+                      .trim()}`,
+                )
+                .join(', ')}
+              ). Deactivating keeps their name on the work they did.
+            </p>
           ) : null}
         </div>
-
-        <div className="row gap-3">
-          <div className="field grow">
-            <label className="field__label" htmlFor="edit-job">
-              Job title
-            </label>
-            <input
-              id="edit-job"
-              className="input"
-              value={form.jobTitle}
-              onChange={(e) => setForm({ ...form, jobTitle: e.target.value })}
-            />
-          </div>
-          <div className="field grow">
-            <label className="field__label" htmlFor="edit-dept">
-              Department
-            </label>
-            <input
-              id="edit-dept"
-              className="input"
-              value={form.department}
-              onChange={(e) => setForm({ ...form, department: e.target.value })}
-            />
-          </div>
-        </div>
-
-        <button className="btn" onClick={() => save.mutate()} disabled={busy}>
-          {save.isPending ? 'Saving…' : 'Save changes'}
-        </button>
-
-        <hr className="rule" />
-
-        {/* Reset, rather than "send a reset link": there is no mail provider,
-            so the administrator sets the password and hands it over. */}
-        <div className="field">
-          <PasswordInput
-            label="Set a new password"
-            value={newPassword}
-            autoComplete="new-password"
-            onChange={(e) => setNewPassword(e.target.value)}
-            hint="Their old password stops working immediately and every device is signed out."
-          />
-          <button
-            className="btn btn--ghost"
-            onClick={() => {
-              setError(null);
-              setNotice(null);
-              resetPassword.mutate();
-            }}
-            disabled={busy || newPassword === ''}
-          >
-            {resetPassword.isPending ? 'Resetting…' : 'Reset password'}
-          </button>
-        </div>
-
-        <hr className="rule" />
-
-        {member.status === 'DEACTIVATED' ? (
-          <>
-            <p className="small muted">
-              This account is deactivated. They cannot sign in until it is restored.
-            </p>
-            <button className="btn" onClick={() => reactivate.mutate()} disabled={busy}>
-              {reactivate.isPending ? 'Restoring…' : 'Reactivate account'}
-            </button>
-          </>
-        ) : (
-          <button
-            className="btn btn--ghost"
-            onClick={() => {
-              setError(null);
-              setConfirmingRemoval(true);
-            }}
-            disabled={busy}
-          >
-            Deactivate account…
-          </button>
-        )}
-
-        {detail.data?.deletable ? (
-          <button
-            className="btn btn--ghost"
-            onClick={() => {
-              setError(null);
-              // No second dialog: there is nothing to lose. The server has
-              // already confirmed this person has no history at all.
-              if (globalThis.confirm(`Permanently delete ${member.email}? This cannot be undone.`))
-                destroy.mutate();
-            }}
-            disabled={busy}
-          >
-            {destroy.isPending ? 'Deleting…' : 'Delete permanently'}
-          </button>
-        ) : detail.data ? (
-          <p className="small muted">
-            Cannot be deleted permanently — this person has a history in the system (
-            {Object.entries(detail.data.usage)
-              .map(
-                ([k, n]) =>
-                  `${n} ${k
-                    .replace(/([A-Z])/g, ' $1')
-                    .toLowerCase()
-                    .trim()}`,
-              )
-              .join(', ')}
-            ). Deactivating keeps their name on the work they did.
-          </p>
-        ) : null}
       </div>
-    </div>
+    </ModalShell>
   );
 }
 

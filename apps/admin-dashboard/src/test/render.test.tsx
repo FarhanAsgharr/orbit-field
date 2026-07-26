@@ -13,7 +13,7 @@
  */
 
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { cleanup, render, screen, waitFor } from '@testing-library/react';
+import { cleanup, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import React from 'react';
 import { MemoryRouter } from 'react-router-dom';
@@ -508,5 +508,134 @@ describe('accessibility floor', () => {
     // Pagination itself is text; the bar primitive is asserted through the rail.
     const { container } = render(<CursorLagRail health={health} />);
     expect(container.querySelectorAll('[role="img"][aria-label]').length).toBe(3);
+  });
+});
+
+// --- people management ------------------------------------------------------
+
+/**
+ * The Edit dialog, which shipped once and could not be seen.
+ *
+ * It was rendered with `.popover`, which is `position: absolute` against the
+ * toolbar that contains the "Add someone" button. The edit panel is rendered
+ * outside that toolbar, so it had no positioned ancestor to anchor to and
+ * resolved to `top: 100%` of the page — below every row in the table and off
+ * the bottom of the screen. The state changed, React rendered, and clicking
+ * Edit appeared to do nothing.
+ *
+ * A test that only asserted "the button exists" passed throughout. These
+ * assert that pressing it puts a usable form on the screen, which is the thing
+ * that was actually broken.
+ */
+describe('people: editing a member', () => {
+  const member = {
+    id: '01MEMBER00000000000000001',
+    email: 'field.worker@example.com',
+    firstName: 'Field',
+    lastName: 'Worker',
+    role: 'INSPECTOR',
+    status: 'ACTIVE',
+    department: 'Operations',
+    jobTitle: 'Site Inspector',
+    lastLoginAt: null,
+    _count: { devices: 1, assignedInspections: 0 },
+  };
+
+  beforeEach(() => {
+    // SessionProvider only revalidates when a refresh token is held, and the
+    // People page draws its controls from the resolved session.
+    vi.spyOn(apiModule, 'hasSession').mockReturnValue(true);
+    vi.spyOn(apiModule.api, 'get').mockImplementation(((path: string) => {
+      if (path.startsWith('/users/')) {
+        return Promise.resolve({ deletable: true, usage: {} });
+      }
+      if (path === '/users') {
+        return Promise.resolve({ items: [member], total: 1, page: 1, pageSize: 25 });
+      }
+      if (path === '/admin/organization') return Promise.resolve({ id: 'o1', name: 'Acme' });
+      if (path === '/auth/me') {
+        return Promise.resolve({
+          userId: '01OWNER000000000000000001',
+          orgId: 'o1',
+          role: 'SUPER_ADMIN',
+          projectIds: [],
+        });
+      }
+      return Promise.resolve({ items: [], total: 0 });
+    }) as never);
+  });
+
+  async function openEditor(): Promise<void> {
+    const { People } = await import('../pages/Lists');
+    render(
+      wrap(
+        <SessionProvider>
+          <People />
+        </SessionProvider>,
+      ),
+    );
+    const edit = await screen.findByRole('button', { name: /edit/i }, { timeout: 4000 });
+    await userEvent.click(edit);
+  }
+
+  it('shows the dialog when Edit is pressed', async () => {
+    await openEditor();
+    // The failure this exists for: the dialog existed in the DOM and was
+    // positioned off-screen, so asserting its presence is not enough on its
+    // own — the role query is what a person clicking the button relies on.
+    expect(await screen.findByRole('dialog', { name: /edit person/i })).toBeInTheDocument();
+  });
+
+  it('pre-fills every field the admin is allowed to change', async () => {
+    await openEditor();
+    // Scoped to the dialog: "Department" and "Job title" are also column
+    // headers in the table behind it.
+    const dialog = within(await screen.findByRole('dialog', { name: /edit person/i }));
+
+    expect(dialog.getByLabelText(/first name/i)).toHaveValue('Field');
+    expect(dialog.getByLabelText(/last name/i)).toHaveValue('Worker');
+    expect(dialog.getByLabelText(/^email$/i)).toHaveValue('field.worker@example.com');
+    expect(dialog.getByLabelText(/department/i)).toHaveValue('Operations');
+    expect(dialog.getByLabelText(/job title/i)).toHaveValue('Site Inspector');
+    expect(dialog.getByLabelText(/role/i)).toHaveValue('INSPECTOR');
+  });
+
+  it('sends every edited field to the API', async () => {
+    const patch = vi.spyOn(apiModule.api, 'patch').mockResolvedValue({} as never);
+    await openEditor();
+    await screen.findByRole('dialog', { name: /edit person/i });
+
+    const dialog = within(screen.getByRole('dialog', { name: /edit person/i }));
+    await userEvent.clear(dialog.getByLabelText(/first name/i));
+    await userEvent.type(dialog.getByLabelText(/first name/i), 'Renamed');
+    await userEvent.clear(dialog.getByLabelText(/department/i));
+    await userEvent.type(dialog.getByLabelText(/department/i), 'Compliance');
+    await userEvent.click(dialog.getByRole('button', { name: /save changes/i }));
+
+    await waitFor(() => expect(patch).toHaveBeenCalled());
+    const [path, body] = patch.mock.calls[0]!;
+    expect(path).toBe(`/users/${member.id}`);
+    expect(body).toMatchObject({ firstName: 'Renamed', department: 'Compliance' });
+  });
+
+  it('offers the destructive actions an owner needs', async () => {
+    await openEditor();
+    await screen.findByRole('dialog', { name: /edit person/i });
+
+    expect(screen.getByRole('button', { name: /reset password/i })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /deactivate account/i })).toBeInTheDocument();
+    // Offered only because the mocked detail endpoint said this person has no
+    // history; otherwise the console explains why instead.
+    expect(screen.getByRole('button', { name: /delete permanently/i })).toBeInTheDocument();
+  });
+
+  it('closes on Escape', async () => {
+    await openEditor();
+    await screen.findByRole('dialog', { name: /edit person/i });
+
+    await userEvent.keyboard('{Escape}');
+    await waitFor(() =>
+      expect(screen.queryByRole('dialog', { name: /edit person/i })).not.toBeInTheDocument(),
+    );
   });
 });

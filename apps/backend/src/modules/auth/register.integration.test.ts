@@ -46,8 +46,16 @@ afterAll(async () => {
   await prisma.$disconnect();
 });
 
-/** Register a fresh organisation and return the owner's session. */
+/**
+ * Register a fresh organisation and return the owner's session.
+ *
+ * Registration is bootstrap-only — it succeeds on an empty installation and is
+ * refused once any organisation exists. The suite therefore empties the table
+ * first, which is safe because the harness refuses to run against anything but
+ * `orbit_test` and each case builds what it needs.
+ */
 async function register() {
+  await prisma.organization.deleteMany({});
   const email = `${unique('owner')}@test.invalid`;
   const password = strongPassword();
 
@@ -174,45 +182,81 @@ describe('an inspector added to a registered organisation', () => {
   });
 });
 
-describe('signup is for company owners only', () => {
-  it('always makes the registrant an organisation ADMIN', async () => {
+describe('signup is bootstrap only', () => {
+  it('makes the first registrant the organisation owner', async () => {
     const owner = await register();
     const stored = await prisma.user.findUniqueOrThrow({ where: { id: owner.userId } });
 
-    // Never SUPER_ADMIN: that role acts across organisations in a shared
-    // install, so handing it out at signup would let anyone who registers
-    // reach every tenant.
-    expect(stored.role).toBe('ADMIN');
+    // SUPER_ADMIN is safe here precisely because the gate below closes signup
+    // afterwards: there is exactly one organisation for the role to reach and
+    // it is this person's own.
+    expect(stored.role).toBe('SUPER_ADMIN');
+  });
+
+  it('refuses a second registration with 403, permanently', async () => {
+    await register();
+
+    const second = await request(server)
+      .post(`${api}/auth/register`)
+      .send({
+        email: `${unique('second')}@test.invalid`,
+        password: strongPassword(),
+        firstName: 'Second',
+        lastName: 'Company',
+        organizationName: unique('Another Company'),
+        device: device(),
+      });
+
+    // Orbit Field is one company's system. A second organisation created
+    // through the public website would be invisible to the company that owns
+    // the deployment, because tenants cannot see each other.
+    expect(second.status).toBe(403);
+    expect(await prisma.organization.count()).toBe(1);
+  });
+
+  it('reports itself unavailable once an organisation exists', async () => {
+    await register();
+
+    const res = await request(server).get(`${api}/auth/signup-available`);
+    expect(res.status).toBe(200);
+    // The console hides its "Create account" tab on this answer, so it has to
+    // agree with what /auth/register would actually do.
+    expect(res.body.data.available).toBe(false);
+  });
+
+  it('reports itself available on an empty installation', async () => {
+    await prisma.organization.deleteMany({});
+
+    const res = await request(server).get(`${api}/auth/signup-available`);
+    expect(res.body.data.available).toBe(true);
   });
 
   it('ignores a role somebody puts in the request body', async () => {
-    const email = `${unique('sneaky')}@test.invalid`;
+    await prisma.organization.deleteMany({});
+
     const res = await request(server)
       .post(`${api}/auth/register`)
       .send({
-        email,
+        email: `${unique('sneaky')}@test.invalid`,
         password: strongPassword(),
         firstName: 'Would Be',
         lastName: 'Superuser',
         organizationName: unique('Escalation Attempt'),
-        role: 'SUPER_ADMIN',
+        role: 'VIEWER',
         device: device(),
       });
 
     expect(res.status).toBe(201);
     created.push(res.body.data.organization.id as string);
-    expect(res.body.data.user.role).toBe('ADMIN');
+    // The role comes from the bootstrap rule, never from the request.
+    expect(res.body.data.user.role).toBe('SUPER_ADMIN');
   });
 
   it('cannot be used to join an existing organisation', async () => {
     const owner = await register();
     const before = await prisma.user.count({ where: { orgId: owner.orgId } });
 
-    // Registering with the same organisation name makes a *separate*
-    // organisation, which is the point: there is no self-service route into
-    // somebody else's tenant. Inspectors exist only because an administrator
-    // created them.
-    const second = await request(server)
+    const outsider = await request(server)
       .post(`${api}/auth/register`)
       .send({
         email: `${unique('outsider')}@test.invalid`,
@@ -225,11 +269,9 @@ describe('signup is for company owners only', () => {
         device: device(),
       });
 
-    expect(second.status).toBe(201);
-    const secondOrgId = second.body.data.organization.id as string;
-    created.push(secondOrgId);
-
-    expect(secondOrgId).not.toBe(owner.orgId);
+    // Refused outright, so there is no self-service route into somebody else's
+    // company. Inspectors exist only because an administrator created them.
+    expect(outsider.status).toBe(403);
     expect(await prisma.user.count({ where: { orgId: owner.orgId } })).toBe(before);
   });
 });

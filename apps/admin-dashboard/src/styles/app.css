@@ -947,3 +947,37 @@
   font-weight: 690;
   letter-spacing: -0.025em;
 }
+
+/*
+ * Centred modal.
+ *
+ * Distinct from `.popover`, which is absolutely positioned against the toolbar
+ * that contains it. A panel rendered outside that toolbar has no positioned
+ * ancestor to anchor to, so `.popover` placed it at `top: 100%` of the page —
+ * below every row in the table, off the bottom of the screen. Clicking Edit
+ * appeared to do nothing at all.
+ *
+ * Anything that is not attached to the control that opened it, or that is too
+ * tall to sit under one, belongs here instead.
+ */
+.modal__backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding: var(--s-6) var(--s-4);
+  overflow-y: auto;
+  background: rgb(0 0 0 / 45%);
+}
+
+.modal {
+  width: 460px;
+  max-width: 100%;
+  /* Own scroll: the edit form is taller than a short viewport, and a dialog
+     that cannot reach its own save button is a dialog that does not work. */
+  max-height: calc(100vh - var(--s-8));
+  overflow-y: auto;
+  box-shadow: var(--shadow-lg);
+}

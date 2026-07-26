@@ -5,14 +5,13 @@ import type { Request } from 'express';
 import { Router } from 'express';
 import { z } from 'zod';
 
-import { env } from '../../config/env.js';
 import { requireAuth } from '../../middleware/auth.js';
 import { auth, clientIp } from '../../middleware/context.js';
 import { asyncHandler } from '../../middleware/error.js';
 import { authLimiter, otpLimiter } from '../../middleware/rate-limit.js';
 import { schemas, validate } from '../../middleware/validate.js';
 import * as authService from './auth.service.js';
-import { registerOrganization } from './register.service.js';
+import { registerOrganization, signupAvailable } from './register.service.js';
 
 const router: Router = Router();
 
@@ -65,7 +64,10 @@ router.post(
 router.get(
   '/signup-available',
   asyncHandler(async (_req, res) => {
-    res.json({ data: { available: env.ALLOW_SELF_SERVICE_SIGNUP } });
+    // Asks the same question the register endpoint will ask, rather than
+    // reading a flag: the console hides its "Create account" tab on this
+    // answer, and a tab that leads to a guaranteed 403 is worse than none.
+    res.json({ data: { available: await signupAvailable() } });
   }),
 );
 
