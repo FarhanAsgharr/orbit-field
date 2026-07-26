@@ -15,6 +15,7 @@
 
 import { NotificationTopic } from '@orbit/types';
 import { ulid } from '@orbit/utils';
+
 import { env } from '../../config/env.js';
 import { logger } from '../../config/logger.js';
 import { prisma } from '../../db/prisma.js';
@@ -126,7 +127,15 @@ interface ExpoTicket {
  * it — the inspection assignment is the real event, the notification is a hint.
  */
 async function sendToExpo(
-  messages: Array<{ to: string; title: string; body: string; data: Record<string, string>; priority: string; sound: string | null; badge?: number }>,
+  messages: Array<{
+    to: string;
+    title: string;
+    body: string;
+    data: Record<string, string>;
+    priority: string;
+    sound: string | null;
+    badge?: number;
+  }>,
 ): Promise<ExpoTicket[]> {
   if (messages.length === 0) return [];
 
@@ -208,7 +217,14 @@ export async function notifyUsers(
   });
 
   const result: NotifyResult = { created: 0, delivered: 0, suppressed: 0, failed: 0 };
-  const outbound: Array<{ to: string; title: string; body: string; data: Record<string, string>; priority: string; sound: string | null }> = [];
+  const outbound: Array<{
+    to: string;
+    title: string;
+    body: string;
+    data: Record<string, string>;
+    priority: string;
+    sound: string | null;
+  }> = [];
   const tokenOwner = new Map<string, string>();
 
   const rows = await prisma.$transaction(
@@ -340,8 +356,13 @@ export async function savePreferences(
 // ---------------------------------------------------------------------------
 
 export async function notifyInspectionAssigned(input: {
-  orgId: string; assigneeId: string; inspectionId: string;
-  number: string; title: string; siteName: string | null; dueAt: Date | null;
+  orgId: string;
+  assigneeId: string;
+  inspectionId: string;
+  number: string;
+  title: string;
+  siteName: string | null;
+  dueAt: Date | null;
 }): Promise<void> {
   await notifyUsers(input.orgId, [input.assigneeId], {
     topic: NotificationTopic.INSPECTION_ASSIGNED,
@@ -355,11 +376,17 @@ export async function notifyInspectionAssigned(input: {
 }
 
 export async function notifyInspectionReviewed(input: {
-  orgId: string; assigneeId: string; inspectionId: string;
-  number: string; approved: boolean; reason?: string | null;
+  orgId: string;
+  assigneeId: string;
+  inspectionId: string;
+  number: string;
+  approved: boolean;
+  reason?: string | null;
 }): Promise<void> {
   await notifyUsers(input.orgId, [input.assigneeId], {
-    topic: input.approved ? NotificationTopic.INSPECTION_APPROVED : NotificationTopic.INSPECTION_REJECTED,
+    topic: input.approved
+      ? NotificationTopic.INSPECTION_APPROVED
+      : NotificationTopic.INSPECTION_REJECTED,
     title: input.approved ? `${input.number} approved` : `${input.number} sent back`,
     body: input.approved
       ? 'No further action needed.'
@@ -370,7 +397,10 @@ export async function notifyInspectionReviewed(input: {
 }
 
 export async function notifyConflict(input: {
-  orgId: string; userId: string; entity: string; entityId: string;
+  orgId: string;
+  userId: string;
+  entity: string;
+  entityId: string;
 }): Promise<void> {
   await notifyUsers(input.orgId, [input.userId], {
     topic: NotificationTopic.SYNC_CONFLICT,
@@ -383,7 +413,9 @@ export async function notifyConflict(input: {
 }
 
 export async function notifyDeviceRevoked(input: {
-  orgId: string; userId: string; deviceName: string;
+  orgId: string;
+  userId: string;
+  deviceName: string;
 }): Promise<void> {
   await notifyUsers(input.orgId, [input.userId], {
     topic: NotificationTopic.SYNC_CONFLICT,
@@ -427,7 +459,11 @@ export async function sweepDueInspections(): Promise<{ due: number; overdue: num
   });
 
   /** Suppress a repeat if the same topic was raised for this record recently. */
-  const alreadyNotified = async (userId: string, inspectionId: string, topic: string): Promise<boolean> => {
+  const alreadyNotified = async (
+    userId: string,
+    inspectionId: string,
+    topic: string,
+  ): Promise<boolean> => {
     const since = new Date(Date.now() - 20 * 3_600_000);
     const existing = await prisma.notification.findFirst({
       where: {
@@ -444,7 +480,14 @@ export async function sweepDueInspections(): Promise<{ due: number; overdue: num
   let dueCount = 0;
   for (const inspection of dueSoon) {
     if (!inspection.assignedToId) continue;
-    if (await alreadyNotified(inspection.assignedToId, inspection.id, NotificationTopic.INSPECTION_DUE)) continue;
+    if (
+      await alreadyNotified(
+        inspection.assignedToId,
+        inspection.id,
+        NotificationTopic.INSPECTION_DUE,
+      )
+    )
+      continue;
 
     await notifyUsers(inspection.orgId, [inspection.assignedToId], {
       topic: NotificationTopic.INSPECTION_DUE,
@@ -459,7 +502,14 @@ export async function sweepDueInspections(): Promise<{ due: number; overdue: num
   let overdueCount = 0;
   for (const inspection of overdue) {
     if (!inspection.assignedToId) continue;
-    if (await alreadyNotified(inspection.assignedToId, inspection.id, NotificationTopic.INSPECTION_OVERDUE)) continue;
+    if (
+      await alreadyNotified(
+        inspection.assignedToId,
+        inspection.id,
+        NotificationTopic.INSPECTION_OVERDUE,
+      )
+    )
+      continue;
 
     await notifyUsers(inspection.orgId, [inspection.assignedToId], {
       topic: NotificationTopic.INSPECTION_OVERDUE,

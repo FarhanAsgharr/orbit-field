@@ -23,10 +23,18 @@
  */
 
 import {
-  SyncEntity,
-  SyncOperation,
+  AppError,
+  buildConflict,
+  can,
+  canAccessProject,
+  ErrorCode,
+  Permission,
+} from '@orbit/shared';
+import {
   SYNC_PROTOCOL_VERSION,
   type SyncChange,
+  SyncEntity,
+  SyncOperation,
   type SyncOperationEnvelope,
   type SyncOperationResult,
   type SyncPullRequest,
@@ -34,19 +42,12 @@ import {
   type SyncPushRequest,
   type SyncPushResponse,
 } from '@orbit/types';
-import {
-  AppError,
-  ErrorCode,
-  Permission,
-  buildConflict,
-  can,
-  canAccessProject,
-} from '@orbit/shared';
 import { ulid } from '@orbit/utils';
 import { Prisma } from '@prisma/client';
+
 import { env } from '../../config/env.js';
 import { logger } from '../../config/logger.js';
-import { prisma, type DbClient } from '../../db/prisma.js';
+import { type DbClient, prisma } from '../../db/prisma.js';
 import { withLock } from '../../db/redis.js';
 import type { AuthContext } from '../../middleware/context.js';
 import { ENTITY_HANDLERS, type EntityHandler } from './entity-handlers.js';
@@ -193,7 +194,16 @@ async function applyOperation(
         // ---- authorisation ----------------------------------------------
         const denial = await handler.authorize(tx, actor, op, current);
         if (denial) {
-          await recordOperation(tx, actor, op, 'REJECTED', null, null, ErrorCode.PERMISSION_DENIED, denial);
+          await recordOperation(
+            tx,
+            actor,
+            op,
+            'REJECTED',
+            null,
+            null,
+            ErrorCode.PERMISSION_DENIED,
+            denial,
+          );
           return {
             operationId: op.id,
             status: 'REJECTED' as const,
@@ -208,7 +218,11 @@ async function applyOperation(
             // Already gone. Deleting a deleted row is a no-op, not an error —
             // the device's intent is satisfied either way.
             await recordOperation(tx, actor, op, 'APPLIED', op.entityId, null, null, null);
-            return { operationId: op.id, status: 'APPLIED' as const, entityId: op.entityId } as SyncOperationResult;
+            return {
+              operationId: op.id,
+              status: 'APPLIED' as const,
+              entityId: op.entityId,
+            } as SyncOperationResult;
           }
           const cursor = await allocateCursor(tx, actor.orgId);
           const version = current.version + 1;
@@ -226,7 +240,16 @@ async function applyOperation(
             actorUserId: actor.userId,
             actorDeviceId: actor.deviceId,
           });
-          await recordOperation(tx, actor, op, 'APPLIED', op.entityId, { version, cursor }, null, null);
+          await recordOperation(
+            tx,
+            actor,
+            op,
+            'APPLIED',
+            op.entityId,
+            { version, cursor },
+            null,
+            null,
+          );
           return {
             operationId: op.id,
             status: 'APPLIED' as const,
@@ -243,7 +266,16 @@ async function applyOperation(
           // update survived" case, and rejecting it would strand real data.
           const validation = await handler.validate(tx, actor, op, null);
           if (validation) {
-            await recordOperation(tx, actor, op, 'REJECTED', null, null, ErrorCode.VALIDATION_FAILED, validation);
+            await recordOperation(
+              tx,
+              actor,
+              op,
+              'REJECTED',
+              null,
+              null,
+              ErrorCode.VALIDATION_FAILED,
+              validation,
+            );
             return {
               operationId: op.id,
               status: 'REJECTED' as const,
@@ -267,7 +299,16 @@ async function applyOperation(
             actorUserId: actor.userId,
             actorDeviceId: actor.deviceId,
           });
-          await recordOperation(tx, actor, op, 'APPLIED', op.entityId, { version: 1, cursor }, null, null);
+          await recordOperation(
+            tx,
+            actor,
+            op,
+            'APPLIED',
+            op.entityId,
+            { version: 1, cursor },
+            null,
+            null,
+          );
           return {
             operationId: op.id,
             status: 'APPLIED' as const,
@@ -323,7 +364,16 @@ async function applyOperation(
               actorUserId: actor.userId,
               actorDeviceId: actor.deviceId,
             });
-            await recordOperation(tx, actor, op, 'APPLIED', op.entityId, { version, cursor }, null, null);
+            await recordOperation(
+              tx,
+              actor,
+              op,
+              'APPLIED',
+              op.entityId,
+              { version, cursor },
+              null,
+              null,
+            );
             return {
               operationId: op.id,
               status: 'APPLIED' as const,
@@ -365,7 +415,16 @@ async function applyOperation(
         // ---- clean update --------------------------------------------------
         const validation = await handler.validate(tx, actor, op, current);
         if (validation) {
-          await recordOperation(tx, actor, op, 'REJECTED', op.entityId, null, ErrorCode.VALIDATION_FAILED, validation);
+          await recordOperation(
+            tx,
+            actor,
+            op,
+            'REJECTED',
+            op.entityId,
+            null,
+            ErrorCode.VALIDATION_FAILED,
+            validation,
+          );
           return {
             operationId: op.id,
             status: 'REJECTED' as const,
@@ -390,7 +449,16 @@ async function applyOperation(
           actorUserId: actor.userId,
           actorDeviceId: actor.deviceId,
         });
-        await recordOperation(tx, actor, op, 'APPLIED', op.entityId, { version, cursor }, null, null);
+        await recordOperation(
+          tx,
+          actor,
+          op,
+          'APPLIED',
+          op.entityId,
+          { version, cursor },
+          null,
+          null,
+        );
 
         return {
           operationId: op.id,
@@ -645,10 +713,12 @@ export async function pull(actor: SyncActor, request: SyncPullRequest): Promise<
 
   // Only advance the device's stored watermark; a paged pull must not move it
   // backwards if a later page arrives out of order.
-  await prisma.device.update({
-    where: { id: actor.deviceId },
-    data: { lastSyncCursor: lastCursor, lastSyncAt: new Date() },
-  }).catch(() => undefined);
+  await prisma.device
+    .update({
+      where: { id: actor.deviceId },
+      data: { lastSyncCursor: lastCursor, lastSyncAt: new Date() },
+    })
+    .catch(() => undefined);
 
   return {
     protocolVersion: SYNC_PROTOCOL_VERSION,

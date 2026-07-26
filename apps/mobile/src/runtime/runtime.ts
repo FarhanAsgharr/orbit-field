@@ -10,18 +10,17 @@
  * or reach for the database directly.
  */
 
-import Constants from 'expo-constants';
 import type { AuthSession, AuthTokens } from '@orbit/types';
+import Constants from 'expo-constants';
+
 import { ApiClient, type TokenStore } from '../api/client';
 import { Database, getDatabase } from '../db/database';
-import { META_KEYS } from '../db/schema';
 import { AttachmentRepository } from '../db/repositories/attachment.repository';
 import { InspectionRepository } from '../db/repositories/inspection.repository';
 import { ResponseRepository } from '../db/repositories/response.repository';
 import { TemplateRepository } from '../db/repositories/template.repository';
-import { Outbox } from '../sync/outbox';
-import { SyncEngine, type EngineOptions, type NetworkState } from '../sync/engine';
-import { HttpSyncTransport } from '../sync/transport';
+import { META_KEYS } from '../db/schema';
+import { secureStorage, storage, STORAGE_KEYS } from '../lib/storage';
 import {
   attachEngine,
   detachEngine,
@@ -29,8 +28,10 @@ import {
   registerBackgroundSync,
   startForegroundTriggers,
 } from '../sync/background';
+import { type EngineOptions, type NetworkState, SyncEngine } from '../sync/engine';
+import { Outbox } from '../sync/outbox';
+import { HttpSyncTransport } from '../sync/transport';
 import { MediaUploader } from '../sync/uploader';
-import { secureStorage, storage, STORAGE_KEYS } from '../lib/storage';
 
 export interface Identity {
   userId: string;

@@ -11,9 +11,10 @@
  * helper exists so there is one obvious thing to call.
  */
 
-import { Prisma } from '@prisma/client';
-import type { SyncEntity, SyncOperation } from '@orbit/types';
 import { AppError, ErrorCode } from '@orbit/shared';
+import type { SyncEntity, SyncOperation } from '@orbit/types';
+import { Prisma } from '@prisma/client';
+
 import type { DbClient } from '../../db/prisma.js';
 
 export interface RecordChangeInput {

@@ -20,8 +20,10 @@
 
 import React, { forwardRef, useEffect, useId, useState } from 'react';
 
-export interface PasswordInputProps
-  extends Omit<React.InputHTMLAttributes<HTMLInputElement>, 'type'> {
+export interface PasswordInputProps extends Omit<
+  React.InputHTMLAttributes<HTMLInputElement>,
+  'type'
+> {
   label: string;
   error?: string | null;
   hint?: React.ReactNode;

@@ -90,7 +90,9 @@ export function labelFor(path: string): string {
   return path
     .split('.')
     .map((part) =>
-      (FIELD_LABELS[part] ?? part.replace(/([A-Z])/g, ' $1')).replace(/^./, (c) => c.toUpperCase()).trim(),
+      (FIELD_LABELS[part] ?? part.replace(/([A-Z])/g, ' $1'))
+        .replace(/^./, (c) => c.toUpperCase())
+        .trim(),
     )
     .join(' › ');
 }
@@ -112,7 +114,9 @@ export function deepEqual(a: JsonValue | undefined, b: JsonValue | undefined): b
     const kb = Object.keys(b).sort();
     if (ka.length !== kb.length) return false;
     if (!ka.every((k, i) => k === kb[i])) return false;
-    return ka.every((k) => deepEqual((a as Record<string, JsonValue>)[k], (b as Record<string, JsonValue>)[k]));
+    return ka.every((k) =>
+      deepEqual((a as Record<string, JsonValue>)[k], (b as Record<string, JsonValue>)[k]),
+    );
   }
 
   return false;
@@ -145,11 +149,17 @@ export function diffRecords(
   server: RecordSnapshot,
   options: DiffOptions = {},
 ): FieldDiff[] {
-  const ignore = new Set([...SERVER_AUTHORITATIVE_FIELDS, ...DERIVED_FIELDS, ...(options.ignore ?? [])]);
+  const ignore = new Set([
+    ...SERVER_AUTHORITATIVE_FIELDS,
+    ...DERIVED_FIELDS,
+    ...(options.ignore ?? []),
+  ]);
 
   const paths =
     options.paths ??
-    Array.from(new Set([...Object.keys(local), ...Object.keys(server)])).filter((p) => !ignore.has(p));
+    Array.from(new Set([...Object.keys(local), ...Object.keys(server)])).filter(
+      (p) => !ignore.has(p),
+    );
 
   const diffs: FieldDiff[] = [];
 
@@ -172,7 +182,11 @@ export function diffRecords(
     } else if (!localChanged && serverChanged) {
       isConflicting = false;
       autoResolution = ConflictResolution.KEEP_SERVER;
-    } else if (UNION_MERGE_FIELDS.has(path) && Array.isArray(localValue) && Array.isArray(serverValue)) {
+    } else if (
+      UNION_MERGE_FIELDS.has(path) &&
+      Array.isArray(localValue) &&
+      Array.isArray(serverValue)
+    ) {
       isConflicting = false;
       autoResolution = ConflictResolution.MERGE;
     } else {

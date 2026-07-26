@@ -7,32 +7,36 @@
  * or offline devices would never learn about the change.
  */
 
-import { Router } from 'express';
-import { Prisma } from '@prisma/client';
-import { z } from 'zod';
-import {
-  InspectionStatus,
-  SyncEntity,
-  SyncOperation,
-  type Priority,
-} from '@orbit/types';
 import {
   AppError,
-  ErrorCode,
-  Permission,
   assertTransition,
   can,
   canAccessInspection,
+  ErrorCode,
+  Permission,
 } from '@orbit/shared';
+import { InspectionStatus, type Priority, SyncEntity, SyncOperation } from '@orbit/types';
 import { ulid } from '@orbit/utils';
+import { Prisma } from '@prisma/client';
+import { Router } from 'express';
+import { z } from 'zod';
+
 import { prisma } from '../../db/prisma.js';
+import {
+  csvArray,
+  dateRange,
+  paginate,
+  paginationArgs,
+  paginationSchema,
+  searchFilter,
+  sortArgs,
+} from '../../lib/pagination.js';
 import { requireAuth, requirePermission } from '../../middleware/auth.js';
 import { auth, clientIp } from '../../middleware/context.js';
 import { asyncHandler } from '../../middleware/error.js';
 import { schemas, validate } from '../../middleware/validate.js';
-import { csvArray, dateRange, paginate, paginationArgs, paginationSchema, searchFilter, sortArgs } from '../../lib/pagination.js';
-import { recordChange } from '../sync/change-log.js';
 import { notifyInspectionReviewed } from '../notifications/push.service.js';
+import { recordChange } from '../sync/change-log.js';
 
 const router: Router = Router();
 
@@ -105,7 +109,9 @@ router.get(
       ...(q.siteId?.length ? { siteId: { in: q.siteId } } : {}),
       ...(q.assignedToId?.length ? { assignedToId: { in: q.assignedToId } } : {}),
       ...(q.tags?.length ? { tags: { hasSome: q.tags } } : {}),
-      ...(dateRange(q.createdFrom, q.createdTo) ? { createdAt: dateRange(q.createdFrom, q.createdTo) } : {}),
+      ...(dateRange(q.createdFrom, q.createdTo)
+        ? { createdAt: dateRange(q.createdFrom, q.createdTo) }
+        : {}),
       ...(dateRange(q.dueFrom, q.dueTo) ? { dueAt: dateRange(q.dueFrom, q.dueTo) } : {}),
     };
 
@@ -204,7 +210,14 @@ router.get(
     const where: Prisma.ChangeLogEntryWhereInput = {
       orgId: subject.orgId,
       entityId: id,
-      entity: { in: [SyncEntity.INSPECTION, SyncEntity.RESPONSE, SyncEntity.ATTACHMENT, SyncEntity.SIGNATURE] },
+      entity: {
+        in: [
+          SyncEntity.INSPECTION,
+          SyncEntity.RESPONSE,
+          SyncEntity.ATTACHMENT,
+          SyncEntity.SIGNATURE,
+        ],
+      },
     };
 
     const [entries, total] = await Promise.all([
@@ -217,7 +230,9 @@ router.get(
     ]);
 
     // Resolve actor names in one query rather than per entry.
-    const actorIds = Array.from(new Set(entries.map((e) => e.actorUserId).filter(Boolean))) as string[];
+    const actorIds = Array.from(
+      new Set(entries.map((e) => e.actorUserId).filter(Boolean)),
+    ) as string[];
     const actors = await prisma.user.findMany({
       where: { id: { in: actorIds } },
       select: { id: true, firstName: true, lastName: true },
@@ -257,17 +272,24 @@ router.post(
   requirePermission(Permission.INSPECTION_CREATE),
   validate({
     params: z.object({ id: schemas.ulid }),
-    body: z.object({
-      title: z.string().max(300).optional(),
-      assignedToId: schemas.ulid.nullable().optional(),
-      scheduledFor: z.string().datetime({ offset: true }).nullable().optional(),
-      dueAt: z.string().datetime({ offset: true }).nullable().optional(),
-    }).optional(),
+    body: z
+      .object({
+        title: z.string().max(300).optional(),
+        assignedToId: schemas.ulid.nullable().optional(),
+        scheduledFor: z.string().datetime({ offset: true }).nullable().optional(),
+        dueAt: z.string().datetime({ offset: true }).nullable().optional(),
+      })
+      .optional(),
   }),
   asyncHandler(async (req, res) => {
     const subject = auth(req);
     const { id } = req.validated!.params as { id: string };
-    const body = (req.validated!.body ?? {}) as { title?: string; assignedToId?: string | null; scheduledFor?: string | null; dueAt?: string | null };
+    const body = (req.validated!.body ?? {}) as {
+      title?: string;
+      assignedToId?: string | null;
+      scheduledFor?: string | null;
+      dueAt?: string | null;
+    };
 
     const source = await prisma.inspection.findFirst({
       where: { id, orgId: subject.orgId, deletedAt: null },
@@ -285,7 +307,9 @@ router.post(
     });
 
     const created = await prisma.$transaction(async (tx) => {
-      const seq = await tx.$queryRaw<Array<{ number_sequence: number; number_prefix: string; number_year: number }>>`
+      const seq = await tx.$queryRaw<
+        Array<{ number_sequence: number; number_prefix: string; number_year: number }>
+      >`
         UPDATE organizations
            SET "numberSequence" = CASE WHEN "numberYear" = EXTRACT(YEAR FROM NOW())::int
                                        THEN "numberSequence" + 1 ELSE 1 END,
@@ -402,7 +426,10 @@ router.post(
   asyncHandler(async (req, res) => {
     const subject = auth(req);
     const { id } = req.validated!.params as { id: string };
-    const { decision, reason } = req.validated!.body as { decision: 'APPROVE' | 'REJECT'; reason?: string };
+    const { decision, reason } = req.validated!.body as {
+      decision: 'APPROVE' | 'REJECT';
+      reason?: string;
+    };
 
     const inspection = await prisma.inspection.findFirst({
       where: { id, orgId: subject.orgId, deletedAt: null },
@@ -412,9 +439,13 @@ router.post(
     if (decision === 'REJECT' && !reason?.trim()) {
       // A rejection without a reason is unusable to the inspector who has to
       // act on it, so it is refused rather than accepted silently.
-      throw new AppError(ErrorCode.VALIDATION_FAILED, 'A reason is required when rejecting an inspection.', {
-        fields: { reason: 'Explain what needs to change.' },
-      });
+      throw new AppError(
+        ErrorCode.VALIDATION_FAILED,
+        'A reason is required when rejecting an inspection.',
+        {
+          fields: { reason: 'Explain what needs to change.' },
+        },
+      );
     }
 
     const target = decision === 'APPROVE' ? InspectionStatus.APPROVED : InspectionStatus.REJECTED;
@@ -509,7 +540,15 @@ router.post(
   validate({
     body: z.object({
       ids: z.array(schemas.ulid).min(1).max(200),
-      action: z.enum(['ASSIGN', 'ARCHIVE', 'UNARCHIVE', 'SET_PRIORITY', 'SET_DUE_DATE', 'ADD_TAGS', 'DELETE']),
+      action: z.enum([
+        'ASSIGN',
+        'ARCHIVE',
+        'UNARCHIVE',
+        'SET_PRIORITY',
+        'SET_DUE_DATE',
+        'ADD_TAGS',
+        'DELETE',
+      ]),
       assignedToId: schemas.ulid.nullable().optional(),
       priority: z.enum(['LOW', 'NORMAL', 'HIGH', 'CRITICAL']).optional(),
       dueAt: z.string().datetime({ offset: true }).nullable().optional(),
@@ -528,13 +567,23 @@ router.post(
     };
 
     if (body.action === 'DELETE' && !can(subject, Permission.INSPECTION_DELETE)) {
-      throw new AppError(ErrorCode.PERMISSION_DENIED, 'You do not have permission to delete inspections.');
+      throw new AppError(
+        ErrorCode.PERMISSION_DENIED,
+        'You do not have permission to delete inspections.',
+      );
     }
 
     // Only touch rows the caller can actually see.
     const targets = await prisma.inspection.findMany({
       where: { id: { in: body.ids }, orgId: subject.orgId, deletedAt: null },
-      select: { id: true, orgId: true, assignedToId: true, projectId: true, createdById: true, tags: true },
+      select: {
+        id: true,
+        orgId: true,
+        assignedToId: true,
+        projectId: true,
+        createdById: true,
+        tags: true,
+      },
     });
 
     const permitted = targets.filter((t) => canAccessInspection(subject, t));
@@ -545,7 +594,7 @@ router.post(
     for (const target of permitted) {
       try {
         await prisma.$transaction(async (tx) => {
-          let data: Prisma.InspectionUncheckedUpdateInput = { version: { increment: 1 } };
+          const data: Prisma.InspectionUncheckedUpdateInput = { version: { increment: 1 } };
 
           switch (body.action) {
             case 'ASSIGN':
@@ -590,7 +639,11 @@ router.post(
         results.push({ id: target.id, ok: true });
       } catch (err) {
         // One failure must not abandon the rest of the batch.
-        results.push({ id: target.id, ok: false, error: err instanceof Error ? err.message : 'Failed' });
+        results.push({
+          id: target.id,
+          ok: false,
+          error: err instanceof Error ? err.message : 'Failed',
+        });
       }
     }
 

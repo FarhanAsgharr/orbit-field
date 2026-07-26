@@ -11,14 +11,15 @@
  */
 
 import {
+  type JsonValue,
+  type OutboxEntry,
   OutboxState,
   SyncEntity,
   SyncOperation,
-  type JsonValue,
-  type OutboxEntry,
   type SyncOperationEnvelope,
 } from '@orbit/types';
-import { DEFAULT_BACKOFF, backoffDelay, ulid } from '@orbit/utils';
+import { backoffDelay, DEFAULT_BACKOFF, ulid } from '@orbit/utils';
+
 import type { Database, SqlValue } from '../db/database';
 
 export interface EnqueueInput {
@@ -88,9 +89,7 @@ export class Outbox {
    * intent by an untrusted clock reorders their work.
    */
   private nextLamport(): number {
-    const row = this.db.getFirst<{ value: string }>(
-      `SELECT value FROM meta WHERE key = 'lamport'`,
-    );
+    const row = this.db.getFirst<{ value: string }>(`SELECT value FROM meta WHERE key = 'lamport'`);
     const next = (row ? Number(row.value) : 0) + 1;
     this.db.run(
       `INSERT INTO meta (key, value) VALUES ('lamport', ?)
@@ -124,10 +123,11 @@ export class Outbox {
 
       if (pending) {
         const mergedPatch = { ...(JSON.parse(pending.patch) as object), ...input.patch };
-        this.db.run(
-          `UPDATE outbox SET patch = ?, updated_at = ? WHERE id = ?`,
-          [JSON.stringify(mergedPatch), now, pending.id],
-        );
+        this.db.run(`UPDATE outbox SET patch = ?, updated_at = ? WHERE id = ?`, [
+          JSON.stringify(mergedPatch),
+          now,
+          pending.id,
+        ]);
         return toEntry({ ...pending, patch: JSON.stringify(mergedPatch), updated_at: now });
       }
     }
@@ -231,10 +231,9 @@ export class Outbox {
    * rather than left with a silently stuck queue.
    */
   markRetry(id: string, error: string, code: string | null, retryAfterMs?: number): void {
-    const row = this.db.getFirst<{ attempts: number }>(
-      `SELECT attempts FROM outbox WHERE id = ?`,
-      [id],
-    );
+    const row = this.db.getFirst<{ attempts: number }>(`SELECT attempts FROM outbox WHERE id = ?`, [
+      id,
+    ]);
     const attempts = (row?.attempts ?? 0) + 1;
     const now = new Date().toISOString();
 
@@ -273,10 +272,7 @@ export class Outbox {
   /** Blocked on a conflict. Stays queued; replayed after resolution. */
   markConflicted(id: string, entityId: string): void {
     const now = new Date().toISOString();
-    this.db.run(
-      `UPDATE outbox SET state = 'CONFLICTED', updated_at = ? WHERE id = ?`,
-      [now, id],
-    );
+    this.db.run(`UPDATE outbox SET state = 'CONFLICTED', updated_at = ? WHERE id = ?`, [now, id]);
     // Flag the row so the list can badge it without joining the outbox.
     for (const table of ['inspections', 'inspection_responses', 'attachments', 'signatures']) {
       this.db.run(`UPDATE ${table} SET has_conflict = 1 WHERE id = ?`, [entityId]);
@@ -346,7 +342,9 @@ export class Outbox {
   /** Entries blocking a specific record, for the "unsynced changes" sheet. */
   forEntity(entityId: string): OutboxEntry[] {
     return this.db
-      .getAll<OutboxRow>(`SELECT * FROM outbox WHERE entity_id = ? ORDER BY lamport ASC`, [entityId])
+      .getAll<OutboxRow>(`SELECT * FROM outbox WHERE entity_id = ? ORDER BY lamport ASC`, [
+        entityId,
+      ])
       .map(toEntry);
   }
 

@@ -8,9 +8,10 @@
  * fallback persisted to the keychain for cases where neither is available.
  */
 
-import { Platform } from 'react-native';
-import * as Application from 'expo-application';
 import { ulid } from '@orbit/utils';
+import * as Application from 'expo-application';
+import { Platform } from 'react-native';
+
 import { secureStorage } from './storage';
 
 let cached: string | null = null;

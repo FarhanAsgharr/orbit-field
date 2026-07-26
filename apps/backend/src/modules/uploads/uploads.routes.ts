@@ -13,20 +13,22 @@
  * writes are idempotent so a client that re-sends after a lost ack is harmless.
  */
 
+import { createHash } from 'node:crypto';
+
+import { AppError, ErrorCode, Permission } from '@orbit/shared';
+import { AttachmentState, type UploadSession } from '@orbit/types';
+import { ulid } from '@orbit/utils';
 import { Router } from 'express';
 import { z } from 'zod';
-import { createHash } from 'node:crypto';
-import { AttachmentState, type UploadSession } from '@orbit/types';
-import { AppError, ErrorCode, Permission } from '@orbit/shared';
-import { ulid } from '@orbit/utils';
+
 import { env } from '../../config/env.js';
 import { logger } from '../../config/logger.js';
 import { prisma } from '../../db/prisma.js';
 import { requireAuth, requireDevice, requirePermission } from '../../middleware/auth.js';
 import { auth } from '../../middleware/context.js';
 import { asyncHandler } from '../../middleware/error.js';
-import { schemas, validate } from '../../middleware/validate.js';
 import { uploadLimiter } from '../../middleware/rate-limit.js';
+import { schemas, validate } from '../../middleware/validate.js';
 import { attachmentKey, storage } from './storage.js';
 
 const router: Router = Router();
@@ -74,14 +76,29 @@ router.post(
   }),
   asyncHandler(async (req, res) => {
     const subject = auth(req);
-    const body = req.validated!.body as { attachmentId: string; sizeBytes: number; checksum: string; chunkSize?: number };
+    const body = req.validated!.body as {
+      attachmentId: string;
+      sizeBytes: number;
+      checksum: string;
+      chunkSize?: number;
+    };
 
     const attachment = await prisma.attachment.findFirst({
       where: { id: body.attachmentId, orgId: subject.orgId, deletedAt: null },
-      select: { id: true, fileName: true, checksum: true, state: true, storageKey: true, sizeBytes: true },
+      select: {
+        id: true,
+        fileName: true,
+        checksum: true,
+        state: true,
+        storageKey: true,
+        sizeBytes: true,
+      },
     });
     if (!attachment) {
-      throw new AppError(ErrorCode.NOT_FOUND, 'That attachment record was not found. Sync it before uploading.');
+      throw new AppError(
+        ErrorCode.NOT_FOUND,
+        'That attachment record was not found. Sync it before uploading.',
+      );
     }
 
     // Already uploaded — tell the client it is done rather than re-transferring
@@ -141,7 +158,9 @@ router.post(
       return;
     }
 
-    const existing = await prisma.uploadSession.findUnique({ where: { attachmentId: attachment.id } });
+    const existing = await prisma.uploadSession.findUnique({
+      where: { attachmentId: attachment.id },
+    });
 
     if (existing && existing.expiresAt.getTime() > Date.now() && !existing.completedAt) {
       res.status(200).json({ data: toSession({ ...existing, id: existing.id }) });
@@ -150,7 +169,9 @@ router.post(
 
     // Replace an expired or completed session rather than leaving a stale row.
     if (existing) {
-      await storage().discard(existing.id).catch(() => undefined);
+      await storage()
+        .discard(existing.id)
+        .catch(() => undefined);
       await prisma.uploadSession.delete({ where: { id: existing.id } }).catch(() => undefined);
     }
 
@@ -198,7 +219,10 @@ router.get(
     if (session.expiresAt.getTime() < Date.now()) {
       // 410 rather than 404: the client should open a fresh session, not treat
       // this as a permanent failure.
-      throw new AppError(ErrorCode.UPLOAD_SESSION_EXPIRED, 'That upload session has expired. Start a new one.');
+      throw new AppError(
+        ErrorCode.UPLOAD_SESSION_EXPIRED,
+        'That upload session has expired. Start a new one.',
+      );
     }
 
     res.json({ data: toSession(session) });
@@ -225,7 +249,10 @@ router.post(
     body: z.object({
       data: z.string().max(MAX_CHUNK_BASE64_BYTES),
       /** Optional per-chunk digest; when present the server verifies it. */
-      checksum: z.string().regex(/^[a-f0-9]{64}$/i).optional(),
+      checksum: z
+        .string()
+        .regex(/^[a-f0-9]{64}$/i)
+        .optional(),
     }),
   }),
   asyncHandler(async (req, res) => {
@@ -241,10 +268,16 @@ router.post(
       throw new AppError(ErrorCode.CONFLICT, 'That upload has already been completed.');
     }
     if (session.expiresAt.getTime() < Date.now()) {
-      throw new AppError(ErrorCode.UPLOAD_SESSION_EXPIRED, 'That upload session has expired. Start a new one.');
+      throw new AppError(
+        ErrorCode.UPLOAD_SESSION_EXPIRED,
+        'That upload session has expired. Start a new one.',
+      );
     }
     if (index >= session.totalChunks) {
-      throw new AppError(ErrorCode.VALIDATION_FAILED, `Chunk index ${index} is outside this upload (0–${session.totalChunks - 1}).`);
+      throw new AppError(
+        ErrorCode.VALIDATION_FAILED,
+        `Chunk index ${index} is outside this upload (0–${session.totalChunks - 1}).`,
+      );
     }
 
     // Already have it. Return the current state so the client can skip ahead.
@@ -266,7 +299,10 @@ router.post(
       throw new AppError(ErrorCode.VALIDATION_FAILED, 'The chunk payload was empty.');
     }
     if (buffer.length > session.chunkSize) {
-      throw new AppError(ErrorCode.PAYLOAD_TOO_LARGE, `Chunk exceeds the agreed size of ${session.chunkSize} bytes.`);
+      throw new AppError(
+        ErrorCode.PAYLOAD_TOO_LARGE,
+        `Chunk exceeds the agreed size of ${session.chunkSize} bytes.`,
+      );
     }
 
     if (body.checksum) {
@@ -274,7 +310,10 @@ router.post(
       if (actual !== body.checksum.toLowerCase()) {
         // A corrupt chunk must be rejected here, not discovered at assembly —
         // by then the client has sent everything else for nothing.
-        throw new AppError(ErrorCode.CHECKSUM_MISMATCH, 'The chunk did not match its checksum. Re-send it.');
+        throw new AppError(
+          ErrorCode.CHECKSUM_MISMATCH,
+          'The chunk did not match its checksum. Re-send it.',
+        );
       }
     }
 
@@ -356,18 +395,30 @@ router.post(
     } catch (err) {
       await prisma.attachment.update({
         where: { id: session.attachmentId },
-        data: { state: AttachmentState.FAILED, lastUploadError: err instanceof Error ? err.message : 'Assembly failed' },
+        data: {
+          state: AttachmentState.FAILED,
+          lastUploadError: err instanceof Error ? err.message : 'Assembly failed',
+        },
       });
-      throw new AppError(ErrorCode.STORAGE_UNAVAILABLE, 'The upload could not be assembled. Please retry.', { cause: err });
+      throw new AppError(
+        ErrorCode.STORAGE_UNAVAILABLE,
+        'The upload could not be assembled. Please retry.',
+        { cause: err },
+      );
     }
 
     if (result.checksum !== checksum.toLowerCase()) {
       // The assembled bytes are not what the client hashed. Discard and let it
       // start over — publishing this would put corrupt evidence on record.
-      await storage().delete(result.key).catch(() => undefined);
+      await storage()
+        .delete(result.key)
+        .catch(() => undefined);
       await prisma.attachment.update({
         where: { id: session.attachmentId },
-        data: { state: AttachmentState.FAILED, lastUploadError: 'Checksum mismatch after assembly' },
+        data: {
+          state: AttachmentState.FAILED,
+          lastUploadError: 'Checksum mismatch after assembly',
+        },
       });
       logger.warn(
         { attachmentId: session.attachmentId, expected: checksum, actual: result.checksum },
@@ -398,9 +449,13 @@ router.post(
 
     // Chunks are no longer needed. Failure to clean up is not worth failing the
     // request over — the expiry sweeper will catch it.
-    await storage().discard(uploadId).catch(() => undefined);
+    await storage()
+      .discard(uploadId)
+      .catch(() => undefined);
 
-    res.json({ data: { storageKey: result.key, sizeBytes: result.sizeBytes, checksum: result.checksum } });
+    res.json({
+      data: { storageKey: result.key, sizeBytes: result.sizeBytes, checksum: result.checksum },
+    });
   }),
 );
 
@@ -419,7 +474,9 @@ router.delete(
     });
     if (!session) throw new AppError(ErrorCode.NOT_FOUND, 'That upload session was not found.');
 
-    await storage().discard(uploadId).catch(() => undefined);
+    await storage()
+      .discard(uploadId)
+      .catch(() => undefined);
     await prisma.uploadSession.delete({ where: { id: uploadId } });
     await prisma.attachment.update({
       where: { id: session.attachmentId },
@@ -452,7 +509,10 @@ router.get(
 
     res.setHeader('Content-Type', attachment.mimeType);
     res.setHeader('Content-Length', String(bytes.length));
-    res.setHeader('Content-Disposition', `inline; filename="${encodeURIComponent(attachment.fileName)}"`);
+    res.setHeader(
+      'Content-Disposition',
+      `inline; filename="${encodeURIComponent(attachment.fileName)}"`,
+    );
     // Attachments are immutable once uploaded, so they cache indefinitely.
     res.setHeader('Cache-Control', 'private, max-age=31536000, immutable');
     res.send(bytes);
@@ -467,7 +527,9 @@ export async function pruneExpiredUploads(): Promise<number> {
   });
 
   for (const session of expired) {
-    await storage().discard(session.id).catch(() => undefined);
+    await storage()
+      .discard(session.id)
+      .catch(() => undefined);
     await prisma.attachment
       .update({ where: { id: session.attachmentId }, data: { state: AttachmentState.QUEUED } })
       .catch(() => undefined);

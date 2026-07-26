@@ -1,5 +1,6 @@
 /** HTTP request/response contracts shared by clients and server. */
 
+import type { Organization, User } from './domain.js';
 import type {
   AttachmentKind,
   InspectionOutcome,
@@ -20,7 +21,6 @@ import type {
   TemplateId,
   UserId,
 } from './primitives.js';
-import type { Organization, User } from './domain.js';
 
 /** Uniform error body. Every non-2xx response has exactly this shape. */
 export interface ApiError {

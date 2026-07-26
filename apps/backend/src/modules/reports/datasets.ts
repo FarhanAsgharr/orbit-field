@@ -8,9 +8,10 @@
  */
 
 import { Prisma } from '@prisma/client';
+
 import { prisma } from '../../db/prisma.js';
-import { sheet, toCsv, type PreparedSheet, type SheetColumn } from './excel.service.js';
-import { section, type PreparedSection } from './pdf.service.js';
+import { type PreparedSheet, sheet, type SheetColumn, toCsv } from './excel.service.js';
+import { type PreparedSection, section } from './pdf.service.js';
 
 export interface DatasetContext {
   orgId: string;
@@ -65,14 +66,26 @@ export const inspectionsDataset: Dataset<InspectionRow> = {
     { header: 'Reference', value: (r) => r.number, width: 18 },
     { header: 'Title', value: (r) => r.title, width: 38 },
     { header: 'Checklist', value: (r) => r.template?.name ?? '', width: 30 },
-    { header: 'Version', value: (r) => r.templateVersion?.version ?? null, format: 'integer', width: 9 },
+    {
+      header: 'Version',
+      value: (r) => r.templateVersion?.version ?? null,
+      format: 'integer',
+      width: 9,
+    },
     { header: 'Status', value: (r) => r.status.replace(/_/g, ' '), width: 14 },
     {
       header: 'Result',
       value: (r) => r.outcome.replace(/_/g, ' '),
       width: 20,
       // Colour follows the same semantics as the app and the console.
-      signal: (r) => (r.outcome === 'FAIL' ? 'danger' : r.outcome === 'PASS_WITH_OBSERVATIONS' ? 'warn' : r.outcome === 'PASS' ? 'ok' : null),
+      signal: (r) =>
+        r.outcome === 'FAIL'
+          ? 'danger'
+          : r.outcome === 'PASS_WITH_OBSERVATIONS'
+            ? 'warn'
+            : r.outcome === 'PASS'
+              ? 'ok'
+              : null,
     },
     { header: 'Priority', value: (r) => r.priority, width: 11 },
     { header: 'Score', value: (r) => r.score, format: 'percent', width: 9 },
@@ -105,8 +118,20 @@ export const inspectionsDataset: Dataset<InspectionRow> = {
     },
     { header: 'Questions', value: (r) => r.totalFields, format: 'integer', width: 11 },
     { header: 'Answered', value: (r) => r.answeredFields, format: 'integer', width: 11 },
-    { header: 'Failed', value: (r) => r.failedFields, format: 'integer', width: 9, signal: (r) => (r.failedFields > 0 ? 'danger' : null) },
-    { header: 'Critical failures', value: (r) => r.criticalFailures, format: 'integer', width: 15, signal: (r) => (r.criticalFailures > 0 ? 'danger' : null) },
+    {
+      header: 'Failed',
+      value: (r) => r.failedFields,
+      format: 'integer',
+      width: 9,
+      signal: (r) => (r.failedFields > 0 ? 'danger' : null),
+    },
+    {
+      header: 'Critical failures',
+      value: (r) => r.criticalFailures,
+      format: 'integer',
+      width: 15,
+      signal: (r) => (r.criticalFailures > 0 ? 'danger' : null),
+    },
     { header: 'Attachments', value: (r) => r._count.attachments, format: 'integer', width: 12 },
     {
       header: 'Location at completion',
@@ -151,8 +176,14 @@ export const inspectionsDataset: Dataset<InspectionRow> = {
 // ---------------------------------------------------------------------------
 
 interface InspectorStat {
-  name: string; email: string; assigned: number; completed: number; failed: number;
-  completionRate: number; averageScore: number | null; averageMinutes: number | null;
+  name: string;
+  email: string;
+  assigned: number;
+  completed: number;
+  failed: number;
+  completionRate: number;
+  averageScore: number | null;
+  averageMinutes: number | null;
   onTimeRate: number | null;
 }
 
@@ -168,20 +199,36 @@ export const inspectorsDataset: Dataset<InspectorStat> = {
     { header: 'Completed', value: (r) => r.completed, format: 'integer', width: 11 },
     { header: 'Failed', value: (r) => r.failed, format: 'integer', width: 9 },
     {
-      header: 'Completion rate', value: (r) => r.completionRate, format: 'percent', width: 15,
+      header: 'Completion rate',
+      value: (r) => r.completionRate,
+      format: 'percent',
+      width: 15,
       signal: (r) => (r.completionRate >= 80 ? 'ok' : r.completionRate >= 50 ? 'warn' : 'danger'),
     },
     { header: 'Average score', value: (r) => r.averageScore, format: 'percent', width: 14 },
-    { header: 'Average minutes on site', value: (r) => r.averageMinutes, format: 'integer', width: 20 },
+    {
+      header: 'Average minutes on site',
+      value: (r) => r.averageMinutes,
+      format: 'integer',
+      width: 20,
+    },
     { header: 'On time', value: (r) => r.onTimeRate, format: 'percent', width: 10 },
   ],
   load: async (ctx) => {
-    const rows = await prisma.$queryRaw<Array<{
-      first_name: string; last_name: string; email: string;
-      assigned: bigint; completed: bigint; failed: bigint;
-      avg_score: number | null; avg_minutes: number | null;
-      on_time: bigint; with_due: bigint;
-    }>>`
+    const rows = await prisma.$queryRaw<
+      Array<{
+        first_name: string;
+        last_name: string;
+        email: string;
+        assigned: bigint;
+        completed: bigint;
+        failed: bigint;
+        avg_score: number | null;
+        avg_minutes: number | null;
+        on_time: bigint;
+        with_due: bigint;
+      }>
+    >`
       SELECT u."firstName" AS first_name, u."lastName" AS last_name, u.email,
              COUNT(i.id)::bigint AS assigned,
              COUNT(i.id) FILTER (WHERE i.status IN ('APPROVED','SUBMITTED','UNDER_REVIEW'))::bigint AS completed,
@@ -220,8 +267,13 @@ export const inspectorsDataset: Dataset<InspectorStat> = {
 };
 
 interface SiteStat {
-  name: string; client: string; total: number; failed: number; failureRate: number;
-  averageScore: number | null; lastInspected: Date | null;
+  name: string;
+  client: string;
+  total: number;
+  failed: number;
+  failureRate: number;
+  averageScore: number | null;
+  lastInspected: Date | null;
 }
 
 export const sitesDataset: Dataset<SiteStat> = {
@@ -235,17 +287,26 @@ export const sitesDataset: Dataset<SiteStat> = {
     { header: 'Inspections', value: (r) => r.total, format: 'integer', width: 12 },
     { header: 'Failed', value: (r) => r.failed, format: 'integer', width: 9 },
     {
-      header: 'Failure rate', value: (r) => r.failureRate, format: 'percent', width: 13,
+      header: 'Failure rate',
+      value: (r) => r.failureRate,
+      format: 'percent',
+      width: 13,
       signal: (r) => (r.failureRate > 25 ? 'danger' : r.failureRate > 10 ? 'warn' : 'ok'),
     },
     { header: 'Average score', value: (r) => r.averageScore, format: 'percent', width: 14 },
     { header: 'Last inspected', value: (r) => r.lastInspected, format: 'datetime', width: 18 },
   ],
   load: async (ctx) => {
-    const rows = await prisma.$queryRaw<Array<{
-      name: string; client_name: string | null; total: bigint; failed: bigint;
-      avg_score: number | null; last_inspected: Date | null;
-    }>>`
+    const rows = await prisma.$queryRaw<
+      Array<{
+        name: string;
+        client_name: string | null;
+        total: bigint;
+        failed: bigint;
+        avg_score: number | null;
+        last_inspected: Date | null;
+      }>
+    >`
       SELECT s.name, c.name AS client_name,
              COUNT(i.id)::bigint AS total,
              COUNT(i.id) FILTER (WHERE i.outcome = 'FAIL')::bigint AS failed,
@@ -279,7 +340,9 @@ export const sitesDataset: Dataset<SiteStat> = {
 // Administrative datasets
 // ---------------------------------------------------------------------------
 
-type UserRow = Prisma.UserGetPayload<{ include: { _count: { select: { devices: true; assignedInspections: true } } } }>;
+type UserRow = Prisma.UserGetPayload<{
+  include: { _count: { select: { devices: true; assignedInspections: true } } };
+}>;
 
 export const usersDataset: Dataset<UserRow> = {
   key: 'users',
@@ -290,12 +353,27 @@ export const usersDataset: Dataset<UserRow> = {
     { header: 'Last name', value: (r) => r.lastName, width: 18 },
     { header: 'Email', value: (r) => r.email, width: 32 },
     { header: 'Role', value: (r) => r.role.replace(/_/g, ' '), width: 15 },
-    { header: 'Status', value: (r) => r.status, width: 13, signal: (r) => (r.status === 'ACTIVE' ? 'ok' : r.status === 'SUSPENDED' ? 'danger' : null) },
+    {
+      header: 'Status',
+      value: (r) => r.status,
+      width: 13,
+      signal: (r) => (r.status === 'ACTIVE' ? 'ok' : r.status === 'SUSPENDED' ? 'danger' : null),
+    },
     { header: 'Job title', value: (r) => r.jobTitle ?? '', width: 22 },
     { header: 'Department', value: (r) => r.department ?? '', width: 20 },
     { header: 'Devices', value: (r) => r._count.devices, format: 'integer', width: 9 },
-    { header: 'Assigned work', value: (r) => r._count.assignedInspections, format: 'integer', width: 14 },
-    { header: 'Last signed in', value: (r) => asDate(r.lastLoginAt), format: 'datetime', width: 18 },
+    {
+      header: 'Assigned work',
+      value: (r) => r._count.assignedInspections,
+      format: 'integer',
+      width: 14,
+    },
+    {
+      header: 'Last signed in',
+      value: (r) => asDate(r.lastLoginAt),
+      format: 'datetime',
+      width: 18,
+    },
     { header: 'Created', value: (r) => asDate(r.createdAt), format: 'datetime', width: 18 },
   ],
   load: async (ctx) =>
@@ -307,7 +385,9 @@ export const usersDataset: Dataset<UserRow> = {
     }),
 };
 
-type DeviceRow = Prisma.DeviceGetPayload<{ include: { user: { select: { firstName: true; lastName: true; email: true } } } }>;
+type DeviceRow = Prisma.DeviceGetPayload<{
+  include: { user: { select: { firstName: true; lastName: true; email: true } } };
+}>;
 
 export const devicesDataset: Dataset<DeviceRow> = {
   key: 'devices',
@@ -338,7 +418,9 @@ export const devicesDataset: Dataset<DeviceRow> = {
     }),
 };
 
-type AuditRow = Prisma.AuditLogGetPayload<{ include: { user: { select: { firstName: true; lastName: true; email: true } } } }>;
+type AuditRow = Prisma.AuditLogGetPayload<{
+  include: { user: { select: { firstName: true; lastName: true; email: true } } };
+}>;
 
 export const auditDataset: Dataset<AuditRow> = {
   key: 'audit',
@@ -371,7 +453,9 @@ export const auditDataset: Dataset<AuditRow> = {
     }),
 };
 
-type ClientRow = Prisma.ClientGetPayload<{ include: { _count: { select: { projects: true; sites: true; inspections: true } } } }>;
+type ClientRow = Prisma.ClientGetPayload<{
+  include: { _count: { select: { projects: true; sites: true; inspections: true } } };
+}>;
 
 export const clientsDataset: Dataset<ClientRow> = {
   key: 'clients',
@@ -498,7 +582,10 @@ export const DATASET_KEYS = Object.keys(DATASETS) as DatasetKey[];
  * Loaders, one per dataset, each monomorphic at its definition site.
  * This is what makes `DATASET_LOADERS[key](ctx)` type-safe.
  */
-export const DATASET_LOADERS: Record<DatasetKey, (ctx: DatasetContext) => Promise<PreparedDataset>> = {
+export const DATASET_LOADERS: Record<
+  DatasetKey,
+  (ctx: DatasetContext) => Promise<PreparedDataset>
+> = {
   inspections: (ctx) => prepare(inspectionsDataset, ctx),
   inspectors: (ctx) => prepare(inspectorsDataset, ctx),
   sites: (ctx) => prepare(sitesDataset, ctx),

@@ -10,12 +10,14 @@
  * has actually reached the server.
  */
 
-import React, { useCallback, useMemo } from 'react';
-import { RefreshControl, ScrollView, View } from 'react-native';
-import { useRouter } from 'expo-router';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { InspectionStatus } from '@orbit/types';
 import { formatBytes, formatRelativeTime } from '@orbit/utils';
+import { useRouter } from 'expo-router';
+import React, { useCallback, useMemo } from 'react';
+import { RefreshControl, ScrollView, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+
+import { InspectionRow } from '../../src/components/InspectionRow';
 import {
   Badge,
   Button,
@@ -23,14 +25,13 @@ import {
   Divider,
   EmptyState,
   ProgressBar,
-  Txt,
   statusPresentation,
+  Txt,
 } from '../../src/components/ui';
-import { useTheme } from '../../src/theme/ThemeProvider';
-import { useRuntime, useSession } from '../../src/stores/session.store';
 import { useLiveQuery, useRefresh } from '../../src/hooks/useLiveQuery';
 import { getNetworkState } from '../../src/lib/network';
-import { InspectionRow } from '../../src/components/InspectionRow';
+import { useRuntime, useSession } from '../../src/stores/session.store';
+import { useTheme } from '../../src/theme/ThemeProvider';
 
 export default function DashboardScreen(): React.ReactElement {
   const theme = useTheme();
@@ -115,7 +116,12 @@ export default function DashboardScreen(): React.ReactElement {
 
       {/* --- work summary --- */}
       <View style={{ flexDirection: 'row', gap: theme.spacing.md }}>
-        <StatTile label="Open" value={open} tone="accent" onPress={() => router.push('/(tabs)/inspections')} />
+        <StatTile
+          label="Open"
+          value={open}
+          tone="accent"
+          onPress={() => router.push('/(tabs)/inspections')}
+        />
         <StatTile
           label="Due today"
           value={data.dueToday}
@@ -132,10 +138,14 @@ export default function DashboardScreen(): React.ReactElement {
           Prominent by design: this is the answer to "is my work safe?" */}
       <Card>
         <View style={{ gap: theme.spacing.md }}>
-          <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+          <View
+            style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}
+          >
             <Txt variant="subheading">Device status</Txt>
             <Badge
-              label={network.isConnected ? (network.isMetered ? 'Mobile data' : 'Online') : 'Offline'}
+              label={
+                network.isConnected ? (network.isMetered ? 'Mobile data' : 'Online') : 'Offline'
+              }
               tone={network.isConnected ? (network.isMetered ? 'warning' : 'success') : 'danger'}
               icon={network.isConnected ? '●' : '○'}
             />
@@ -172,9 +182,7 @@ export default function DashboardScreen(): React.ReactElement {
           <StatusLine
             label="Photos & videos"
             value={
-              data.pendingUploads === 0
-                ? 'All uploaded'
-                : `${data.pendingUploads} pending upload`
+              data.pendingUploads === 0 ? 'All uploaded' : `${data.pendingUploads} pending upload`
             }
             tone={data.pendingUploads === 0 ? 'success' : 'warning'}
           />
@@ -220,7 +228,9 @@ export default function DashboardScreen(): React.ReactElement {
 
       {/* --- up next --- */}
       <View style={{ gap: theme.spacing.md }}>
-        <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+        <View
+          style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}
+        >
           <Txt variant="subheading">Up next</Txt>
           <Button
             label="See all"

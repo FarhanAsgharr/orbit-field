@@ -16,11 +16,13 @@
  * get permanently denied.
  */
 
-import * as Notifications from 'expo-notifications';
-import * as Device from 'expo-device';
-import { Platform } from 'react-native';
-import Constants from 'expo-constants';
 import type { NotificationTopic } from '@orbit/types';
+import { toDisplayString } from '@orbit/utils';
+import Constants from 'expo-constants';
+import * as Device from 'expo-device';
+import * as Notifications from 'expo-notifications';
+import { Platform } from 'react-native';
+
 import { storage } from '../../lib/storage';
 
 const PERMISSION_ASKED_KEY = 'notifications.permissionAsked';
@@ -151,12 +153,10 @@ export async function enableNotifications(): Promise<NotificationState> {
 
   try {
     const projectId =
-      (Constants.expoConfig?.extra as { eas?: { projectId?: string } } | undefined)?.eas?.projectId ??
-      Constants.easConfig?.projectId;
+      (Constants.expoConfig?.extra as { eas?: { projectId?: string } } | undefined)?.eas
+        ?.projectId ?? Constants.easConfig?.projectId;
 
-    const token = await Notifications.getExpoPushTokenAsync(
-      projectId ? { projectId } : undefined,
-    );
+    const token = await Notifications.getExpoPushTokenAsync(projectId ? { projectId } : undefined);
 
     return { permission: 'GRANTED', pushToken: token.data, supportsPush: true };
   } catch (err) {
@@ -269,7 +269,7 @@ export function onNotificationTap(handler: (tap: NotificationTap) => void): () =
   const extract = (response: Notifications.NotificationResponse): NotificationTap => {
     const data = (response.notification.request.content.data ?? {}) as Record<string, unknown>;
     return {
-      topic: String(data.topic ?? 'UNKNOWN'),
+      topic: toDisplayString(data.topic) || 'UNKNOWN',
       deepLink: typeof data.deepLink === 'string' ? data.deepLink : null,
       data,
     };
@@ -293,7 +293,7 @@ export function onNotificationReceived(
 ): () => void {
   const subscription = Notifications.addNotificationReceivedListener((notification) => {
     const data = (notification.request.content.data ?? {}) as Record<string, unknown>;
-    handler(String(data.topic ?? 'UNKNOWN'), data);
+    handler(toDisplayString(data.topic) || 'UNKNOWN', data);
   });
   return () => subscription.remove();
 }

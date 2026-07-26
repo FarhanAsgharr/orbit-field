@@ -11,22 +11,28 @@
  * rather than letting a request quietly take four minutes.
  */
 
+import { AppError, can, ErrorCode, Permission } from '@orbit/shared';
+import { ulid } from '@orbit/utils';
 import { Router } from 'express';
 import { z } from 'zod';
-import { AppError, ErrorCode, Permission, can } from '@orbit/shared';
-import { ulid } from '@orbit/utils';
-import { prisma } from '../../db/prisma.js';
+
 import { logger } from '../../config/logger.js';
+import { prisma } from '../../db/prisma.js';
+import { paginate, paginationArgs, paginationSchema } from '../../lib/pagination.js';
 import { requireAuth, requirePermission } from '../../middleware/auth.js';
 import { auth, clientIp } from '../../middleware/context.js';
 import { asyncHandler } from '../../middleware/error.js';
 import { schemas, validate } from '../../middleware/validate.js';
-import { paginate, paginationArgs, paginationSchema } from '../../lib/pagination.js';
 import {
-  DATASETS, DATASET_KEYS, DATASET_LOADERS, DATASET_PERMISSION,
-  type DatasetContext, type DatasetKey, type PreparedDataset,
+  DATASET_KEYS,
+  DATASET_LOADERS,
+  DATASET_PERMISSION,
+  type DatasetContext,
+  type DatasetKey,
+  DATASETS,
+  type PreparedDataset,
 } from './datasets.js';
-import { buildWorkbook, sheet, toCsv } from './excel.service.js';
+import { buildWorkbook, sheet } from './excel.service.js';
 import { buildPdfReport, section } from './pdf.service.js';
 
 const router: Router = Router();
@@ -54,13 +60,19 @@ function resolveRange(q: { from?: string; to?: string }): { from: Date; to: Date
   const to = q.to ? new Date(q.to) : new Date();
   const from = q.from ? new Date(q.from) : new Date(to.getTime() - 30 * 86_400_000);
   if (from > to) {
-    throw new AppError(ErrorCode.VALIDATION_FAILED, 'The start of the range must be before its end.');
+    throw new AppError(
+      ErrorCode.VALIDATION_FAILED,
+      'The start of the range must be before its end.',
+    );
   }
   return { from, to };
 }
 
 function filename(stem: string, range: { from: Date; to: Date }, format: Format): string {
-  const safe = stem.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+  const safe = stem
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-|-$/g, '');
   return `${safe}-${range.from.toISOString().slice(0, 10)}-to-${range.to.toISOString().slice(0, 10)}.${format}`;
 }
 
@@ -89,8 +101,14 @@ async function reportContext(orgId: string, userId: string) {
 
 /** Record what was exported. An export is a data-egress event worth an audit trail. */
 async function recordExport(input: {
-  orgId: string; userId: string; requestId: string; ip: string | null;
-  datasets: string[]; format: string; rows: number; bytes: number;
+  orgId: string;
+  userId: string;
+  requestId: string;
+  ip: string | null;
+  datasets: string[];
+  format: string;
+  rows: number;
+  bytes: number;
 }): Promise<void> {
   await prisma.auditLog
     .create({
@@ -114,7 +132,10 @@ async function recordExport(input: {
 }
 
 /** Datasets the caller is permitted to export. */
-function permittedDatasets(subject: ReturnType<typeof auth>, requested: DatasetKey[]): DatasetKey[] {
+function permittedDatasets(
+  subject: ReturnType<typeof auth>,
+  requested: DatasetKey[],
+): DatasetKey[] {
   return requested.filter((key) => can(subject, DATASET_PERMISSION[key]));
 }
 
@@ -189,10 +210,9 @@ router.get(
     if (q.format === 'csv') {
       body = prepared.csv();
     } else if (q.format === 'xlsx') {
-      body = await buildWorkbook(
-        { ...context, title: spec.name, from: range.from, to: range.to },
-        [prepared.sheet],
-      );
+      body = await buildWorkbook({ ...context, title: spec.name, from: range.from, to: range.to }, [
+        prepared.sheet,
+      ]);
     } else {
       body = await buildPdfReport(
         { ...context, title: spec.name, subtitle: spec.subtitle, from: range.from, to: range.to },
@@ -237,7 +257,13 @@ router.get(
     query: exportQuery.extend({
       datasets: z
         .string()
-        .transform((v) => v.split(',').map((s) => s.trim()).filter(Boolean) as DatasetKey[])
+        .transform(
+          (v) =>
+            v
+              .split(',')
+              .map((s) => s.trim())
+              .filter(Boolean) as DatasetKey[],
+        )
         .refine((keys) => keys.length > 0 && keys.every((k) => DATASET_KEYS.includes(k)), {
           message: `datasets must be a comma-separated subset of: ${DATASET_KEYS.join(', ')}`,
         }),
@@ -349,7 +375,9 @@ router.get(
     const outcomeCounts = Object.fromEntries(byOutcome.map((r) => [r.outcome, r._count]));
     const total = aggregate._count;
     const completed =
-      (statusCounts.APPROVED ?? 0) + (statusCounts.SUBMITTED ?? 0) + (statusCounts.UNDER_REVIEW ?? 0);
+      (statusCounts.APPROVED ?? 0) +
+      (statusCounts.SUBMITTED ?? 0) +
+      (statusCounts.UNDER_REVIEW ?? 0);
     const failed = outcomeCounts.FAIL ?? 0;
     const scored = (outcomeCounts.PASS ?? 0) + (outcomeCounts.PASS_WITH_OBSERVATIONS ?? 0) + failed;
 
@@ -378,7 +406,8 @@ router.get(
       },
       {
         label: 'Average score',
-        value: aggregate._avg.score !== null ? `${Math.round(aggregate._avg.score * 10) / 10}%` : '—',
+        value:
+          aggregate._avg.score !== null ? `${Math.round(aggregate._avg.score * 10) / 10}%` : '—',
       },
     ];
 
@@ -398,7 +427,12 @@ router.get(
               // Highlights ride on the sites section so the headline figures
               // appear on the first page rather than needing a section of
               // their own with no table under it.
-              { ...sites.section, heading: 'Overview', description: 'Headline figures for the reporting period.', highlights },
+              {
+                ...sites.section,
+                heading: 'Overview',
+                description: 'Headline figures for the reporting period.',
+                highlights,
+              },
               ...(scoped || inspectors.count === 0 ? [] : [inspectors.section]),
             ],
           )
@@ -461,7 +495,9 @@ router.get(
       sections?: Array<{ title: string; fields?: Array<{ id: string; label: string }> }>;
     };
     const labels = new Map<string, string>();
-    const collect = (fields: Array<{ id: string; label: string; followUps?: unknown }> = []): void => {
+    const collect = (
+      fields: Array<{ id: string; label: string; followUps?: unknown }> = [],
+    ): void => {
       for (const field of fields) {
         labels.set(field.id, field.label);
         collect((field.followUps ?? []) as Array<{ id: string; label: string }>);
@@ -469,7 +505,12 @@ router.get(
     };
     for (const section of definition.sections ?? []) collect(section.fields ?? []);
 
-    interface AnswerRow { question: string; answer: string; comment: string; failed: boolean }
+    interface AnswerRow {
+      question: string;
+      answer: string;
+      comment: string;
+      failed: boolean;
+    }
 
     const answers: AnswerRow[] = inspection.responses.map((response) => ({
       question: labels.get(response.fieldId) ?? response.fieldId,
@@ -503,11 +544,9 @@ router.get(
             {
               ...context,
               title: `${inspection.number} — ${inspection.title}`,
-              subtitle: [
-                inspection.template?.name,
-                inspection.site?.name,
-                inspection.client?.name,
-              ].filter(Boolean).join('   ·   '),
+              subtitle: [inspection.template?.name, inspection.site?.name, inspection.client?.name]
+                .filter(Boolean)
+                .join('   ·   '),
             },
             [
               section<AnswerRow>({
@@ -516,7 +555,10 @@ router.get(
                 rows: answers,
                 highlights: [
                   { label: 'Result', value: inspection.outcome.replace(/_/g, ' ') },
-                  { label: 'Score', value: inspection.score !== null ? `${Math.round(inspection.score)}%` : '—' },
+                  {
+                    label: 'Score',
+                    value: inspection.score !== null ? `${Math.round(inspection.score)}%` : '—',
+                  },
                   {
                     label: 'Failed checks',
                     value: String(inspection.failedFields),

@@ -11,13 +11,14 @@ import React, { useMemo } from 'react';
 import {
   ActivityIndicator,
   Pressable,
+  type PressableProps,
+  type StyleProp,
   StyleSheet,
   Text,
   View,
-  type PressableProps,
-  type StyleProp,
   type ViewStyle,
 } from 'react-native';
+
 import { useTheme } from '../../theme/ThemeProvider';
 
 export type ButtonVariant = 'primary' | 'secondary' | 'ghost' | 'danger' | 'success';
@@ -73,7 +74,11 @@ export function Button({
     switch (variant) {
       case 'secondary':
         return {
-          container: { ...base, backgroundColor: theme.colors.surfaceRaised, borderColor: theme.colors.border },
+          container: {
+            ...base,
+            backgroundColor: theme.colors.surfaceRaised,
+            borderColor: theme.colors.border,
+          },
           text: theme.colors.textPrimary,
         };
       case 'ghost':

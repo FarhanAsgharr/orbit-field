@@ -7,6 +7,7 @@
  */
 
 import { PrismaClient } from '@prisma/client';
+
 import { env, isProduction } from '../config/env.js';
 import { logger } from '../config/logger.js';
 
@@ -16,7 +17,10 @@ export const prisma =
   globalForPrisma.prisma ??
   new PrismaClient({
     log: isProduction
-      ? [{ emit: 'event', level: 'error' }, { emit: 'event', level: 'warn' }]
+      ? [
+          { emit: 'event', level: 'error' },
+          { emit: 'event', level: 'warn' },
+        ]
       : [
           { emit: 'event', level: 'query' },
           { emit: 'event', level: 'error' },

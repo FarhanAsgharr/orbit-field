@@ -17,13 +17,14 @@
  */
 
 import { AppError, ErrorCode } from '@orbit/shared';
-import { ulid } from '@orbit/utils';
 import type { AuthSession, DeviceInfo } from '@orbit/types';
+import { ulid } from '@orbit/utils';
 import { Prisma } from '@prisma/client';
+
 import { env } from '../../config/env.js';
 import { logger } from '../../config/logger.js';
 import { prisma } from '../../db/prisma.js';
-import { DEFAULT_PASSWORD_POLICY, checkPasswordStrength, hashPassword } from '../../lib/crypto.js';
+import { checkPasswordStrength, DEFAULT_PASSWORD_POLICY, hashPassword } from '../../lib/crypto.js';
 import type { RequestMeta } from './auth.service.js';
 
 /**
@@ -64,7 +65,10 @@ async function uniqueSlug(name: string): Promise<string> {
  * reveals a follow-up, a photo field, a signature — so the product demonstrates
  * itself rather than presenting an empty builder.
  */
-function starterTemplate(versionId: string): { definition: Prisma.InputJsonValue; fieldCount: number } {
+function starterTemplate(versionId: string): {
+  definition: Prisma.InputJsonValue;
+  fieldCount: number;
+} {
   const sectionId = ulid();
   const gateId = ulid();
   const followUpId = ulid();
@@ -109,7 +113,10 @@ function starterTemplate(versionId: string): { definition: Prisma.InputJsonValue
             logic: [
               {
                 id: ulid(),
-                when: { kind: 'CONDITION', condition: { fieldId: gateId, operator: 'EQUALS', value: 'fail' } },
+                when: {
+                  kind: 'CONDITION',
+                  condition: { fieldId: gateId, operator: 'EQUALS', value: 'fail' },
+                },
                 effect: { type: 'REVEAL_FOLLOW_UPS' },
               },
             ],

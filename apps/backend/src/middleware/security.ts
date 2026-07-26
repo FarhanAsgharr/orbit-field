@@ -12,8 +12,9 @@
  * the actual threat this shape of API faces.
  */
 
-import type { NextFunction, Request, Response } from 'express';
 import { AppError, ErrorCode } from '@orbit/shared';
+import type { NextFunction, Request, Response } from 'express';
+
 import { corsOrigins, env, isProduction } from '../config/env.js';
 
 const UNSAFE_METHODS = new Set(['POST', 'PUT', 'PATCH', 'DELETE']);

@@ -1,6 +1,7 @@
-import { describe, expect, it } from 'vitest';
 import { ConflictResolution, type JsonValue } from '@orbit/types';
-import { autoMerge, buildConflict, diffRecords, mergeRecords, deepEqual } from './conflict.js';
+import { describe, expect, it } from 'vitest';
+
+import { autoMerge, buildConflict, deepEqual, diffRecords, mergeRecords } from './conflict.js';
 
 type Snap = Record<string, JsonValue>;
 
@@ -156,7 +157,9 @@ describe('mergeRecords', () => {
     const diffs = diffRecords(base, local, server);
 
     const result = mergeRecords({
-      diffs, local, server,
+      diffs,
+      local,
+      server,
       strategy: ConflictResolution.MERGE,
       fieldValues: { priority: 'HIGH' },
     });
@@ -204,10 +207,7 @@ describe('autoMerge', () => {
   });
 
   it('refuses to auto-merge a real conflict', () => {
-    const conflict = makeConflict(
-      { ...base, priority: 'CRITICAL' },
-      { ...base, priority: 'LOW' },
-    );
+    const conflict = makeConflict({ ...base, priority: 'CRITICAL' }, { ...base, priority: 'LOW' });
     expect(conflict.isAutoResolvable).toBe(false);
     expect(autoMerge(conflict)).toBeNull();
   });

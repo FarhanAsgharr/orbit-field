@@ -12,8 +12,6 @@
 import { createHash } from 'node:crypto';
 
 const BASE = process.argv[2] ?? 'http://localhost:4055/api/v1';
-const TEMPLATE_ID = '01JSEEDTPL0000000000000001';
-const TEMPLATE_VERSION_ID = '01JSEEDTPV0000000000000001';
 
 let passed = 0;
 let failed = 0;
@@ -83,7 +81,9 @@ async function login(email, installationId) {
     },
   });
   if (result.status !== 200) {
-    throw new Error(`login ${email} failed (${result.status}): ${JSON.stringify(result.body).slice(0, 300)}`);
+    throw new Error(
+      `login ${email} failed (${result.status}): ${JSON.stringify(result.body).slice(0, 300)}`,
+    );
   }
   return {
     token: result.body.data.tokens.accessToken,
@@ -104,20 +104,31 @@ async function main() {
   // --- devices -----------------------------------------------------------
   section('1. Devices API');
   const devices = await api('/devices', { token: inspector.token });
-  check('GET /devices returns 200 (previously 404)', devices.status === 200, `status=${devices.status}`);
+  check(
+    'GET /devices returns 200 (previously 404)',
+    devices.status === 200,
+    `status=${devices.status}`,
+  );
   check('device list is an array', Array.isArray(devices.body?.data));
-  check('current device appears in the list',
-    (devices.body?.data ?? []).some((d) => d.id === inspector.deviceId));
-  check('biometric public key is never exposed',
-    (devices.body?.data ?? []).every((d) => !('biometricPublicKey' in d)));
+  check(
+    'current device appears in the list',
+    (devices.body?.data ?? []).some((d) => d.id === inspector.deviceId),
+  );
+  check(
+    'biometric public key is never exposed',
+    (devices.body?.data ?? []).every((d) => !('biometricPublicKey' in d)),
+  );
 
   const rename = await api(`/devices/${inspector.deviceId}`, {
     method: 'PATCH',
     token: inspector.token,
     body: { name: 'Renamed Harness Device' },
   });
-  check('PATCH /devices/:id renames', rename.status === 200 && rename.body?.data?.name === 'Renamed Harness Device',
-    `status=${rename.status} name=${rename.body?.data?.name}`);
+  check(
+    'PATCH /devices/:id renames',
+    rename.status === 200 && rename.body?.data?.name === 'Renamed Harness Device',
+    `status=${rename.status} name=${rename.body?.data?.name}`,
+  );
 
   const pushToken = await api(`/devices/${inspector.deviceId}/push-token`, {
     method: 'POST',
@@ -127,49 +138,77 @@ async function main() {
   check('push token registration accepted', pushToken.status === 204, `status=${pushToken.status}`);
 
   const sessions = await api(`/devices/${inspector.deviceId}/sessions`, { token: inspector.token });
-  check('device sessions listed', sessions.status === 200 && Array.isArray(sessions.body?.data),
-    `status=${sessions.status}`);
-  check('session listing never returns a token hash',
-    (sessions.body?.data ?? []).every((s) => !('tokenHash' in s)));
+  check(
+    'device sessions listed',
+    sessions.status === 200 && Array.isArray(sessions.body?.data),
+    `status=${sessions.status}`,
+  );
+  check(
+    'session listing never returns a token hash',
+    (sessions.body?.data ?? []).every((s) => !('tokenHash' in s)),
+  );
 
   const foreignDevice = await api(`/devices/${manager.deviceId}`, {
     method: 'PATCH',
     token: inspector.token,
     body: { name: 'Should not work' },
   });
-  check('inspector cannot rename another user\'s device', foreignDevice.status === 403,
-    `status=${foreignDevice.status}`);
+  check(
+    "inspector cannot rename another user's device",
+    foreignDevice.status === 403,
+    `status=${foreignDevice.status}`,
+  );
 
   // --- inspections list ---------------------------------------------------
   section('2. Inspections API — search and filter');
   const list = await api('/inspections?pageSize=5', { token: inspector.token });
   check('GET /inspections returns 200', list.status === 200, `status=${list.status}`);
-  check('response is paginated',
+  check(
+    'response is paginated',
     typeof list.body?.data?.total === 'number' && Array.isArray(list.body?.data?.items),
-    JSON.stringify(list.body?.data ?? {}).slice(0, 150));
+    JSON.stringify(list.body?.data ?? {}).slice(0, 150),
+  );
   check('page size is honoured', (list.body?.data?.items ?? []).length <= 5);
-  check('rows include joined template and site names',
-    (list.body?.data?.items ?? []).every((i) => 'template' in i && 'site' in i));
+  check(
+    'rows include joined template and site names',
+    (list.body?.data?.items ?? []).every((i) => 'template' in i && 'site' in i),
+  );
 
   const searched = await api('/inspections?search=EICR&pageSize=50', { token: inspector.token });
-  check('search by title matches', searched.status === 200 && searched.body?.data?.total > 0,
-    `total=${searched.body?.data?.total}`);
+  check(
+    'search by title matches',
+    searched.status === 200 && searched.body?.data?.total > 0,
+    `total=${searched.body?.data?.total}`,
+  );
 
-  const filtered = await api('/inspections?status=SCHEDULED&pageSize=50', { token: inspector.token });
-  check('status filter applied',
+  const filtered = await api('/inspections?status=SCHEDULED&pageSize=50', {
+    token: inspector.token,
+  });
+  check(
+    'status filter applied',
     filtered.status === 200 &&
       (filtered.body?.data?.items ?? []).every((i) => i.status === 'SCHEDULED'),
-    `count=${filtered.body?.data?.items?.length}`);
+    `count=${filtered.body?.data?.items?.length}`,
+  );
 
-  const sorted = await api('/inspections?sortBy=number&sortDir=asc&pageSize=50', { token: inspector.token });
+  const sorted = await api('/inspections?sortBy=number&sortDir=asc&pageSize=50', {
+    token: inspector.token,
+  });
   const numbers = (sorted.body?.data?.items ?? []).map((i) => i.number);
-  check('sorting is applied',
+  check(
+    'sorting is applied',
     numbers.length < 2 || numbers.every((n, i) => i === 0 || numbers[i - 1] <= n),
-    numbers.slice(0, 3).join(','));
+    numbers.slice(0, 3).join(','),
+  );
 
-  const injection = await api('/inspections?sortBy=id;DROP%20TABLE%20users&pageSize=1', { token: inspector.token });
-  check('unknown sort column falls back safely rather than injecting',
-    injection.status === 200, `status=${injection.status}`);
+  const injection = await api('/inspections?sortBy=id;DROP%20TABLE%20users&pageSize=1', {
+    token: inspector.token,
+  });
+  check(
+    'unknown sort column falls back safely rather than injecting',
+    injection.status === 200,
+    `status=${injection.status}`,
+  );
 
   // --- detail, history, duplicate ----------------------------------------
   section('3. Inspections API — detail, history, duplicate');
@@ -177,11 +216,19 @@ async function main() {
   check('a seeded inspection is available to test with', Boolean(anyId));
 
   const detail = await api(`/inspections/${anyId}`, { token: inspector.token });
-  check('GET /inspections/:id returns the full record', detail.status === 200, `status=${detail.status}`);
-  check('detail includes responses and attachments',
-    Array.isArray(detail.body?.data?.responses) && Array.isArray(detail.body?.data?.attachments));
-  check('detail includes the pinned template definition',
-    Boolean(detail.body?.data?.templateVersion?.definition));
+  check(
+    'GET /inspections/:id returns the full record',
+    detail.status === 200,
+    `status=${detail.status}`,
+  );
+  check(
+    'detail includes responses and attachments',
+    Array.isArray(detail.body?.data?.responses) && Array.isArray(detail.body?.data?.attachments),
+  );
+  check(
+    'detail includes the pinned template definition',
+    Boolean(detail.body?.data?.templateVersion?.definition),
+  );
 
   const missing = await api(`/inspections/${ulid()}`, { token: inspector.token });
   check('unknown inspection returns 404', missing.status === 404, `status=${missing.status}`);
@@ -191,33 +238,52 @@ async function main() {
     token: inspector.token,
     body: { title: 'Harness duplicate' },
   });
-  check('duplicate returns 201', duplicate.status === 201, JSON.stringify(duplicate.body).slice(0, 200));
-  check('duplicate got its own server-allocated number',
+  check(
+    'duplicate returns 201',
+    duplicate.status === 201,
+    JSON.stringify(duplicate.body).slice(0, 200),
+  );
+  check(
+    'duplicate got its own server-allocated number',
     duplicate.body?.data?.number && duplicate.body.data.number !== detail.body?.data?.number,
-    `${duplicate.body?.data?.number} vs ${detail.body?.data?.number}`);
-  check('duplicate starts as a DRAFT', duplicate.body?.data?.status === 'DRAFT',
-    `status=${duplicate.body?.data?.status}`);
+    `${duplicate.body?.data?.number} vs ${detail.body?.data?.number}`,
+  );
+  check(
+    'duplicate starts as a DRAFT',
+    duplicate.body?.data?.status === 'DRAFT',
+    `status=${duplicate.body?.data?.status}`,
+  );
   check('duplicate records its source', duplicate.body?.data?.duplicatedFromId === anyId);
 
   const duplicateId = duplicate.body?.data?.id;
   const duplicateDetail = await api(`/inspections/${duplicateId}`, { token: inspector.token });
-  check('duplicate copied NO answers (evidence integrity)',
+  check(
+    'duplicate copied NO answers (evidence integrity)',
     (duplicateDetail.body?.data?.responses ?? []).length === 0,
-    `responses=${duplicateDetail.body?.data?.responses?.length}`);
+    `responses=${duplicateDetail.body?.data?.responses?.length}`,
+  );
 
   // The duplicate must be visible to offline devices, which means a change-log
   // entry must have been written — this is the easiest thing to get wrong.
   const pullAfterDuplicate = await api('/sync/pull?protocolVersion=1&since=0&limit=2000', {
     token: inspector.token,
   });
-  check('REST-created record appears in the sync delta',
+  check(
+    'REST-created record appears in the sync delta',
     (pullAfterDuplicate.body?.changes ?? []).some((c) => c.entityId === duplicateId),
-    'no change-log entry — offline devices would never see it');
+    'no change-log entry — offline devices would never see it',
+  );
 
   const history = await api(`/inspections/${duplicateId}/history`, { token: inspector.token });
-  check('history endpoint returns entries', history.status === 200 && history.body?.data?.total > 0,
-    `status=${history.status} total=${history.body?.data?.total}`);
-  check('history entries carry an actor', (history.body?.data?.items ?? []).some((h) => h.actorName));
+  check(
+    'history endpoint returns entries',
+    history.status === 200 && history.body?.data?.total > 0,
+    `status=${history.status} total=${history.body?.data?.total}`,
+  );
+  check(
+    'history entries carry an actor',
+    (history.body?.data?.items ?? []).some((h) => h.actorName),
+  );
 
   // --- archive ------------------------------------------------------------
   section('4. Inspections API — archive and review');
@@ -234,15 +300,22 @@ async function main() {
     token: inspector.token,
     body: { archived: true },
   });
-  check('inspector lacks archive permission', archiveDenied.status === 403, `status=${archiveDenied.status}`);
+  check(
+    'inspector lacks archive permission',
+    archiveDenied.status === 403,
+    `status=${archiveDenied.status}`,
+  );
 
   const rejectNoReason = await api(`/inspections/${anyId}/review`, {
     method: 'POST',
     token: manager.token,
     body: { decision: 'REJECT' },
   });
-  check('rejection without a reason is refused', rejectNoReason.status === 422,
-    `status=${rejectNoReason.status}`);
+  check(
+    'rejection without a reason is refused',
+    rejectNoReason.status === 422,
+    `status=${rejectNoReason.status}`,
+  );
 
   // --- bulk ---------------------------------------------------------------
   section('5. Inspections API — bulk operations');
@@ -263,11 +336,18 @@ async function main() {
     body: { ids: bulkTargets, action: 'SET_PRIORITY', priority: 'CRITICAL' },
   });
   check('bulk operation returns 200', bulk.status === 200, JSON.stringify(bulk.body).slice(0, 200));
-  check('all targets succeeded', bulk.body?.data?.succeeded === 3, `succeeded=${bulk.body?.data?.succeeded}`);
+  check(
+    'all targets succeeded',
+    bulk.body?.data?.succeeded === 3,
+    `succeeded=${bulk.body?.data?.succeeded}`,
+  );
 
   const verifyBulk = await api(`/inspections/${bulkTargets[0]}`, { token: manager.token });
-  check('bulk change actually applied', verifyBulk.body?.data?.priority === 'CRITICAL',
-    `priority=${verifyBulk.body?.data?.priority}`);
+  check(
+    'bulk change actually applied',
+    verifyBulk.body?.data?.priority === 'CRITICAL',
+    `priority=${verifyBulk.body?.data?.priority}`,
+  );
 
   const bulkTags = await api('/inspections/bulk', {
     method: 'POST',
@@ -281,7 +361,11 @@ async function main() {
     token: inspector.token,
     body: { ids: bulkTargets, action: 'ARCHIVE' },
   });
-  check('inspector denied bulk operations', bulkDenied.status === 403, `status=${bulkDenied.status}`);
+  check(
+    'inspector denied bulk operations',
+    bulkDenied.status === 403,
+    `status=${bulkDenied.status}`,
+  );
 
   const bulkTooMany = await api('/inspections/bulk', {
     method: 'POST',
@@ -298,9 +382,7 @@ async function main() {
   // Unique per run: a deterministic payload would be deduplicated by the server
   // on the second run, short-circuiting the very transfer path under test.
   const runSalt = Date.now() % 251;
-  const payload = Buffer.from(
-    Array.from({ length: 300 * 1024 }, (_, i) => (i + runSalt) % 251),
-  );
+  const payload = Buffer.from(Array.from({ length: 300 * 1024 }, (_, i) => (i + runSalt) % 251));
   const fullChecksum = createHash('sha256').update(payload).digest('hex');
   const CHUNK = 128 * 1024;
   const totalChunks = Math.ceil(payload.length / CHUNK);
@@ -334,17 +416,27 @@ async function main() {
     token: inspector.token,
     body: { protocolVersion: 1, deviceId: inspector.deviceId, cursor: 0, operations: [attachOp] },
   });
-  check('attachment metadata synced', attachPush.body?.results?.[0]?.status === 'APPLIED',
-    JSON.stringify(attachPush.body?.results?.[0]).slice(0, 200));
+  check(
+    'attachment metadata synced',
+    attachPush.body?.results?.[0]?.status === 'APPLIED',
+    JSON.stringify(attachPush.body?.results?.[0]).slice(0, 200),
+  );
 
   const session = await api('/uploads', {
     method: 'POST',
     token: inspector.token,
     body: { attachmentId, sizeBytes: payload.length, checksum: fullChecksum, chunkSize: CHUNK },
   });
-  check('upload session opened', session.status === 201, JSON.stringify(session.body).slice(0, 200));
-  check('server computed the chunk count', session.body?.data?.totalChunks === totalChunks,
-    `${session.body?.data?.totalChunks} vs ${totalChunks}`);
+  check(
+    'upload session opened',
+    session.status === 201,
+    JSON.stringify(session.body).slice(0, 200),
+  );
+  check(
+    'server computed the chunk count',
+    session.body?.data?.totalChunks === totalChunks,
+    `${session.body?.data?.totalChunks} vs ${totalChunks}`,
+  );
 
   const uploadId = session.body?.data?.uploadId;
 
@@ -354,7 +446,10 @@ async function main() {
     const ack = await api(`/uploads/${uploadId}/chunks/${i}`, {
       method: 'POST',
       token: inspector.token,
-      body: { data: slice.toString('base64'), checksum: createHash('sha256').update(slice).digest('hex') },
+      body: {
+        data: slice.toString('base64'),
+        checksum: createHash('sha256').update(slice).digest('hex'),
+      },
     });
     if (ack.status !== 200) {
       check(`chunk ${i} accepted`, false, JSON.stringify(ack.body).slice(0, 200));
@@ -364,17 +459,22 @@ async function main() {
   check('partial chunks accepted', true);
 
   const resumed = await api(`/uploads/${uploadId}`, { token: inspector.token });
-  check('resume reports exactly what the server holds',
+  check(
+    'resume reports exactly what the server holds',
     (resumed.body?.data?.receivedChunks ?? []).length === totalChunks - 1,
-    `received=${resumed.body?.data?.receivedChunks?.length} expected=${totalChunks - 1}`);
+    `received=${resumed.body?.data?.receivedChunks?.length} expected=${totalChunks - 1}`,
+  );
 
   const premature = await api(`/uploads/${uploadId}/complete`, {
     method: 'POST',
     token: inspector.token,
     body: { checksum: fullChecksum },
   });
-  check('completing with a missing chunk is refused', premature.status === 400,
-    `status=${premature.status}`);
+  check(
+    'completing with a missing chunk is refused',
+    premature.status === 400,
+    `status=${premature.status}`,
+  );
 
   // Re-send an already-received chunk: must be idempotent, not an error.
   const first = payload.subarray(0, CHUNK);
@@ -383,8 +483,11 @@ async function main() {
     token: inspector.token,
     body: { data: first.toString('base64') },
   });
-  check('re-sending a received chunk is idempotent', replayChunk.status === 200,
-    `status=${replayChunk.status}`);
+  check(
+    're-sending a received chunk is idempotent',
+    replayChunk.status === 200,
+    `status=${replayChunk.status}`,
+  );
 
   // A corrupt chunk must be rejected at receipt, not at assembly.
   const lastIndex = totalChunks - 1;
@@ -396,8 +499,11 @@ async function main() {
       checksum: createHash('sha256').update('something else').digest('hex'),
     },
   });
-  check('chunk checksum mismatch rejected on receipt', corrupt.status === 422,
-    `status=${corrupt.status}`);
+  check(
+    'chunk checksum mismatch rejected on receipt',
+    corrupt.status === 422,
+    `status=${corrupt.status}`,
+  );
 
   // Now send the real final chunk.
   const finalSlice = payload.subarray(lastIndex * CHUNK);
@@ -409,7 +515,11 @@ async function main() {
       checksum: createHash('sha256').update(finalSlice).digest('hex'),
     },
   });
-  check('final chunk accepted', finalAck.status === 200, JSON.stringify(finalAck.body).slice(0, 200));
+  check(
+    'final chunk accepted',
+    finalAck.status === 200,
+    JSON.stringify(finalAck.body).slice(0, 200),
+  );
   check('server reports the upload complete', finalAck.body?.data?.complete === true);
 
   const completed = await api(`/uploads/${uploadId}/complete`, {
@@ -417,21 +527,32 @@ async function main() {
     token: inspector.token,
     body: { checksum: fullChecksum },
   });
-  check('finalise succeeded', completed.status === 200, JSON.stringify(completed.body).slice(0, 200));
+  check(
+    'finalise succeeded',
+    completed.status === 200,
+    JSON.stringify(completed.body).slice(0, 200),
+  );
   check('server returned a storage key', Boolean(completed.body?.data?.storageKey));
-  check('assembled size matches the original', completed.body?.data?.sizeBytes === payload.length,
-    `${completed.body?.data?.sizeBytes} vs ${payload.length}`);
-  check('assembled checksum matches — bytes survived the round trip',
+  check(
+    'assembled size matches the original',
+    completed.body?.data?.sizeBytes === payload.length,
+    `${completed.body?.data?.sizeBytes} vs ${payload.length}`,
+  );
+  check(
+    'assembled checksum matches — bytes survived the round trip',
     completed.body?.data?.checksum === fullChecksum,
-    `${completed.body?.data?.checksum} vs ${fullChecksum}`);
+    `${completed.body?.data?.checksum} vs ${fullChecksum}`,
+  );
 
   const download = await fetch(`${BASE}/uploads/attachments/${attachmentId}/content`, {
     headers: { Authorization: `Bearer ${inspector.token}` },
   });
   const downloaded = Buffer.from(await download.arrayBuffer());
-  check('stored file downloads back byte-identical',
+  check(
+    'stored file downloads back byte-identical',
     download.status === 200 && downloaded.equals(payload),
-    `status=${download.status} size=${downloaded.length}`);
+    `status=${download.status} size=${downloaded.length}`,
+  );
 
   // --- dedupe -------------------------------------------------------------
   section('7. Upload deduplication');
@@ -454,9 +575,11 @@ async function main() {
     token: inspector.token,
     body: { attachmentId: dupAttachmentId, sizeBytes: payload.length, checksum: fullChecksum },
   });
-  check('identical content is deduplicated rather than re-uploaded',
+  check(
+    'identical content is deduplicated rather than re-uploaded',
     dedupe.body?.data?.complete === true && Boolean(dedupe.body?.data?.storageKey),
-    JSON.stringify(dedupe.body?.data ?? {}).slice(0, 200));
+    JSON.stringify(dedupe.body?.data ?? {}).slice(0, 200),
+  );
 
   // --- summary ------------------------------------------------------------
   console.log(`\n${'─'.repeat(60)}`);

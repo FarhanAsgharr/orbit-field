@@ -9,26 +9,21 @@
  *    time they put it back in their pocket.
  */
 
-import React, { useCallback, useEffect, useState } from 'react';
-import {
-  KeyboardAvoidingView,
-  Platform,
-  Pressable,
-  ScrollView,
-  View,
-} from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import type { DeviceInfo } from '@orbit/types';
 import * as Application from 'expo-application';
 import * as Device from 'expo-device';
 import * as LocalAuthentication from 'expo-local-authentication';
-import type { DeviceInfo } from '@orbit/types';
+import React, { useCallback, useEffect, useState } from 'react';
+import { KeyboardAvoidingView, Platform, Pressable, ScrollView, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+
 import { Button, Field, Txt } from '../../src/components/ui';
 import { PasswordField } from '../../src/components/ui/PasswordField';
-import { useTheme } from '../../src/theme/ThemeProvider';
-import { useSession } from '../../src/stores/session.store';
-import { secureStorage, storage } from '../../src/lib/storage';
 import { getInstallationId } from '../../src/lib/device';
 import { getNetworkState } from '../../src/lib/network';
+import { secureStorage, storage } from '../../src/lib/storage';
+import { useSession } from '../../src/stores/session.store';
+import { useTheme } from '../../src/theme/ThemeProvider';
 
 export default function LoginScreen(): React.ReactElement {
   const theme = useTheme();
@@ -242,7 +237,13 @@ export default function LoginScreen(): React.ReactElement {
           </View>
         </Pressable>
 
-        <Button label="Sign in" onPress={() => void handleSubmit()} busy={busy} fullWidth size="large" />
+        <Button
+          label="Sign in"
+          onPress={() => void handleSubmit()}
+          busy={busy}
+          fullWidth
+          size="large"
+        />
 
         {biometricAvailable ? (
           <Button

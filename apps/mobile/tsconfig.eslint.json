@@ -1,0 +1,6 @@
+{
+  "//": "ESLint-only type information. Extends the app's own config so the Expo/React Native lib and path aliases resolve exactly as they do at build time.",
+  "extends": "./tsconfig.json",
+  "compilerOptions": { "noEmit": true },
+  "include": ["src/**/*.ts", "src/**/*.tsx", "app/**/*.ts", "app/**/*.tsx", "app.config.ts"]
+}

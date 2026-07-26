@@ -7,18 +7,19 @@
  * over well before that on a mid-range Android device.
  */
 
-import React, { useCallback, useState } from 'react';
-import { Pressable, RefreshControl, ScrollView, View } from 'react-native';
+import { InspectionStatus } from '@orbit/types';
 import { FlashList } from '@shopify/flash-list';
 import { useRouter } from 'expo-router';
+import React, { useCallback, useState } from 'react';
+import { Pressable, RefreshControl, ScrollView, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { InspectionStatus } from '@orbit/types';
-import { Badge, Button, EmptyState, Field, Txt } from '../../src/components/ui';
+
 import { InspectionRow } from '../../src/components/InspectionRow';
-import { useTheme } from '../../src/theme/ThemeProvider';
-import { useRuntime } from '../../src/stores/session.store';
-import { useLiveQuery, useRefresh } from '../../src/hooks/useLiveQuery';
+import { Badge, Button, EmptyState, Field, Txt } from '../../src/components/ui';
 import type { InspectionFilter } from '../../src/db/repositories/inspection.repository';
+import { useLiveQuery, useRefresh } from '../../src/hooks/useLiveQuery';
+import { useRuntime } from '../../src/stores/session.store';
+import { useTheme } from '../../src/theme/ThemeProvider';
 
 type QuickFilter = 'ALL' | 'MINE' | 'OPEN' | 'DUE' | 'UNSYNCED' | 'COMPLETED';
 
@@ -106,13 +107,11 @@ export default function InspectionsScreen(): React.ReactElement {
     <View style={{ flex: 1, backgroundColor: theme.colors.background, paddingTop: insets.top }}>
       {/* --- header --- */}
       <View style={{ padding: theme.spacing.lg, gap: theme.spacing.md }}>
-        <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+        <View
+          style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}
+        >
           <Txt variant="title">Inspections</Txt>
-          <Button
-            label="New"
-            size="small"
-            onPress={() => router.push('/inspection/new')}
-          />
+          <Button label="New" size="small" onPress={() => router.push('/inspection/new')} />
         </View>
 
         <Field
@@ -185,7 +184,11 @@ export default function InspectionsScreen(): React.ReactElement {
         }}
         ItemSeparatorComponent={() => <View style={{ height: theme.spacing.sm }} />}
         refreshControl={
-          <RefreshControl refreshing={refreshing} onRefresh={refresh} tintColor={theme.colors.accent} />
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={refresh}
+            tintColor={theme.colors.accent}
+          />
         }
         renderItem={({ item }) => (
           <InspectionRow item={item} onPress={() => router.push(`/inspection/${item.id}`)} />
@@ -205,7 +208,10 @@ export default function InspectionsScreen(): React.ReactElement {
               search ? (
                 <Button label="Clear search" variant="secondary" onPress={() => setSearch('')} />
               ) : (
-                <Button label="Start an inspection" onPress={() => router.push('/inspection/new')} />
+                <Button
+                  label="Start an inspection"
+                  onPress={() => router.push('/inspection/new')}
+                />
               )
             }
           />

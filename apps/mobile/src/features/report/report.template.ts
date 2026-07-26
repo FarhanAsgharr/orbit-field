@@ -17,8 +17,8 @@ import type {
   InspectionResponse,
   TemplateSection,
 } from '@orbit/types';
-import { formatDateTime, gradeAccuracy } from '@orbit/utils';
 import type { ScoreResult } from '@orbit/utils';
+import { formatDateTime, gradeAccuracy, toDisplayString } from '@orbit/utils';
 
 export interface ReportContext {
   inspection: Inspection;
@@ -26,9 +26,19 @@ export interface ReportContext {
   responses: InspectionResponse[];
   attachments: Attachment[];
   score: ScoreResult | null;
-  organisation: { name: string; logoDataUri: string | null; footerText: string | null; brandColor: string | null };
+  organisation: {
+    name: string;
+    logoDataUri: string | null;
+    footerText: string | null;
+    brandColor: string | null;
+  };
   client: { name: string; contactName: string | null; address: string | null } | null;
-  site: { name: string; address: string | null; latitude: number | null; longitude: number | null } | null;
+  site: {
+    name: string;
+    address: string | null;
+    latitude: number | null;
+    longitude: number | null;
+  } | null;
   inspector: { name: string; email: string; registrationNumber: string | null };
   signatures: Array<{
     role: string;
@@ -54,7 +64,7 @@ export interface ReportContext {
 /** Escape for HTML text nodes. Never interpolate user data without this. */
 function esc(value: unknown): string {
   if (value === null || value === undefined) return '';
-  return String(value)
+  return toDisplayString(value)
     .replace(/&/g, '&amp;')
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;')
@@ -63,8 +73,17 @@ function esc(value: unknown): string {
 }
 
 /** Render an answer for print. */
-function renderAnswer(response: InspectionResponse | undefined, section: TemplateSection, fieldId: string): string {
-  if (!response || response.value === null || response.value === undefined || response.value === '') {
+function renderAnswer(
+  response: InspectionResponse | undefined,
+  section: TemplateSection,
+  fieldId: string,
+): string {
+  if (
+    !response ||
+    response.value === null ||
+    response.value === undefined ||
+    response.value === ''
+  ) {
     return '<span class="empty">Not answered</span>';
   }
 
@@ -73,7 +92,7 @@ function renderAnswer(response: InspectionResponse | undefined, section: Templat
 
   if (Array.isArray(value)) {
     const labels = value.map((v) => {
-      const option = field?.options.find((o) => o.value === String(v));
+      const option = field?.options.find((o) => o.value === toDisplayString(v));
       return esc(option?.label ?? v);
     });
     return labels.join(', ');
@@ -87,7 +106,7 @@ function renderAnswer(response: InspectionResponse | undefined, section: Templat
 
   if (typeof value === 'boolean') return value ? 'Yes' : 'No';
 
-  const option = field?.options.find((o) => o.value === String(value));
+  const option = field?.options.find((o) => o.value === toDisplayString(value));
   return esc(option?.label ?? value);
 }
 
@@ -355,9 +374,11 @@ export function buildReportHtml(ctx: ReportContext): string {
 
 <div class="header">
   <div>
-    ${ctx.organisation.logoDataUri
-      ? `<img class="logo" src="${ctx.organisation.logoDataUri}" alt="${esc(ctx.organisation.name)}"/>`
-      : `<div class="org-name">${esc(ctx.organisation.name)}</div>`}
+    ${
+      ctx.organisation.logoDataUri
+        ? `<img class="logo" src="${ctx.organisation.logoDataUri}" alt="${esc(ctx.organisation.name)}"/>`
+        : `<div class="org-name">${esc(ctx.organisation.name)}</div>`
+    }
   </div>
   <div class="doc-title">
     <h1>Inspection Report</h1>
@@ -401,27 +422,33 @@ export function buildReportHtml(ctx: ReportContext): string {
     <h3>Inspector</h3>
     <div class="meta-row"><span class="meta-key">Name</span><span class="meta-val">${esc(ctx.inspector.name)}</span></div>
     <div class="meta-row"><span class="meta-key">Email</span><span class="meta-val">${esc(ctx.inspector.email)}</span></div>
-    ${ctx.inspector.registrationNumber
-      ? `<div class="meta-row"><span class="meta-key">Registration</span><span class="meta-val">${esc(ctx.inspector.registrationNumber)}</span></div>`
-      : ''}
+    ${
+      ctx.inspector.registrationNumber
+        ? `<div class="meta-row"><span class="meta-key">Registration</span><span class="meta-val">${esc(ctx.inspector.registrationNumber)}</span></div>`
+        : ''
+    }
   </div>
 
-  ${ctx.client
-    ? `<div class="meta-block">
+  ${
+    ctx.client
+      ? `<div class="meta-block">
          <h3>Client</h3>
          <div class="meta-row"><span class="meta-key">Name</span><span class="meta-val">${esc(ctx.client.name)}</span></div>
          ${ctx.client.contactName ? `<div class="meta-row"><span class="meta-key">Contact</span><span class="meta-val">${esc(ctx.client.contactName)}</span></div>` : ''}
          ${ctx.client.address ? `<div class="meta-row"><span class="meta-key">Address</span><span class="meta-val">${esc(ctx.client.address)}</span></div>` : ''}
        </div>`
-    : ''}
+      : ''
+  }
 
-  ${ctx.site
-    ? `<div class="meta-block">
+  ${
+    ctx.site
+      ? `<div class="meta-block">
          <h3>Site</h3>
          <div class="meta-row"><span class="meta-key">Name</span><span class="meta-val">${esc(ctx.site.name)}</span></div>
          ${ctx.site.address ? `<div class="meta-row"><span class="meta-key">Address</span><span class="meta-val">${esc(ctx.site.address)}</span></div>` : ''}
        </div>`
-    : ''}
+      : ''
+  }
 </div>
 
 ${ctx.options.includeMap ? renderLocationBlock(inspection.startLocation, 'Location at start') : ''}
@@ -429,15 +456,18 @@ ${ctx.options.includeMap ? renderLocationBlock(inspection.endLocation, 'Location
 
 ${sectionsHtml}
 
-${inspection.notes
-  ? `<section class="section">
+${
+  inspection.notes
+    ? `<section class="section">
        <h2>Notes</h2>
        <p>${esc(inspection.notes).replace(/\n/g, '<br/>')}</p>
      </section>`
-  : ''}
+    : ''
+}
 
-${score && score.failedFields > 0
-  ? `<section class="section">
+${
+  score && score.failedFields > 0
+    ? `<section class="section">
        <h2>Summary of findings</h2>
        <table class="answers"><tbody>
          ${score.fields
@@ -451,7 +481,8 @@ ${score && score.failedFields > 0
            .join('')}
        </tbody></table>
      </section>`
-  : ''}
+    : ''
+}
 
 ${signaturesHtml}
 

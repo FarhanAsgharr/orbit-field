@@ -1,9 +1,10 @@
 /** Sync API surface. */
 
+import { AppError, ErrorCode, mergeRecords, Permission } from '@orbit/shared';
+import { ConflictResolution, SyncEntity, SyncOperation } from '@orbit/types';
 import { Router } from 'express';
 import { z } from 'zod';
-import { ConflictResolution, SyncEntity, SyncOperation } from '@orbit/types';
-import { AppError, ErrorCode, Permission, mergeRecords } from '@orbit/shared';
+
 import { prisma } from '../../db/prisma.js';
 import { requireAuth, requireDevice, requirePermission } from '../../middleware/auth.js';
 import { auth } from '../../middleware/context.js';
@@ -31,26 +32,26 @@ const operationSchema = z.object({
 });
 
 const pushBody = z.object({
-    protocolVersion: z.number().int().positive(),
-    deviceId: z.string().length(26),
-    cursor: z.number().int().nonnegative(),
+  protocolVersion: z.number().int().positive(),
+  deviceId: z.string().length(26),
+  cursor: z.number().int().nonnegative(),
   operations: z.array(operationSchema).max(1000),
 });
 
 const pullQuery = z.object({
-    protocolVersion: z.coerce.number().int().positive(),
-    since: z.coerce.number().int().nonnegative(),
-    limit: z.coerce.number().int().positive().max(2000).default(500),
-    entities: z
-      .string()
-      .optional()
+  protocolVersion: z.coerce.number().int().positive(),
+  since: z.coerce.number().int().nonnegative(),
+  limit: z.coerce.number().int().positive().max(2000).default(500),
+  entities: z
+    .string()
+    .optional()
     .transform((v) => (v ? (v.split(',') as SyncEntity[]) : undefined)),
 });
 
 const resolveBody = z.object({
-    operationId: z.string().length(26),
-    strategy: z.nativeEnum(ConflictResolution),
-    fieldChoices: z.record(z.enum(['LOCAL', 'SERVER'])).optional(),
+  operationId: z.string().length(26),
+  strategy: z.nativeEnum(ConflictResolution),
+  fieldChoices: z.record(z.enum(['LOCAL', 'SERVER'])).optional(),
   fieldValues: z.record(z.unknown()).optional(),
 });
 
@@ -58,7 +59,10 @@ const resolveBody = z.object({
 function actorFor(req: Parameters<typeof auth>[0], claimedDeviceId?: string): SyncActor {
   const subject = auth(req);
   if (!subject.deviceId) {
-    throw new AppError(ErrorCode.DEVICE_NOT_ENROLLED, 'Synchronisation requires an enrolled device.');
+    throw new AppError(
+      ErrorCode.DEVICE_NOT_ENROLLED,
+      'Synchronisation requires an enrolled device.',
+    );
   }
   if (claimedDeviceId && claimedDeviceId !== subject.deviceId) {
     // A token is bound to one device; a payload naming a different one is
@@ -75,7 +79,7 @@ router.post(
   requirePermission(Permission.SYNC_PUSH),
   validate({ body: pushBody }),
   asyncHandler(async (req, res) => {
-    const body = (req.validated!.body as z.infer<typeof pushBody>);
+    const body = req.validated!.body as z.infer<typeof pushBody>;
     const actor = actorFor(req, body.deviceId);
     const result = await push(actor, body as never);
     res.json(result);

@@ -7,12 +7,19 @@
  * again. That is the correct trade for a privileged desk tool.
  */
 
-import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
-import type { AuthSession } from '@orbit/types';
 import { effectivePermissions, type Permission } from '@orbit/shared';
+import type { AuthSession } from '@orbit/types';
+import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
+
 import {
-  api, clearTokens, hasSession, login as apiLogin, logout as apiLogout,
-  onAuthLost, register as apiRegister, type RegisterInput,
+  api,
+  clearTokens,
+  hasSession,
+  login as apiLogin,
+  logout as apiLogout,
+  onAuthLost,
+  register as apiRegister,
+  type RegisterInput,
 } from './api';
 
 interface SessionUser {
@@ -103,10 +110,13 @@ export function SessionProvider({ children }: { children: React.ReactNode }): Re
         }>('/auth/me');
 
         const [users, org] = await Promise.all([
-          api.get<{ items: Array<SessionUser & { extraPermissions: string[]; revokedPermissions: string[] }> }>(
-            '/users',
-            { pageSize: 1, search: '' },
-          ).catch(() => null),
+          api
+            .get<{
+              items: Array<
+                SessionUser & { extraPermissions: string[]; revokedPermissions: string[] }
+              >;
+            }>('/users', { pageSize: 1, search: '' })
+            .catch(() => null),
           api.get<{ id: string; name: string }>('/admin/organization').catch(() => null),
         ]);
 
@@ -126,7 +136,9 @@ export function SessionProvider({ children }: { children: React.ReactNode }): Re
             lastName: self?.lastName ?? '',
             role: me.role,
           },
-          organization: org ? { id: org.id, name: org.name } : { id: me.orgId, name: 'Organisation' },
+          organization: org
+            ? { id: org.id, name: org.name }
+            : { id: me.orgId, name: 'Organisation' },
           permissions: new Set(
             Array.from(
               effectivePermissions({

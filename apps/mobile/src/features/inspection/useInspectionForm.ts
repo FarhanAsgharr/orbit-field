@@ -17,31 +17,32 @@
  * text field makes the form feel broken.
  */
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
-  FieldType,
-  MEDIA_FIELD_TYPES,
   type Attachment,
+  FieldType,
   type InspectionOutcome,
   type JsonValue,
+  MEDIA_FIELD_TYPES,
   type TemplateField,
   type TemplateSection,
 } from '@orbit/types';
 import {
   answerKey,
+  type AnswerMap,
   evaluateForm,
+  type EvaluationResult,
   flattenFields,
   scoreInspection,
+  type ScoreResult,
   validateInspection,
   validateValue,
-  type AnswerMap,
-  type EvaluationResult,
-  type ScoreResult,
   type ValidationIssue,
 } from '@orbit/utils';
-import type { Runtime } from '../../runtime/runtime';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+
 import type { ParsedTemplate } from '../../db/repositories/template.repository';
 import { invalidateQueries } from '../../hooks/useLiveQuery';
+import type { Runtime } from '../../runtime/runtime';
 
 /** How long after the last edit derived state is recomputed. */
 const RECOMPUTE_DEBOUNCE_MS = 400;
@@ -197,7 +198,10 @@ export function useInspectionForm(input: {
         required: state?.required ?? false,
         disabled: state?.disabled ?? false,
         // A SET_VALUE logic effect overrides whatever is stored.
-        value: state?.forcedValue !== undefined ? state.forcedValue : (answers[key] ?? answers[field.id] ?? null),
+        value:
+          state?.forcedValue !== undefined
+            ? state.forcedValue
+            : (answers[key] ?? answers[field.id] ?? null),
         attachments: attachmentsByField[field.id] ?? [],
         // Errors stay hidden until the user has engaged with the field —
         // showing "required" on every blank question the moment the form opens
@@ -214,17 +218,24 @@ export function useInspectionForm(input: {
 
     return template.sections.map((section) => {
       const fields = section.fields.flatMap(build);
-      const visibleFields = fields.filter((f) => f.visible && f.field.type !== FieldType.INSTRUCTION);
+      const visibleFields = fields.filter(
+        (f) => f.visible && f.field.type !== FieldType.INSTRUCTION,
+      );
       const required = visibleFields.filter((f) => f.required);
 
       const isAnswered = (f: FormFieldState): boolean =>
         MEDIA_FIELD_TYPES.includes(f.field.type)
           ? f.attachments.length > 0
-          : f.value !== null && f.value !== undefined && f.value !== '' &&
+          : f.value !== null &&
+            f.value !== undefined &&
+            f.value !== '' &&
             !(Array.isArray(f.value) && f.value.length === 0);
 
       const answered = visibleFields.filter(isAnswered).length;
-      const errorCount = fields.reduce((n, f) => n + (issuesByField[f.field.id]?.errors.length ?? 0), 0);
+      const errorCount = fields.reduce(
+        (n, f) => n + (issuesByField[f.field.id]?.errors.length ?? 0),
+        0,
+      );
 
       return {
         section,
@@ -236,7 +247,16 @@ export function useInspectionForm(input: {
         complete: required.every(isAnswered),
       };
     });
-  }, [template, evaluation, answers, attachmentsByField, issuesByField, touched, showAllErrors, repeatIndex]);
+  }, [
+    template,
+    evaluation,
+    answers,
+    attachmentsByField,
+    issuesByField,
+    touched,
+    showAllErrors,
+    repeatIndex,
+  ]);
 
   const { answeredCount, totalCount } = useMemo(() => {
     let answered = 0;
@@ -336,7 +356,13 @@ export function useInspectionForm(input: {
           },
         ],
         answers: { [answerKey(field.id, index)]: value },
-        policy: template?.scoring ?? { enabled: false, passThreshold: 0, observationThreshold: 0, criticalFailureForcesFail: false, excludeNotApplicable: true },
+        policy: template?.scoring ?? {
+          enabled: false,
+          passThreshold: 0,
+          observationThreshold: 0,
+          criticalFailureForcesFail: false,
+          excludeNotApplicable: true,
+        },
         repeatIndex: index,
       });
 

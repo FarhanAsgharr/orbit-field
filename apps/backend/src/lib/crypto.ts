@@ -6,10 +6,12 @@
  * comparison everywhere a secret is checked.
  */
 
-import argon2 from 'argon2';
 import { createHash, createHmac, randomBytes, randomInt, timingSafeEqual } from 'node:crypto';
-import { env } from '../config/env.js';
+
 import type { PasswordPolicy } from '@orbit/types';
+import argon2 from 'argon2';
+
+import { env } from '../config/env.js';
 
 /**
  * OWASP's 2024 baseline for Argon2id: 19 MiB, 2 iterations, 1 degree of
@@ -95,9 +97,22 @@ export interface PasswordStrengthResult {
 }
 
 const COMMON_PASSWORDS = new Set([
-  'password', 'password1', '12345678', '123456789', 'qwerty123', 'letmein',
-  'welcome1', 'admin123', 'iloveyou', 'sunshine', 'password123', 'abc12345',
-  'inspector', 'orbitfield', 'changeme', 'p@ssw0rd',
+  'password',
+  'password1',
+  '12345678',
+  '123456789',
+  'qwerty123',
+  'letmein',
+  'welcome1',
+  'admin123',
+  'iloveyou',
+  'sunshine',
+  'password123',
+  'abc12345',
+  'inspector',
+  'orbitfield',
+  'changeme',
+  'p@ssw0rd',
 ]);
 
 export const DEFAULT_PASSWORD_POLICY: PasswordPolicy = {

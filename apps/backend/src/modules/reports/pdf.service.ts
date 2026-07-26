@@ -12,7 +12,9 @@
  * production, for output that is tabular and does not need a layout engine.
  */
 
+import { toDisplayString } from '@orbit/utils';
 import PDFDocument from 'pdfkit';
+
 import type { SheetColumn } from './excel.service.js';
 
 const BRAND = '#1B5CF0';
@@ -57,7 +59,7 @@ function formatCell(value: unknown, format: SheetColumn<never>['format']): strin
     if (format === 'integer') return value.toLocaleString('en-GB');
     return value.toLocaleString('en-GB', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
   }
-  return String(value);
+  return toDisplayString(value);
 }
 
 /**
@@ -92,10 +94,7 @@ export function section<T>(spec: PdfSection<T>): PreparedSection {
   };
 }
 
-export async function buildPdfReport(
-  meta: PdfMeta,
-  sections: PreparedSection[],
-): Promise<Buffer> {
+export async function buildPdfReport(meta: PdfMeta, sections: PreparedSection[]): Promise<Buffer> {
   return new Promise((resolve, reject) => {
     const doc = new PDFDocument({
       size: 'A4',
@@ -145,8 +144,12 @@ export async function buildPdfReport(
       );
 
     doc.moveDown(0.6);
-    doc.strokeColor(BRAND).lineWidth(2)
-      .moveTo(PAGE_MARGIN, doc.y).lineTo(PAGE_MARGIN + contentWidth, doc.y).stroke();
+    doc
+      .strokeColor(BRAND)
+      .lineWidth(2)
+      .moveTo(PAGE_MARGIN, doc.y)
+      .lineTo(PAGE_MARGIN + contentWidth, doc.y)
+      .stroke();
     doc.moveDown(0.8);
 
     // --- sections ---
@@ -169,15 +172,27 @@ export async function buildPdfReport(
         section.highlights.forEach((highlight, i) => {
           const x = PAGE_MARGIN + i * boxWidth;
           const colour =
-            highlight.tone === 'ok' ? OK
-            : highlight.tone === 'warn' ? WARN
-            : highlight.tone === 'danger' ? DANGER
-            : INK;
+            highlight.tone === 'ok'
+              ? OK
+              : highlight.tone === 'warn'
+                ? WARN
+                : highlight.tone === 'danger'
+                  ? DANGER
+                  : INK;
 
-          doc.fillColor(colour).fontSize(19).font('Helvetica-Bold')
+          doc
+            .fillColor(colour)
+            .fontSize(19)
+            .font('Helvetica-Bold')
             .text(highlight.value, x, top, { width: boxWidth - 8 });
-          doc.fillColor(MUTED).fontSize(7.5).font('Helvetica')
-            .text(highlight.label.toUpperCase(), x, top + 22, { width: boxWidth - 8, characterSpacing: 0.6 });
+          doc
+            .fillColor(MUTED)
+            .fontSize(7.5)
+            .font('Helvetica')
+            .text(highlight.label.toUpperCase(), x, top + 22, {
+              width: boxWidth - 8,
+              characterSpacing: 0.6,
+            });
         });
 
         doc.y = top + 42;
@@ -185,14 +200,17 @@ export async function buildPdfReport(
       }
 
       if (section.rowCount === 0) {
-        doc.fillColor(MUTED).fontSize(10).font('Helvetica-Oblique')
+        doc
+          .fillColor(MUTED)
+          .fontSize(10)
+          .font('Helvetica-Oblique')
           .text('No records in this period.');
         continue;
       }
 
       // --- table ---
       section.render({
-        table: <R,>(tableColumns: Array<SheetColumn<R>>, tableRows: R[]) => {
+        table: <R>(tableColumns: Array<SheetColumn<R>>, tableRows: R[]) => {
           drawTable(tableColumns, tableRows);
         },
       });
@@ -215,7 +233,11 @@ export async function buildPdfReport(
 
         let x = PAGE_MARGIN;
         sectionColumns.forEach((column, i) => {
-          doc.text(column.header, x + 4, y + 5.5, { width: widths[i]! - 8, ellipsis: true, lineBreak: false });
+          doc.text(column.header, x + 4, y + 5.5, {
+            width: widths[i]! - 8,
+            ellipsis: true,
+            lineBreak: false,
+          });
           x += widths[i]!;
         });
         doc.y = y + 18;
@@ -247,17 +269,20 @@ export async function buildPdfReport(
           doc.fillColor(
             signal === 'danger' ? DANGER : signal === 'warn' ? WARN : signal === 'ok' ? OK : INK,
           );
-          doc.text(
-            formatCell(column.value(row), column.format),
-            x + 4,
-            y + 3.5,
-            { width: widths[i]! - 8, ellipsis: true, lineBreak: false },
-          );
+          doc.text(formatCell(column.value(row), column.format), x + 4, y + 3.5, {
+            width: widths[i]! - 8,
+            ellipsis: true,
+            lineBreak: false,
+          });
           x += widths[i]!;
         });
 
-        doc.strokeColor(LINE).lineWidth(0.5)
-          .moveTo(PAGE_MARGIN, y + 14).lineTo(PAGE_MARGIN + contentWidth, y + 14).stroke();
+        doc
+          .strokeColor(LINE)
+          .lineWidth(0.5)
+          .moveTo(PAGE_MARGIN, y + 14)
+          .lineTo(PAGE_MARGIN + contentWidth, y + 14)
+          .stroke();
 
         doc.y = y + 14;
       }

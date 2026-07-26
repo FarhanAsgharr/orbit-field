@@ -72,9 +72,17 @@ const schema = z.object({
   S3_SECRET_ACCESS_KEY: z.string().optional(),
   S3_FORCE_PATH_STYLE: boolish(false),
 
-  UPLOAD_CHUNK_SIZE_BYTES: z.coerce.number().int().positive().default(5 * 1024 * 1024),
+  UPLOAD_CHUNK_SIZE_BYTES: z.coerce
+    .number()
+    .int()
+    .positive()
+    .default(5 * 1024 * 1024),
   UPLOAD_SESSION_TTL_HOURS: z.coerce.number().int().positive().default(72),
-  MAX_UPLOAD_BYTES: z.coerce.number().int().positive().default(500 * 1024 * 1024),
+  MAX_UPLOAD_BYTES: z.coerce
+    .number()
+    .int()
+    .positive()
+    .default(500 * 1024 * 1024),
 
   // Sync tuning.
   SYNC_PUSH_MAX_OPERATIONS: z.coerce.number().int().positive().default(500),

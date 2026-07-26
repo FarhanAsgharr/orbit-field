@@ -6,10 +6,11 @@
  * better than a hard failure that stops field devices syncing entirely.
  */
 
+import { ErrorCode } from '@orbit/shared';
+import type { Request } from 'express';
 import rateLimit, { type Options } from 'express-rate-limit';
 import RedisStore from 'rate-limit-redis';
-import type { Request } from 'express';
-import { ErrorCode } from '@orbit/shared';
+
 import { env } from '../config/env.js';
 import { logger } from '../config/logger.js';
 import { redis } from '../db/redis.js';
@@ -56,7 +57,11 @@ function build(name: string, windowSeconds: number, max: number, byUser = true) 
 }
 
 /** Broad limiter applied to the whole API. */
-export const globalLimiter = build('global', env.RATE_LIMIT_WINDOW_SECONDS, env.RATE_LIMIT_MAX_REQUESTS);
+export const globalLimiter = build(
+  'global',
+  env.RATE_LIMIT_WINDOW_SECONDS,
+  env.RATE_LIMIT_MAX_REQUESTS,
+);
 
 /**
  * Login and reset endpoints, keyed by IP.

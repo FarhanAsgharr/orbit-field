@@ -14,11 +14,12 @@
  * destroy evidence that has not yet uploaded.
  */
 
-import * as FileSystem from 'expo-file-system';
-import * as ImageManipulator from 'expo-image-manipulator';
-import * as Crypto from 'expo-crypto';
 import { AttachmentKind, type GeoPoint } from '@orbit/types';
 import { safeFileName, ulid } from '@orbit/utils';
+import * as Crypto from 'expo-crypto';
+import * as FileSystem from 'expo-file-system';
+import * as ImageManipulator from 'expo-image-manipulator';
+
 import { quickLocation } from '../location/location.service';
 
 const MEDIA_DIR = `${FileSystem.documentDirectory}orbit-media/`;

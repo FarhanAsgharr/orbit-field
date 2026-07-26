@@ -94,9 +94,4 @@ export interface Paginated<T> {
 
 export type Nullable<T> = T | null;
 export type JsonValue =
-  | string
-  | number
-  | boolean
-  | null
-  | JsonValue[]
-  | { [key: string]: JsonValue };
+  string | number | boolean | null | JsonValue[] | { [key: string]: JsonValue };

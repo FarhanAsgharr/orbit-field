@@ -1,0 +1,7 @@
+{
+  "//": "Type information for ESLint only, never used to emit. Extends the real build config so every compilerOption matches production, then adds back what the build deliberately excludes: tests, the Vercel function entry points and the seed script. Those are precisely where type-aware rules such as no-floating-promises earn their keep.",
+  "extends": "./tsconfig.json",
+  "compilerOptions": { "noEmit": true },
+  "include": ["src/**/*.ts", "api/**/*.ts", "prisma/**/*.ts"],
+  "exclude": ["dist"]
+}

@@ -12,21 +12,22 @@
  *    question rather than showing a summary the user then has to hunt through.
  */
 
-import React, { useCallback, useMemo, useRef, useState } from 'react';
-import { Alert, ScrollView, View } from 'react-native';
-import { useLocalSearchParams, useRouter } from 'expo-router';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import * as ImagePicker from 'expo-image-picker';
 import {
   AttachmentKind,
   EDITABLE_INSPECTION_STATUSES,
-  InspectionStatus,
-  SignatureRole,
   type GeoPoint,
+  InspectionStatus,
   type JsonValue,
+  SignatureRole,
   type TemplateField,
 } from '@orbit/types';
 import { formatRelativeTime } from '@orbit/utils';
+import * as ImagePicker from 'expo-image-picker';
+import { useLocalSearchParams, useRouter } from 'expo-router';
+import React, { useCallback, useMemo, useRef, useState } from 'react';
+import { Alert, ScrollView, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+
 import {
   Badge,
   Button,
@@ -34,25 +35,25 @@ import {
   Divider,
   EmptyState,
   LoadingState,
-  ProgressBar,
-  Txt,
   outcomePresentation,
+  ProgressBar,
   statusPresentation,
+  Txt,
 } from '../../../src/components/ui';
-import { useTheme } from '../../../src/theme/ThemeProvider';
-import { useRuntime } from '../../../src/stores/session.store';
-import { useInspectionForm } from '../../../src/features/inspection/useInspectionForm';
-import { FieldRenderer, type FieldActions } from '../../../src/features/inspection/FieldRenderer';
 import {
   persistSignatureSvg,
   processPhoto,
   processVideo,
 } from '../../../src/features/camera/camera.service';
-import { signatureToSvg, type SignatureData } from '../../../src/features/signature/SignaturePad';
-import { ScannerModal, type ScanResult } from '../../../src/features/capture/scanner';
 import { AudioRecorderModal, type AudioResult } from '../../../src/features/capture/audio';
 import { pickAnyFile, pickDocuments } from '../../../src/features/capture/files';
-import { useLiveQuery, invalidateQueries } from '../../../src/hooks/useLiveQuery';
+import { ScannerModal, type ScanResult } from '../../../src/features/capture/scanner';
+import { type FieldActions, FieldRenderer } from '../../../src/features/inspection/FieldRenderer';
+import { useInspectionForm } from '../../../src/features/inspection/useInspectionForm';
+import { type SignatureData, signatureToSvg } from '../../../src/features/signature/SignaturePad';
+import { invalidateQueries, useLiveQuery } from '../../../src/hooks/useLiveQuery';
+import { useRuntime } from '../../../src/stores/session.store';
+import { useTheme } from '../../../src/theme/ThemeProvider';
 
 export default function InspectionFormScreen(): React.ReactElement {
   const theme = useTheme();
@@ -270,9 +271,14 @@ export default function InspectionFormScreen(): React.ReactElement {
     (
       field: TemplateField,
       file: {
-        localUri: string; fileName: string; mimeType: string;
-        sizeBytes: number; checksum: string; capturedAt: string;
-        durationMs?: number | null; location?: GeoPoint | null;
+        localUri: string;
+        fileName: string;
+        mimeType: string;
+        sizeBytes: number;
+        checksum: string;
+        capturedAt: string;
+        durationMs?: number | null;
+        location?: GeoPoint | null;
       },
       kind: AttachmentKind,
     ) => {
@@ -442,7 +448,6 @@ export default function InspectionFormScreen(): React.ReactElement {
   }
 
   const status = statusPresentation(inspection.status);
-  const outcome = outcomePresentation(inspection.outcome);
 
   return (
     <View style={{ flex: 1, backgroundColor: theme.colors.background }}>
@@ -459,7 +464,12 @@ export default function InspectionFormScreen(): React.ReactElement {
         }}
       >
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: theme.spacing.md }}>
-          <Txt variant="caption" color="accent" onPress={() => router.back()} accessibilityRole="button">
+          <Txt
+            variant="caption"
+            color="accent"
+            onPress={() => router.back()}
+            accessibilityRole="button"
+          >
             ‹ Back
           </Txt>
           <Txt variant="micro" color="muted" style={{ flex: 1 }} numberOfLines={1}>
@@ -488,7 +498,11 @@ export default function InspectionFormScreen(): React.ReactElement {
 
           {/* Saved-state chip: the visible proof that auto-save happened. */}
           <Txt variant="micro" color={form.saving ? 'warning' : 'success'}>
-            {form.saving ? 'Saving…' : form.lastSavedAt ? `Saved ${formatRelativeTime(form.lastSavedAt)}` : 'Saved'}
+            {form.saving
+              ? 'Saving…'
+              : form.lastSavedAt
+                ? `Saved ${formatRelativeTime(form.lastSavedAt)}`
+                : 'Saved'}
           </Txt>
         </View>
       </View>
@@ -605,7 +619,13 @@ export default function InspectionFormScreen(): React.ReactElement {
           <Card>
             <View style={{ gap: theme.spacing.md }}>
               <Txt variant="subheading">Result</Txt>
-              <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+              <View
+                style={{
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                }}
+              >
                 <Txt variant="displayLarge">
                   {form.score.percentage !== null ? `${Math.round(form.score.percentage)}%` : '—'}
                 </Txt>

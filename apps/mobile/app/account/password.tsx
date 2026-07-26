@@ -9,19 +9,23 @@
  * semantics) so a password accepted here is never rejected on submit.
  */
 
+import { AppError } from '@orbit/shared';
+import { useRouter } from 'expo-router';
 import React, { useCallback, useMemo, useState } from 'react';
 import { Alert, KeyboardAvoidingView, Platform, ScrollView, View } from 'react-native';
-import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { AppError } from '@orbit/shared';
-import { Button, Card, Field, ProgressBar, Txt } from '../../src/components/ui';
+
+import { Button, Card, ProgressBar, Txt } from '../../src/components/ui';
 import { PasswordField } from '../../src/components/ui/PasswordField';
-import { useTheme } from '../../src/theme/ThemeProvider';
-import { useRuntime, useSession } from '../../src/stores/session.store';
 import { getNetworkState } from '../../src/lib/network';
+import { useRuntime, useSession } from '../../src/stores/session.store';
+import { useTheme } from '../../src/theme/ThemeProvider';
 
 /** Client-side mirror of the server's policy. Advisory — the server decides. */
-function assessPassword(password: string, context: { email?: string; firstName?: string }): {
+function assessPassword(
+  password: string,
+  context: { email?: string; firstName?: string },
+): {
   score: number;
   problems: string[];
 } {
@@ -75,7 +79,8 @@ export default function ChangePasswordScreen(): React.ReactElement {
 
   const online = getNetworkState().isConnected;
   const mismatch = confirm.length > 0 && next !== confirm;
-  const ready = current.length > 0 && assessment.problems.length === 0 && next === confirm && next.length > 0;
+  const ready =
+    current.length > 0 && assessment.problems.length === 0 && next === confirm && next.length > 0;
 
   const submit = useCallback(async () => {
     setError(null);
@@ -125,7 +130,12 @@ export default function ChangePasswordScreen(): React.ReactElement {
         keyboardShouldPersistTaps="handled"
       >
         <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-          <Txt variant="caption" color="accent" onPress={() => router.back()} accessibilityRole="button">
+          <Txt
+            variant="caption"
+            color="accent"
+            onPress={() => router.back()}
+            accessibilityRole="button"
+          >
             ‹ Back
           </Txt>
         </View>

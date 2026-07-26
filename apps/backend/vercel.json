@@ -4,9 +4,7 @@
   "installCommand": "cd ../.. && npm install --include=dev",
   "buildCommand": "cd ../.. && npm run build:api",
   "outputDirectory": "public",
-  "regions": [
-    "hnd1"
-  ],
+  "regions": ["hnd1"],
   "functions": {
     "api/index.ts": {
       "maxDuration": 60,

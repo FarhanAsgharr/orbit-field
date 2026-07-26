@@ -12,6 +12,7 @@
 
 import type { ScoringPolicy, TemplateSection, TemplateVersion } from '@orbit/types';
 import { DEFAULT_SCORING_POLICY } from '@orbit/utils';
+
 import type { Database } from '../database';
 
 interface TemplateVersionRow {
@@ -75,7 +76,8 @@ export class TemplateRepository {
 
     let sections: TemplateSection[] = [];
     try {
-      const definition = JSON.parse(row.definition) as { sections?: TemplateSection[] } | TemplateSection[];
+      const definition = JSON.parse(row.definition) as
+        { sections?: TemplateSection[] } | TemplateSection[];
       // Accept both the wrapped and bare shapes — early template exports used
       // a bare array, and rejecting those would strand existing inspections.
       sections = Array.isArray(definition) ? definition : (definition.sections ?? []);

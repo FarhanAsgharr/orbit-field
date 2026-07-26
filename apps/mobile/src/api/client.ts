@@ -16,8 +16,8 @@
  */
 
 import { AppError, ErrorCode } from '@orbit/shared';
-import { retryAfterMs, withTimeout } from '@orbit/utils';
 import type { ApiError, AuthTokens } from '@orbit/types';
+import { retryAfterMs, withTimeout } from '@orbit/utils';
 
 export interface TokenStore {
   getAccessToken(): string | null;
@@ -155,9 +155,9 @@ export class ApiClient {
       // The API wraps successful payloads in `{ data }`, except for sync
       // endpoints which return their envelope directly.
       const wrapped = payload as { data?: T } | null;
-      return (wrapped && typeof wrapped === 'object' && 'data' in wrapped
-        ? wrapped.data
-        : payload) as T;
+      return (
+        wrapped && typeof wrapped === 'object' && 'data' in wrapped ? wrapped.data : payload
+      ) as T;
     }
 
     const apiError = payload as ApiError | null;
@@ -168,8 +168,8 @@ export class ApiClient {
       status: response.status,
       fields: apiError?.error?.fields,
       retryAfter:
-        apiError?.error?.retryAfter ??
-        (retryAfterMs(response.headers.get('retry-after')) ?? undefined) !== undefined
+        (apiError?.error?.retryAfter ??
+        (retryAfterMs(response.headers.get('retry-after')) ?? undefined) !== undefined)
           ? Math.ceil((retryAfterMs(response.headers.get('retry-after')) ?? 0) / 1000)
           : undefined,
     });
@@ -204,7 +204,10 @@ export class ApiClient {
         if (!response.ok) {
           this.options.tokens.clear();
           this.options.onAuthFailure();
-          throw new AppError(ErrorCode.AUTH_TOKEN_REVOKED, 'Your session has expired. Please sign in again.');
+          throw new AppError(
+            ErrorCode.AUTH_TOKEN_REVOKED,
+            'Your session has expired. Please sign in again.',
+          );
         }
 
         const body = (await response.json()) as { data: { tokens: AuthTokens } };
@@ -242,7 +245,12 @@ export class ApiClient {
   async putBinary(
     url: string,
     body: Blob | ArrayBuffer | Uint8Array,
-    options: { contentType?: string; signal?: AbortSignal; absolute?: boolean; timeoutMs?: number } = {},
+    options: {
+      contentType?: string;
+      signal?: AbortSignal;
+      absolute?: boolean;
+      timeoutMs?: number;
+    } = {},
   ): Promise<Response> {
     const target = options.absolute ? url : `${this.options.baseUrl}${url}`;
     const headers: Record<string, string> = {

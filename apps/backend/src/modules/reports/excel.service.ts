@@ -10,6 +10,7 @@
  * accidentally ship without those properties.
  */
 
+import { toDisplayString } from '@orbit/utils';
 import ExcelJS from 'exceljs';
 
 /** Orbit brand blue, matching the console and the field app. */
@@ -18,7 +19,8 @@ const HEADER_TEXT = 'FFFFFFFF';
 const ZEBRA = 'FFF5F7FB';
 const BORDER = 'FFDFE6F0';
 
-export type CellFormat = 'text' | 'number' | 'integer' | 'percent' | 'money' | 'date' | 'datetime' | 'duration';
+export type CellFormat =
+  'text' | 'number' | 'integer' | 'percent' | 'money' | 'date' | 'datetime' | 'duration';
 
 export interface SheetColumn<T> {
   header: string;
@@ -225,10 +227,7 @@ export function sheet<T>(spec: SheetSpec<T>): PreparedSheet {
 }
 
 /** Build a multi-sheet workbook and return it as a buffer. */
-export async function buildWorkbook(
-  meta: WorkbookMeta,
-  sheets: PreparedSheet[],
-): Promise<Buffer> {
+export async function buildWorkbook(meta: WorkbookMeta, sheets: PreparedSheet[]): Promise<Buffer> {
   const workbook = new ExcelJS.Workbook();
 
   workbook.creator = 'Orbit Field';
@@ -267,12 +266,11 @@ export async function buildSingleSheetWorkbook<T>(
 export function toCsv<T>(columns: Array<SheetColumn<T>>, rows: T[]): string {
   const cell = (value: unknown): string => {
     if (value === null || value === undefined) return '';
-    const text =
-      value instanceof Date
-        ? value.toISOString()
-        : typeof value === 'number'
-          ? String(value)
-          : String(value);
+    // An object reaching `String()` renders as the literal text
+    // "[object Object]", which is worse than useless in an export a customer
+    // opens in Excel: it looks like data. Anything non-primitive is serialised
+    // instead, so the cell carries something a human can actually read.
+    const text = toDisplayString(value);
     const safe = /^[=+\-@\t\r]/.test(text) ? `'${text}` : text;
     return /[",\n\r]/.test(safe) ? `"${safe.replace(/"/g, '""')}"` : safe;
   };
@@ -282,7 +280,9 @@ export function toCsv<T>(columns: Array<SheetColumn<T>>, rows: T[]): string {
     lines.push(columns.map((c) => cell(c.value(row))).join(','));
   }
   // BOM so Excel opens UTF-8 correctly instead of mangling accented names.
-  return `﻿${lines.join('\r\n')}`;
+  // Written as an escape: as a literal character it is invisible in the source
+  // and reads as a stray zero-width space to anyone editing this line.
+  return `\ufeff${lines.join('\r\n')}`;
 }
 
 export { ExcelJS };

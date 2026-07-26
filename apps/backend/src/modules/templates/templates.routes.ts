@@ -11,18 +11,25 @@
  * published version. Attempting it is a 409, not a silent no-op.
  */
 
-import { Router } from 'express';
-import { Prisma } from '@prisma/client';
-import { z } from 'zod';
-import { FieldType, SyncEntity, SyncOperation } from '@orbit/types';
 import { AppError, ErrorCode, Permission } from '@orbit/shared';
+import { FieldType, SyncEntity, SyncOperation } from '@orbit/types';
 import { ulid } from '@orbit/utils';
+import { Prisma } from '@prisma/client';
+import { Router } from 'express';
+import { z } from 'zod';
+
 import { prisma } from '../../db/prisma.js';
+import {
+  paginate,
+  paginationArgs,
+  paginationSchema,
+  searchFilter,
+  sortArgs,
+} from '../../lib/pagination.js';
 import { requireAuth, requirePermission } from '../../middleware/auth.js';
 import { auth, clientIp } from '../../middleware/context.js';
 import { asyncHandler } from '../../middleware/error.js';
 import { schemas, validate } from '../../middleware/validate.js';
-import { paginate, paginationArgs, paginationSchema, searchFilter, sortArgs } from '../../lib/pagination.js';
 import { recordChange } from '../sync/change-log.js';
 import { validateDefinition } from './definition.schema.js';
 
@@ -66,7 +73,13 @@ router.get(
         include: {
           createdBy: { select: { id: true, firstName: true, lastName: true } },
           versions: {
-            select: { id: true, version: true, publishedAt: true, retiredAt: true, changeNote: true },
+            select: {
+              id: true,
+              version: true,
+              publishedAt: true,
+              retiredAt: true,
+              changeNote: true,
+            },
             orderBy: { version: 'desc' },
             take: 5,
           },
@@ -101,7 +114,14 @@ router.get(
       include: {
         createdBy: { select: { id: true, firstName: true, lastName: true } },
         versions: {
-          select: { id: true, version: true, publishedAt: true, retiredAt: true, changeNote: true, createdAt: true },
+          select: {
+            id: true,
+            version: true,
+            publishedAt: true,
+            retiredAt: true,
+            changeNote: true,
+            createdAt: true,
+          },
           orderBy: { version: 'desc' },
         },
       },
@@ -281,7 +301,10 @@ router.post(
       : template.versions[0];
 
     if (!source && !body.definition) {
-      throw new AppError(ErrorCode.VALIDATION_FAILED, 'A definition or a source version is required.');
+      throw new AppError(
+        ErrorCode.VALIDATION_FAILED,
+        'A definition or a source version is required.',
+      );
     }
 
     const definition = body.definition ?? source?.definition;
@@ -396,14 +419,21 @@ router.post(
 
     const validation = validateDefinition(version.definition);
     if (!validation.ok) {
-      throw new AppError(ErrorCode.VALIDATION_FAILED, 'This version cannot be published while its definition is invalid.', {
-        fields: validation.errors,
-      });
+      throw new AppError(
+        ErrorCode.VALIDATION_FAILED,
+        'This version cannot be published while its definition is invalid.',
+        {
+          fields: validation.errors,
+        },
+      );
     }
     // A checklist with no questions would render as a blank form to an
     // inspector standing on site. Refuse rather than ship it.
     if (validation.fieldCount === 0) {
-      throw new AppError(ErrorCode.VALIDATION_FAILED, 'A template must contain at least one question before it can be published.');
+      throw new AppError(
+        ErrorCode.VALIDATION_FAILED,
+        'A template must contain at least one question before it can be published.',
+      );
     }
 
     const published = await prisma.$transaction(async (tx) => {
@@ -568,7 +598,8 @@ router.get(
         deletedAt: null,
       },
     });
-    if (!version) throw new AppError(ErrorCode.NOT_FOUND, 'That template has no version to export.');
+    if (!version)
+      throw new AppError(ErrorCode.NOT_FOUND, 'That template has no version to export.');
 
     const document = {
       formatVersion: 1,
@@ -588,7 +619,10 @@ router.get(
       },
     };
 
-    res.setHeader('Content-Disposition', `attachment; filename="${template.name.replace(/[^\w-]+/g, '-')}.orbit-template.json"`);
+    res.setHeader(
+      'Content-Disposition',
+      `attachment; filename="${template.name.replace(/[^\w-]+/g, '-')}.orbit-template.json"`,
+    );
     res.json(document);
   }),
 );
@@ -619,8 +653,18 @@ router.post(
     const subject = auth(req);
     const body = req.validated!.body as {
       formatVersion: number;
-      template: { name: string; description?: string | null; category?: string | null; discipline?: string | null; defaultPriority: string };
-      version: { definition: unknown; scoring?: Record<string, unknown>; requiredSignatures: string[] };
+      template: {
+        name: string;
+        description?: string | null;
+        category?: string | null;
+        discipline?: string | null;
+        defaultPriority: string;
+      };
+      version: {
+        definition: unknown;
+        scoring?: Record<string, unknown>;
+        requiredSignatures: string[];
+      };
     };
 
     if (body.formatVersion !== 1) {
@@ -635,9 +679,13 @@ router.post(
     // important, since nobody here reviewed them.
     const validation = validateDefinition(body.version.definition, { remintIds: true });
     if (!validation.ok) {
-      throw new AppError(ErrorCode.VALIDATION_FAILED, 'The imported checklist definition is not valid.', {
-        fields: validation.errors,
-      });
+      throw new AppError(
+        ErrorCode.VALIDATION_FAILED,
+        'The imported checklist definition is not valid.',
+        {
+          fields: validation.errors,
+        },
+      );
     }
 
     const templateId = ulid();
@@ -713,9 +761,12 @@ router.delete(
       return;
     }
 
-    await prisma.template.update({ where: { id }, data: { deletedAt: new Date(), isArchived: true } });
+    await prisma.template.update({
+      where: { id },
+      data: { deletedAt: new Date(), isArchived: true },
+    });
     res.json({ data: { archived: true, deleted: true } });
   }),
 );
 
-export { router as templatesRouter, FieldType };
+export { FieldType, router as templatesRouter };

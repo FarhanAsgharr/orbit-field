@@ -1,17 +1,18 @@
 /** Authentication routes. */
 
+import { OtpPurpose } from '@orbit/types';
+import type { Request } from 'express';
 import { Router } from 'express';
 import { z } from 'zod';
-import { OtpPurpose } from '@orbit/types';
+
+import { env } from '../../config/env.js';
 import { requireAuth } from '../../middleware/auth.js';
 import { auth, clientIp } from '../../middleware/context.js';
 import { asyncHandler } from '../../middleware/error.js';
-import { schemas, validate } from '../../middleware/validate.js';
 import { authLimiter, otpLimiter } from '../../middleware/rate-limit.js';
+import { schemas, validate } from '../../middleware/validate.js';
 import * as authService from './auth.service.js';
 import { registerOrganization } from './register.service.js';
-import { env } from '../../config/env.js';
-import type { Request } from 'express';
 
 const router: Router = Router();
 
@@ -45,7 +46,10 @@ router.post(
   }),
   asyncHandler(async (req, res) => {
     const body = req.validated!.body as {
-      email: string; password: string; device: z.infer<typeof deviceSchema>; rememberMe?: boolean;
+      email: string;
+      password: string;
+      device: z.infer<typeof deviceSchema>;
+      rememberMe?: boolean;
     };
     const session = await authService.login({ ...body, meta: meta(req) });
     res.json({ data: session });
@@ -87,8 +91,13 @@ router.post(
   }),
   asyncHandler(async (req, res) => {
     const body = req.validated!.body as {
-      email: string; password: string; firstName: string; lastName: string;
-      organizationName: string; timezone?: string; device: z.infer<typeof deviceSchema>;
+      email: string;
+      password: string;
+      firstName: string;
+      lastName: string;
+      organizationName: string;
+      timezone?: string;
+      device: z.infer<typeof deviceSchema>;
     };
 
     const created = await registerOrganization({ ...body, meta: meta(req) });

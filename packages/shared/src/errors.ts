@@ -183,22 +183,33 @@ export class AppError extends Error {
 }
 
 export const notFound = (resource: string, id?: string): AppError =>
-  new AppError(ErrorCode.NOT_FOUND, id ? `${resource} ${id} was not found.` : `${resource} was not found.`);
+  new AppError(
+    ErrorCode.NOT_FOUND,
+    id ? `${resource} ${id} was not found.` : `${resource} was not found.`,
+  );
 
-export const forbidden = (message = 'You do not have permission to perform this action.'): AppError =>
-  new AppError(ErrorCode.PERMISSION_DENIED, message);
+export const forbidden = (
+  message = 'You do not have permission to perform this action.',
+): AppError => new AppError(ErrorCode.PERMISSION_DENIED, message);
 
-export const unauthorized = (code: ErrorCode = ErrorCode.AUTH_REQUIRED, message = 'Authentication is required.'): AppError =>
-  new AppError(code, message);
+export const unauthorized = (
+  code: ErrorCode = ErrorCode.AUTH_REQUIRED,
+  message = 'Authentication is required.',
+): AppError => new AppError(code, message);
 
-export const validationFailed = (fields: Record<string, string>, message = 'The submitted data is invalid.'): AppError =>
-  new AppError(ErrorCode.VALIDATION_FAILED, message, { fields });
+export const validationFailed = (
+  fields: Record<string, string>,
+  message = 'The submitted data is invalid.',
+): AppError => new AppError(ErrorCode.VALIDATION_FAILED, message, { fields });
 
 export const conflict = (message: string, code: ErrorCode = ErrorCode.CONFLICT): AppError =>
   new AppError(code, message);
 
 export const invalidTransition = (from: string, to: string): AppError =>
-  new AppError(ErrorCode.INVALID_STATE_TRANSITION, `An inspection cannot move from ${from} to ${to}.`);
+  new AppError(
+    ErrorCode.INVALID_STATE_TRANSITION,
+    `An inspection cannot move from ${from} to ${to}.`,
+  );
 
 export function isAppError(e: unknown): e is AppError {
   return e instanceof AppError;

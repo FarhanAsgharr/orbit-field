@@ -9,15 +9,16 @@
  * merely a network failure never signs anyone out.
  */
 
-import { create } from 'zustand';
 import { AppError, ErrorCode } from '@orbit/shared';
 import type { AuthSession, DeviceInfo, SyncStatus } from '@orbit/types';
+import { create } from 'zustand';
+
 import { ApiClient } from '../api/client';
-import { buildRuntime, resolveApiUrl, tokenStore, type Runtime } from '../runtime/runtime';
 import { getDatabase } from '../db/database';
 import { META_KEYS } from '../db/schema';
-import { kv, secureStorage, storage } from '../lib/storage';
 import { getNetworkState } from '../lib/network';
+import { kv, secureStorage, storage } from '../lib/storage';
+import { buildRuntime, resolveApiUrl, type Runtime, tokenStore } from '../runtime/runtime';
 
 const SESSION_CACHE_KEY = 'session.cache';
 
@@ -47,7 +48,12 @@ interface SessionState {
   busy: boolean;
 
   boot: () => Promise<void>;
-  login: (input: { email: string; password: string; device: DeviceInfo; rememberMe: boolean }) => Promise<void>;
+  login: (input: {
+    email: string;
+    password: string;
+    device: DeviceInfo;
+    rememberMe: boolean;
+  }) => Promise<void>;
   logout: (options?: { keepLocalData?: boolean }) => Promise<void>;
   setSyncStatus: (status: SyncStatus) => void;
   hasPermission: (permission: string) => boolean;

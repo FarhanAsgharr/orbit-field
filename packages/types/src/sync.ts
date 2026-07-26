@@ -12,12 +12,7 @@
  * until the server has confirmed receipt, so a crash at any point loses nothing.
  */
 
-import type {
-  ConflictResolution,
-  OutboxState,
-  SyncEntity,
-  SyncOperation,
-} from './enums.js';
+import type { ConflictResolution, OutboxState, SyncEntity, SyncOperation } from './enums.js';
 import type {
   DeviceId,
   IsoTimestamp,

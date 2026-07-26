@@ -7,16 +7,18 @@
  */
 
 import {
-  FieldType,
-  MEDIA_FIELD_TYPES,
   type Attachment,
+  FieldType,
   type GeoPoint,
   type JsonValue,
+  MEDIA_FIELD_TYPES,
   type TemplateField,
   type TemplateSection,
   type ValidationRules,
 } from '@orbit/types';
-import { answerKey, evaluateForm, flattenFields, type AnswerMap } from './logic.js';
+
+import { toDisplayString } from './format.js';
+import { answerKey, type AnswerMap, evaluateForm, flattenFields } from './logic.js';
 
 export interface ValidationIssue {
   fieldId: string;
@@ -87,11 +89,17 @@ export function validateValue(
       );
     }
     if (rules.maxAttachments !== undefined && attachments.length > rules.maxAttachments) {
-      push('ATTACHMENT_TOO_MANY', `${field.label} allows at most ${rules.maxAttachments} attachments.`);
+      push(
+        'ATTACHMENT_TOO_MANY',
+        `${field.label} allows at most ${rules.maxAttachments} attachments.`,
+      );
     }
     for (const a of attachments) {
       if (rules.maxFileSizeBytes !== undefined && a.sizeBytes > rules.maxFileSizeBytes) {
-        push('FILE_TOO_LARGE', `"${a.fileName}" exceeds the ${Math.round(rules.maxFileSizeBytes / 1_048_576)} MB limit.`);
+        push(
+          'FILE_TOO_LARGE',
+          `"${a.fileName}" exceeds the ${Math.round(rules.maxFileSizeBytes / 1_048_576)} MB limit.`,
+        );
       }
       if (rules.allowedMimeTypes?.length && !rules.allowedMimeTypes.includes(a.mimeType)) {
         push('FILE_TYPE_NOT_ALLOWED', `"${a.fileName}" is not an accepted file type.`);
@@ -142,10 +150,17 @@ export function validateValue(
       if (rules.pattern) {
         try {
           if (!new RegExp(rules.pattern).test(value)) {
-            push('PATTERN', rules.patternMessage ?? `${field.label} is not in the expected format.`);
+            push(
+              'PATTERN',
+              rules.patternMessage ?? `${field.label} is not in the expected format.`,
+            );
           }
         } catch {
-          push('PATTERN_INVALID', `${field.label} has a misconfigured validation pattern.`, 'WARNING');
+          push(
+            'PATTERN_INVALID',
+            `${field.label} has a misconfigured validation pattern.`,
+            'WARNING',
+          );
         }
       }
       break;
@@ -222,17 +237,23 @@ export function validateValue(
         push('DUPLICATE_SELECTION', `${field.label} contains duplicate selections.`);
       }
       if (rules.minSelections !== undefined && value.length < rules.minSelections) {
-        push('TOO_FEW_SELECTED', `Select at least ${rules.minSelections} options for ${field.label}.`);
+        push(
+          'TOO_FEW_SELECTED',
+          `Select at least ${rules.minSelections} options for ${field.label}.`,
+        );
       }
       if (rules.maxSelections !== undefined && value.length > rules.maxSelections) {
-        push('TOO_MANY_SELECTED', `Select at most ${rules.maxSelections} options for ${field.label}.`);
+        push(
+          'TOO_MANY_SELECTED',
+          `Select at most ${rules.maxSelections} options for ${field.label}.`,
+        );
       }
       break;
     }
 
     case FieldType.DATE:
     case FieldType.DATETIME: {
-      const s = String(value);
+      const s = toDisplayString(value);
       const parsed = Date.parse(s);
       const shapeOk = field.type === FieldType.DATE ? ISO_DATE.test(s) : !Number.isNaN(parsed);
       if (!shapeOk || Number.isNaN(parsed)) {
@@ -257,7 +278,12 @@ export function validateValue(
 
     case FieldType.GPS: {
       const p = value as unknown as GeoPoint | null;
-      if (!p || typeof p !== 'object' || typeof p.latitude !== 'number' || typeof p.longitude !== 'number') {
+      if (
+        !p ||
+        typeof p !== 'object' ||
+        typeof p.latitude !== 'number' ||
+        typeof p.longitude !== 'number'
+      ) {
         push('INVALID_LOCATION', `${field.label} requires a location fix.`);
         break;
       }
@@ -314,9 +340,10 @@ export function validateInspection(input: {
 
     // The evaluator's REQUIRE/OPTIONAL effects override the static rule, so
     // validate against the resolved state rather than the template.
-    const effective: TemplateField = state.required === field.validation.required
-      ? field
-      : { ...field, validation: { ...field.validation, required: state.required } };
+    const effective: TemplateField =
+      state.required === field.validation.required
+        ? field
+        : { ...field, validation: { ...field.validation, required: state.required } };
 
     const issues = validateValue(effective, value, {
       attachments: attachmentsByField[field.id] ?? [],

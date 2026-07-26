@@ -8,16 +8,17 @@
  * cannot be re-recorded once the inspector has driven away.
  */
 
+import type { GeoPoint } from '@orbit/types';
+import { safeFileName, ulid } from '@orbit/utils';
+import { Audio } from 'expo-av';
+import * as Crypto from 'expo-crypto';
+import * as FileSystem from 'expo-file-system';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { Modal, Pressable, View } from 'react-native';
-import { Audio } from 'expo-av';
-import * as FileSystem from 'expo-file-system';
-import * as Crypto from 'expo-crypto';
-import { safeFileName, ulid } from '@orbit/utils';
+
 import { Button, Txt } from '../../components/ui';
 import { useTheme } from '../../theme/ThemeProvider';
 import { quickLocation } from '../location/location.service';
-import type { GeoPoint } from '@orbit/types';
 
 const MEDIA_DIR = `${FileSystem.documentDirectory}orbit-media/`;
 
@@ -210,7 +211,8 @@ export function AudioRecorderModal({
   }, [preview, sound, playing]);
 
   const discard = useCallback(async () => {
-    if (preview) await FileSystem.deleteAsync(preview.localUri, { idempotent: true }).catch(() => undefined);
+    if (preview)
+      await FileSystem.deleteAsync(preview.localUri, { idempotent: true }).catch(() => undefined);
     if (sound) await sound.unloadAsync().catch(() => undefined);
     setPreview(null);
     setSound(null);
@@ -246,21 +248,35 @@ export function AudioRecorderModal({
               padding: theme.spacing.lg,
             }}
           >
-            <Txt variant="caption" color="danger">{error}</Txt>
+            <Txt variant="caption" color="danger">
+              {error}
+            </Txt>
           </View>
         ) : null}
 
-        <View style={{ alignItems: 'center', gap: theme.spacing.lg, paddingVertical: theme.spacing.xxl }}>
+        <View
+          style={{
+            alignItems: 'center',
+            gap: theme.spacing.lg,
+            paddingVertical: theme.spacing.xxl,
+          }}
+        >
           <Txt variant="displayLarge" style={{ fontVariant: ['tabular-nums'] }}>
             {formatElapsed(preview ? preview.durationMs : elapsed)}
           </Txt>
 
           {isRecording ? (
-            <Txt variant="caption" color="danger">● Recording</Txt>
+            <Txt variant="caption" color="danger">
+              ● Recording
+            </Txt>
           ) : preview ? (
-            <Txt variant="caption" color="success">Saved to this device</Txt>
+            <Txt variant="caption" color="success">
+              Saved to this device
+            </Txt>
           ) : (
-            <Txt variant="caption" color="muted">Ready</Txt>
+            <Txt variant="caption" color="muted">
+              Ready
+            </Txt>
           )}
 
           {!preview ? (
@@ -308,14 +324,30 @@ export function AudioRecorderModal({
         <View style={{ marginTop: 'auto', gap: theme.spacing.md }}>
           {preview ? (
             <>
-              <Button label="Attach this recording" onPress={() => { onResult(preview); onClose(); }} fullWidth size="large" />
-              <Button label="Record again" variant="secondary" onPress={() => void discard()} fullWidth />
+              <Button
+                label="Attach this recording"
+                onPress={() => {
+                  onResult(preview);
+                  onClose();
+                }}
+                fullWidth
+                size="large"
+              />
+              <Button
+                label="Record again"
+                variant="secondary"
+                onPress={() => void discard()}
+                fullWidth
+              />
             </>
           ) : null}
           <Button
             label="Cancel"
             variant="ghost"
-            onPress={() => { void discard(); onClose(); }}
+            onPress={() => {
+              void discard();
+              onClose();
+            }}
             fullWidth
           />
         </View>

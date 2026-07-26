@@ -8,7 +8,8 @@
  * link.
  */
 
-import NetInfo, { type NetInfoState } from '@react-native-community/netinfo';
+import NetInfo, { type NetInfoState, NetInfoStateType } from '@react-native-community/netinfo';
+
 import type { NetworkState } from '../sync/engine';
 
 let current: NetworkState = { isConnected: false, isMetered: false };
@@ -27,8 +28,8 @@ function translate(state: NetInfoState): NetworkState {
   // hotspot), which is exactly the case where a 40 MB video upload would cost
   // the inspector real money.
   const isMetered =
-    state.type === 'cellular' ||
-    (state.type === 'wifi' && state.details?.isConnectionExpensive === true);
+    state.type === NetInfoStateType.cellular ||
+    (state.type === NetInfoStateType.wifi && state.details?.isConnectionExpensive === true);
 
   return { isConnected, isMetered };
 }
@@ -39,7 +40,8 @@ export function startNetworkMonitor(): () => void {
 
   unsubscribe = NetInfo.addEventListener((state) => {
     const next = translate(state);
-    const changed = next.isConnected !== current.isConnected || next.isMetered !== current.isMetered;
+    const changed =
+      next.isConnected !== current.isConnected || next.isMetered !== current.isMetered;
     current = next;
     if (changed) {
       for (const listener of listeners) listener(next);

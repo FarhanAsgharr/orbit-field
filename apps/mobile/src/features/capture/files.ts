@@ -10,10 +10,10 @@
  * be uploaded.
  */
 
+import { safeFileName, ulid } from '@orbit/utils';
+import * as Crypto from 'expo-crypto';
 import * as DocumentPicker from 'expo-document-picker';
 import * as FileSystem from 'expo-file-system';
-import * as Crypto from 'expo-crypto';
-import { safeFileName, ulid } from '@orbit/utils';
 
 const MEDIA_DIR = `${FileSystem.documentDirectory}orbit-media/`;
 
@@ -49,9 +49,7 @@ export interface PickFailure {
   message: string | null;
 }
 
-export type PickOutcome =
-  | { ok: true; files: PickedFile[] }
-  | { ok: false; failure: PickFailure };
+export type PickOutcome = { ok: true; files: PickedFile[] } | { ok: false; failure: PickFailure };
 
 async function ensureDir(): Promise<void> {
   const info = await FileSystem.getInfoAsync(MEDIA_DIR);
@@ -169,7 +167,9 @@ export async function pickDocuments(options: PickOptions = {}): Promise<PickOutc
 }
 
 /** Convenience wrapper for fields that want any file type. */
-export async function pickAnyFile(options: Omit<PickOptions, 'mimeTypes'> = {}): Promise<PickOutcome> {
+export async function pickAnyFile(
+  options: Omit<PickOptions, 'mimeTypes'> = {},
+): Promise<PickOutcome> {
   return pickDocuments({ ...options, mimeTypes: ['*/*'] });
 }
 
@@ -177,7 +177,8 @@ export async function pickAnyFile(options: Omit<PickOptions, 'mimeTypes'> = {}):
 export function describeFileType(mimeType: string): string {
   if (mimeType === 'application/pdf') return 'PDF';
   if (mimeType.startsWith('image/')) return 'Image';
-  if (mimeType.includes('spreadsheet') || mimeType.includes('excel') || mimeType === 'text/csv') return 'Spreadsheet';
+  if (mimeType.includes('spreadsheet') || mimeType.includes('excel') || mimeType === 'text/csv')
+    return 'Spreadsheet';
   if (mimeType.includes('word') || mimeType.includes('document')) return 'Document';
   if (mimeType.startsWith('audio/')) return 'Audio';
   if (mimeType.startsWith('video/')) return 'Video';

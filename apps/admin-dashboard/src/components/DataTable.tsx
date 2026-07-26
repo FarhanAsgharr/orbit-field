@@ -10,8 +10,9 @@
  * already moved past.
  */
 
+import { keepPreviousData, useQuery } from '@tanstack/react-query';
 import React, { useEffect, useMemo, useState } from 'react';
-import { useQuery, keepPreviousData } from '@tanstack/react-query';
+
 import { api } from '../lib/api';
 import { Empty, ErrorBanner, Loading, Pagination } from './ui';
 
@@ -83,9 +84,12 @@ export function DataTable<T>({
   // A new search or filter invalidates the current page number: showing page 4
   // of a result set that now has one page is an empty screen the operator has
   // no way to interpret.
+  // Serialised once into a variable: an expression inside the dependency array
+  // cannot be statically verified, so a future edit can silently drop it.
+  const extraQueryKey = JSON.stringify(extraQuery);
   useEffect(() => {
     setPage(1);
-  }, [debouncedSearch, JSON.stringify(extraQuery)]);
+  }, [debouncedSearch, extraQueryKey]);
 
   const query = useMemo(
     () => ({
@@ -133,7 +137,9 @@ export function DataTable<T>({
       </div>
 
       {isError ? (
-        <ErrorBanner message={error instanceof Error ? error.message : 'Could not load this list.'} />
+        <ErrorBanner
+          message={error instanceof Error ? error.message : 'Could not load this list.'}
+        />
       ) : null}
 
       <div className="card">
@@ -164,17 +170,27 @@ export function DataTable<T>({
                     {columns.map((column) => (
                       <th
                         key={column.key}
-                        style={{ width: column.width, textAlign: column.numeric ? 'right' : undefined }}
+                        style={{
+                          width: column.width,
+                          textAlign: column.numeric ? 'right' : undefined,
+                        }}
                         aria-sort={
                           sort?.by === column.key
-                            ? sort.dir === 'asc' ? 'ascending' : 'descending'
+                            ? sort.dir === 'asc'
+                              ? 'ascending'
+                              : 'descending'
                             : undefined
                         }
                       >
                         {column.sortable ? (
                           <button
                             className="btn btn--ghost btn--sm"
-                            style={{ padding: 0, height: 'auto', font: 'inherit', color: 'inherit' }}
+                            style={{
+                              padding: 0,
+                              height: 'auto',
+                              font: 'inherit',
+                              color: 'inherit',
+                            }}
                             onClick={() => toggleSort(column.key)}
                           >
                             {column.header}

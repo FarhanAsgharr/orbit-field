@@ -17,6 +17,7 @@ import { createReadStream, createWriteStream } from 'node:fs';
 import { mkdir, readFile, rm, stat, writeFile } from 'node:fs/promises';
 import { dirname, join, resolve } from 'node:path';
 import { pipeline } from 'node:stream/promises';
+
 import { env } from '../../config/env.js';
 import { logger } from '../../config/logger.js';
 
@@ -24,7 +25,11 @@ export interface StorageDriver {
   putChunk(uploadId: string, index: number, data: Buffer): Promise<void>;
   hasChunk(uploadId: string, index: number): Promise<boolean>;
   /** Concatenate chunks in order into a final object. Returns its storage key. */
-  finalise(uploadId: string, totalChunks: number, key: string): Promise<{ key: string; sizeBytes: number; checksum: string }>;
+  finalise(
+    uploadId: string,
+    totalChunks: number,
+    key: string,
+  ): Promise<{ key: string; sizeBytes: number; checksum: string }>;
   discard(uploadId: string): Promise<void>;
   read(key: string): Promise<Buffer>;
   exists(key: string): Promise<boolean>;
@@ -74,7 +79,11 @@ class LocalStorage implements StorageDriver {
     }
   }
 
-  async finalise(uploadId: string, totalChunks: number, key: string): Promise<{ key: string; sizeBytes: number; checksum: string }> {
+  async finalise(
+    uploadId: string,
+    totalChunks: number,
+    key: string,
+  ): Promise<{ key: string; sizeBytes: number; checksum: string }> {
     const target = this.objectPath(key);
     await mkdir(dirname(target), { recursive: true });
 
@@ -110,7 +119,9 @@ class LocalStorage implements StorageDriver {
   }
 
   async discard(uploadId: string): Promise<void> {
-    await rm(join(this.root, '.chunks', safeKey(uploadId)), { recursive: true, force: true }).catch(() => undefined);
+    await rm(join(this.root, '.chunks', safeKey(uploadId)), { recursive: true, force: true }).catch(
+      () => undefined,
+    );
   }
 
   async read(key: string): Promise<Buffer> {
@@ -181,16 +192,24 @@ class S3Storage implements StorageDriver {
 
   async putChunk(uploadId: string, index: number, data: Buffer): Promise<void> {
     const { client, commands } = await this.sdk();
-    const { PutObjectCommand } = commands as unknown as { PutObjectCommand: new (i: unknown) => never };
+    const { PutObjectCommand } = commands as unknown as {
+      PutObjectCommand: new (i: unknown) => never;
+    };
     await (client as unknown as { send: (c: unknown) => Promise<unknown> }).send(
-      new PutObjectCommand({ Bucket: env.S3_BUCKET, Key: this.chunkKey(uploadId, index), Body: data }),
+      new PutObjectCommand({
+        Bucket: env.S3_BUCKET,
+        Key: this.chunkKey(uploadId, index),
+        Body: data,
+      }),
     );
   }
 
   async hasChunk(uploadId: string, index: number): Promise<boolean> {
     try {
       const { client, commands } = await this.sdk();
-      const { HeadObjectCommand } = commands as unknown as { HeadObjectCommand: new (i: unknown) => never };
+      const { HeadObjectCommand } = commands as unknown as {
+        HeadObjectCommand: new (i: unknown) => never;
+      };
       await (client as unknown as { send: (c: unknown) => Promise<unknown> }).send(
         new HeadObjectCommand({ Bucket: env.S3_BUCKET, Key: this.chunkKey(uploadId, index) }),
       );
@@ -200,13 +219,19 @@ class S3Storage implements StorageDriver {
     }
   }
 
-  async finalise(uploadId: string, totalChunks: number, key: string): Promise<{ key: string; sizeBytes: number; checksum: string }> {
+  async finalise(
+    uploadId: string,
+    totalChunks: number,
+    key: string,
+  ): Promise<{ key: string; sizeBytes: number; checksum: string }> {
     const { client, commands } = await this.sdk();
     const { GetObjectCommand, PutObjectCommand } = commands as unknown as {
       GetObjectCommand: new (i: unknown) => never;
       PutObjectCommand: new (i: unknown) => never;
     };
-    const send = (client as unknown as { send: (c: unknown) => Promise<unknown> }).send.bind(client);
+    const send = (client as unknown as { send: (c: unknown) => Promise<unknown> }).send.bind(
+      client,
+    );
 
     const parts: Buffer[] = [];
     const hash = createHash('sha256');
@@ -222,7 +247,9 @@ class S3Storage implements StorageDriver {
       parts.push(bytes);
     }
 
-    await send(new PutObjectCommand({ Bucket: env.S3_BUCKET, Key: key, Body: Buffer.concat(parts) }));
+    await send(
+      new PutObjectCommand({ Bucket: env.S3_BUCKET, Key: key, Body: Buffer.concat(parts) }),
+    );
     return { key, sizeBytes, checksum: hash.digest('hex') };
   }
 
@@ -232,7 +259,9 @@ class S3Storage implements StorageDriver {
       DeleteObjectsCommand: new (i: unknown) => never;
       ListObjectsV2Command: new (i: unknown) => never;
     };
-    const send = (client as unknown as { send: (c: unknown) => Promise<unknown> }).send.bind(client);
+    const send = (client as unknown as { send: (c: unknown) => Promise<unknown> }).send.bind(
+      client,
+    );
 
     const listed = (await send(
       new ListObjectsV2Command({ Bucket: env.S3_BUCKET, Prefix: `.chunks/${uploadId}/` }),
@@ -250,7 +279,9 @@ class S3Storage implements StorageDriver {
 
   async read(key: string): Promise<Buffer> {
     const { client, commands } = await this.sdk();
-    const { GetObjectCommand } = commands as unknown as { GetObjectCommand: new (i: unknown) => never };
+    const { GetObjectCommand } = commands as unknown as {
+      GetObjectCommand: new (i: unknown) => never;
+    };
     const response = (await (client as unknown as { send: (c: unknown) => Promise<unknown> }).send(
       new GetObjectCommand({ Bucket: env.S3_BUCKET, Key: key }),
     )) as { Body: { transformToByteArray: () => Promise<Uint8Array> } };
@@ -260,7 +291,9 @@ class S3Storage implements StorageDriver {
   async exists(key: string): Promise<boolean> {
     try {
       const { client, commands } = await this.sdk();
-      const { HeadObjectCommand } = commands as unknown as { HeadObjectCommand: new (i: unknown) => never };
+      const { HeadObjectCommand } = commands as unknown as {
+        HeadObjectCommand: new (i: unknown) => never;
+      };
       await (client as unknown as { send: (c: unknown) => Promise<unknown> }).send(
         new HeadObjectCommand({ Bucket: env.S3_BUCKET, Key: key }),
       );
@@ -272,7 +305,9 @@ class S3Storage implements StorageDriver {
 
   async delete(key: string): Promise<void> {
     const { client, commands } = await this.sdk();
-    const { DeleteObjectCommand } = commands as unknown as { DeleteObjectCommand: new (i: unknown) => never };
+    const { DeleteObjectCommand } = commands as unknown as {
+      DeleteObjectCommand: new (i: unknown) => never;
+    };
     await (client as unknown as { send: (c: unknown) => Promise<unknown> }).send(
       new DeleteObjectCommand({ Bucket: env.S3_BUCKET, Key: key }),
     );
@@ -283,7 +318,8 @@ let driver: StorageDriver | null = null;
 
 export function storage(): StorageDriver {
   if (!driver) {
-    driver = env.STORAGE_DRIVER === 's3' ? new S3Storage() : new LocalStorage(env.STORAGE_LOCAL_PATH);
+    driver =
+      env.STORAGE_DRIVER === 's3' ? new S3Storage() : new LocalStorage(env.STORAGE_LOCAL_PATH);
     logger.info({ driver: env.STORAGE_DRIVER }, 'storage driver initialised');
   }
   return driver;

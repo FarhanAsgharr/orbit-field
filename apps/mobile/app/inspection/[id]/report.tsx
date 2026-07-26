@@ -7,21 +7,22 @@
  * broken.
  */
 
-import React, { useCallback, useState } from 'react';
-import { Alert, ScrollView, Switch, View } from 'react-native';
-import { useLocalSearchParams, useRouter } from 'expo-router';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { formatBytes } from '@orbit/utils';
+import { useLocalSearchParams, useRouter } from 'expo-router';
+import React, { useCallback, useMemo, useState } from 'react';
+import { Alert, ScrollView, Switch, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+
 import { Badge, Button, Card, Divider, EmptyState, Txt } from '../../../src/components/ui';
-import { useTheme } from '../../../src/theme/ThemeProvider';
-import { useRuntime } from '../../../src/stores/session.store';
-import { useLiveQuery } from '../../../src/hooks/useLiveQuery';
 import {
+  type GeneratedReport,
   generateReport,
   printReport,
   shareReport,
-  type GeneratedReport,
 } from '../../../src/features/report/report.service';
+import { useLiveQuery } from '../../../src/hooks/useLiveQuery';
+import { useRuntime } from '../../../src/stores/session.store';
+import { useTheme } from '../../../src/theme/ThemeProvider';
 
 export default function ReportScreen(): React.ReactElement {
   const theme = useTheme();
@@ -50,7 +51,10 @@ export default function ReportScreen(): React.ReactElement {
     [inspectionId],
   );
 
-  const options = { includePhotos, includeMap, includeSignatures, failuresOnly };
+  const options = useMemo(
+    () => ({ includePhotos, includeMap, includeSignatures, failuresOnly }),
+    [includePhotos, includeMap, includeSignatures, failuresOnly],
+  );
 
   const generate = useCallback(async () => {
     setBusy('generate');
@@ -63,7 +67,7 @@ export default function ReportScreen(): React.ReactElement {
     } finally {
       setBusy(null);
     }
-  }, [runtime, inspectionId, includePhotos, includeMap, includeSignatures, failuresOnly]);
+  }, [runtime, inspectionId, options]);
 
   const print = useCallback(async () => {
     setBusy('print');
@@ -75,7 +79,7 @@ export default function ReportScreen(): React.ReactElement {
     } finally {
       setBusy(null);
     }
-  }, [runtime, inspectionId, includePhotos, includeMap, includeSignatures, failuresOnly]);
+  }, [runtime, inspectionId, options]);
 
   const share = useCallback(async () => {
     if (!report) return;
@@ -112,7 +116,12 @@ export default function ReportScreen(): React.ReactElement {
       }}
     >
       <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-        <Txt variant="caption" color="accent" onPress={() => router.back()} accessibilityRole="button">
+        <Txt
+          variant="caption"
+          color="accent"
+          onPress={() => router.back()}
+          accessibilityRole="button"
+        >
           ‹ Back
         </Txt>
       </View>
@@ -136,11 +145,20 @@ export default function ReportScreen(): React.ReactElement {
       </Card>
 
       <Card padded={false}>
-        <OptionRow label="Include photographs" hint={`${attachmentCount} attached`} value={includePhotos} onChange={setIncludePhotos} />
+        <OptionRow
+          label="Include photographs"
+          hint={`${attachmentCount} attached`}
+          value={includePhotos}
+          onChange={setIncludePhotos}
+        />
         <Divider />
         <OptionRow label="Include GPS coordinates" value={includeMap} onChange={setIncludeMap} />
         <Divider />
-        <OptionRow label="Include signatures" value={includeSignatures} onChange={setIncludeSignatures} />
+        <OptionRow
+          label="Include signatures"
+          value={includeSignatures}
+          onChange={setIncludeSignatures}
+        />
         <Divider />
         <OptionRow
           label="Failed items only"
@@ -167,7 +185,13 @@ export default function ReportScreen(): React.ReactElement {
       {report ? (
         <Card>
           <View style={{ gap: theme.spacing.md }}>
-            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+            <View
+              style={{
+                flexDirection: 'row',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+              }}
+            >
               <Txt variant="subheading">Ready</Txt>
               <Badge label={formatBytes(report.sizeBytes)} tone="success" icon="✓" />
             </View>

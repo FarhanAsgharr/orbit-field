@@ -6,10 +6,11 @@
  * log with the request id; the client gets that id and nothing else.
  */
 
-import type { NextFunction, Request, Response } from 'express';
-import { Prisma } from '@prisma/client';
-import { ZodError } from 'zod';
 import { AppError, ErrorCode, statusForCode } from '@orbit/shared';
+import { Prisma } from '@prisma/client';
+import type { NextFunction, Request, Response } from 'express';
+import { ZodError } from 'zod';
+
 import { isProduction } from '../config/env.js';
 
 /** 404 for unmatched routes. Registered after all routers. */
@@ -39,7 +40,10 @@ function translatePrisma(err: Prisma.PrismaClientKnownRequestError): AppError {
   switch (err.code) {
     case 'P2002': {
       const target = (err.meta?.target as string[] | undefined)?.join(', ') ?? 'field';
-      return new AppError(ErrorCode.DUPLICATE_RESOURCE, `A record with this ${target} already exists.`);
+      return new AppError(
+        ErrorCode.DUPLICATE_RESOURCE,
+        `A record with this ${target} already exists.`,
+      );
     }
     case 'P2003':
       return new AppError(ErrorCode.VALIDATION_FAILED, 'A referenced record does not exist.');
@@ -47,7 +51,11 @@ function translatePrisma(err: Prisma.PrismaClientKnownRequestError): AppError {
       return new AppError(ErrorCode.NOT_FOUND, 'The requested record was not found.');
     case 'P2034':
       // Write conflict / deadlock — genuinely retryable.
-      return new AppError(ErrorCode.LOCK_TIMEOUT, 'The request conflicted with another write. Please retry.', { retryAfter: 1 });
+      return new AppError(
+        ErrorCode.LOCK_TIMEOUT,
+        'The request conflicted with another write. Please retry.',
+        { retryAfter: 1 },
+      );
     default:
       return new AppError(ErrorCode.INTERNAL_ERROR, 'A database error occurred.', { cause: err });
   }
@@ -71,9 +79,14 @@ export function errorHandler(
   } else if (err instanceof Prisma.PrismaClientKnownRequestError) {
     appError = translatePrisma(err);
   } else if (err instanceof Prisma.PrismaClientValidationError) {
-    appError = new AppError(ErrorCode.MALFORMED_REQUEST, 'The request could not be processed.', { cause: err });
+    appError = new AppError(ErrorCode.MALFORMED_REQUEST, 'The request could not be processed.', {
+      cause: err,
+    });
   } else if (err instanceof Prisma.PrismaClientInitializationError) {
-    appError = new AppError(ErrorCode.DB_UNAVAILABLE, 'The service is temporarily unavailable.', { retryAfter: 5, cause: err });
+    appError = new AppError(ErrorCode.DB_UNAVAILABLE, 'The service is temporarily unavailable.', {
+      retryAfter: 5,
+      cause: err,
+    });
   } else if (err instanceof SyntaxError && 'body' in err) {
     appError = new AppError(ErrorCode.MALFORMED_REQUEST, 'The request body is not valid JSON.');
   } else {

@@ -12,19 +12,20 @@
  */
 
 import {
-  InspectionStatus,
-  SyncEntity,
-  SyncOperation,
   type GeoPoint,
   type Inspection,
   type InspectionListItem,
   type InspectionOutcome,
+  InspectionStatus,
   type JsonValue,
   type Priority,
+  SyncEntity,
+  SyncOperation,
 } from '@orbit/types';
-import { provisionalInspectionNumber, ulid } from '@orbit/utils';
-import type { Database, SqlValue } from '../database';
+import { provisionalInspectionNumber, toDisplayString, ulid } from '@orbit/utils';
+
 import type { Outbox } from '../../sync/outbox';
+import type { Database, SqlValue } from '../database';
 
 /** Raw SQLite row shape. snake_case, JSON columns still encoded. */
 interface InspectionRow {
@@ -175,25 +176,63 @@ export interface CreateInspectionInput {
 
 /** Fields a user may edit. Mirrors the server's write whitelist exactly. */
 const EDITABLE_FIELDS = [
-  'title', 'priority', 'category', 'department', 'notes', 'tags',
-  'siteId', 'clientId', 'projectId', 'assetId', 'assignedToId',
-  'status', 'startedAt', 'scheduledFor', 'dueAt', 'completedAt', 'submittedAt',
-  'startLocation', 'endLocation', 'distanceFromSiteMeters',
-  'score', 'outcome', 'totalFields', 'answeredFields', 'failedFields', 'criticalFailures',
+  'title',
+  'priority',
+  'category',
+  'department',
+  'notes',
+  'tags',
+  'siteId',
+  'clientId',
+  'projectId',
+  'assetId',
+  'assignedToId',
+  'status',
+  'startedAt',
+  'scheduledFor',
+  'dueAt',
+  'completedAt',
+  'submittedAt',
+  'startLocation',
+  'endLocation',
+  'distanceFromSiteMeters',
+  'score',
+  'outcome',
+  'totalFields',
+  'answeredFields',
+  'failedFields',
+  'criticalFailures',
 ] as const;
 
 type EditableField = (typeof EDITABLE_FIELDS)[number];
 
 const COLUMN_BY_FIELD: Record<EditableField, string> = {
-  title: 'title', priority: 'priority', category: 'category', department: 'department',
-  notes: 'notes', tags: 'tags', siteId: 'site_id', clientId: 'client_id',
-  projectId: 'project_id', assetId: 'asset_id', assignedToId: 'assigned_to_id',
-  status: 'status', startedAt: 'started_at', scheduledFor: 'scheduled_for',
-  dueAt: 'due_at', completedAt: 'completed_at', submittedAt: 'submitted_at',
-  startLocation: 'start_location', endLocation: 'end_location',
-  distanceFromSiteMeters: 'distance_from_site_meters', score: 'score', outcome: 'outcome',
-  totalFields: 'total_fields', answeredFields: 'answered_fields',
-  failedFields: 'failed_fields', criticalFailures: 'critical_failures',
+  title: 'title',
+  priority: 'priority',
+  category: 'category',
+  department: 'department',
+  notes: 'notes',
+  tags: 'tags',
+  siteId: 'site_id',
+  clientId: 'client_id',
+  projectId: 'project_id',
+  assetId: 'asset_id',
+  assignedToId: 'assigned_to_id',
+  status: 'status',
+  startedAt: 'started_at',
+  scheduledFor: 'scheduled_for',
+  dueAt: 'due_at',
+  completedAt: 'completed_at',
+  submittedAt: 'submitted_at',
+  startLocation: 'start_location',
+  endLocation: 'end_location',
+  distanceFromSiteMeters: 'distance_from_site_meters',
+  score: 'score',
+  outcome: 'outcome',
+  totalFields: 'total_fields',
+  answeredFields: 'answered_fields',
+  failedFields: 'failed_fields',
+  criticalFailures: 'critical_failures',
 };
 
 /** JSON-encoded columns. */
@@ -252,13 +291,34 @@ export class InspectionRepository {
       where.push(`i.priority IN (${filter.priority.map(() => '?').join(',')})`);
       params.push(...filter.priority);
     }
-    if (filter.assignedToId) { where.push('i.assigned_to_id = ?'); params.push(filter.assignedToId); }
-    if (filter.siteId) { where.push('i.site_id = ?'); params.push(filter.siteId); }
-    if (filter.clientId) { where.push('i.client_id = ?'); params.push(filter.clientId); }
-    if (filter.projectId) { where.push('i.project_id = ?'); params.push(filter.projectId); }
-    if (filter.templateId) { where.push('i.template_id = ?'); params.push(filter.templateId); }
-    if (filter.dueBefore) { where.push('i.due_at <= ?'); params.push(filter.dueBefore); }
-    if (filter.dueAfter) { where.push('i.due_at >= ?'); params.push(filter.dueAfter); }
+    if (filter.assignedToId) {
+      where.push('i.assigned_to_id = ?');
+      params.push(filter.assignedToId);
+    }
+    if (filter.siteId) {
+      where.push('i.site_id = ?');
+      params.push(filter.siteId);
+    }
+    if (filter.clientId) {
+      where.push('i.client_id = ?');
+      params.push(filter.clientId);
+    }
+    if (filter.projectId) {
+      where.push('i.project_id = ?');
+      params.push(filter.projectId);
+    }
+    if (filter.templateId) {
+      where.push('i.template_id = ?');
+      params.push(filter.templateId);
+    }
+    if (filter.dueBefore) {
+      where.push('i.due_at <= ?');
+      params.push(filter.dueBefore);
+    }
+    if (filter.dueAfter) {
+      where.push('i.due_at >= ?');
+      params.push(filter.dueAfter);
+    }
     if (filter.dirtyOnly) where.push('i.is_dirty = 1');
     if (filter.conflictedOnly) where.push('i.has_conflict = 1');
 
@@ -284,12 +344,25 @@ export class InspectionRepository {
     const dir = filter.sortDir === 'asc' ? 'ASC' : 'DESC';
 
     const rows = this.db.getAll<{
-      id: string; number: string; title: string; status: string; outcome: string;
-      priority: string; template_name: string | null; site_name: string | null;
-      client_name: string | null; assignee_first: string | null; assignee_last: string | null;
-      due_at: string | null; updated_at: string; score: number | null;
-      answered_fields: number; total_fields: number; attachment_count: number;
-      is_dirty: number; has_conflict: number;
+      id: string;
+      number: string;
+      title: string;
+      status: string;
+      outcome: string;
+      priority: string;
+      template_name: string | null;
+      site_name: string | null;
+      client_name: string | null;
+      assignee_first: string | null;
+      assignee_last: string | null;
+      due_at: string | null;
+      updated_at: string;
+      score: number | null;
+      answered_fields: number;
+      total_fields: number;
+      attachment_count: number;
+      is_dirty: number;
+      has_conflict: number;
     }>(
       `SELECT i.id, i.number, i.title, i.status, i.outcome, i.priority,
               t.name AS template_name, s.name AS site_name, c.name AS client_name,
@@ -438,8 +511,8 @@ export class InspectionRepository {
           input.siteId ?? null,
           input.assetId ?? null,
           input.title,
-          String(patch.status),
-          String(patch.priority),
+          toDisplayString(patch.status),
+          toDisplayString(patch.priority),
           input.category ?? null,
           input.department ?? null,
           input.assignedToId ?? this.identity.userId,
@@ -478,10 +551,9 @@ export class InspectionRepository {
    */
   update(id: string, changes: Partial<Record<EditableField, JsonValue>>): Inspection {
     return this.db.write(() => {
-      const current = this.db.getFirst<InspectionRow>(
-        `SELECT * FROM inspections WHERE id = ?`,
-        [id],
-      );
+      const current = this.db.getFirst<InspectionRow>(`SELECT * FROM inspections WHERE id = ?`, [
+        id,
+      ]);
       if (!current) throw new Error(`Inspection ${id} not found`);
 
       const sets: string[] = [];
@@ -528,14 +600,17 @@ export class InspectionRepository {
   }
 
   /** Recompute cached counters after answers change. */
-  refreshProgress(id: string, progress: {
-    score: number | null;
-    outcome: InspectionOutcome;
-    totalFields: number;
-    answeredFields: number;
-    failedFields: number;
-    criticalFailures: number;
-  }): void {
+  refreshProgress(
+    id: string,
+    progress: {
+      score: number | null;
+      outcome: InspectionOutcome;
+      totalFields: number;
+      answeredFields: number;
+      failedFields: number;
+      criticalFailures: number;
+    },
+  ): void {
     this.update(id, {
       score: progress.score,
       outcome: progress.outcome,
@@ -576,11 +651,13 @@ export class InspectionRepository {
 
   archive(id: string): void {
     this.db.write(() => {
-      this.db.run(`UPDATE inspections SET is_archived = 1, updated_at = ?, is_dirty = 1 WHERE id = ?`, [
-        new Date().toISOString(), id,
-      ]);
+      this.db.run(
+        `UPDATE inspections SET is_archived = 1, updated_at = ?, is_dirty = 1 WHERE id = ?`,
+        [new Date().toISOString(), id],
+      );
       const current = this.db.getFirst<{ version: number }>(
-        `SELECT version FROM inspections WHERE id = ?`, [id],
+        `SELECT version FROM inspections WHERE id = ?`,
+        [id],
       );
       this.outbox.enqueue({
         entity: SyncEntity.INSPECTION,
@@ -596,10 +673,12 @@ export class InspectionRepository {
   remove(id: string): void {
     this.db.write(() => {
       const current = this.db.getFirst<{ version: number }>(
-        `SELECT version FROM inspections WHERE id = ?`, [id],
+        `SELECT version FROM inspections WHERE id = ?`,
+        [id],
       );
       this.db.run(`UPDATE inspections SET deleted_at = ?, is_dirty = 1 WHERE id = ?`, [
-        new Date().toISOString(), id,
+        new Date().toISOString(),
+        id,
       ]);
       this.outbox.enqueue({
         entity: SyncEntity.INSPECTION,

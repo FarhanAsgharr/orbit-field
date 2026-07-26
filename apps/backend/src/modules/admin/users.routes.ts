@@ -11,29 +11,36 @@
  *     promote themselves by way of promoting a colleague.
  */
 
-import { Router } from 'express';
-import { Prisma } from '@prisma/client';
-import { z } from 'zod';
-import { ROLE_RANK, type Role } from '@orbit/types';
 import {
   ALL_PERMISSIONS,
   AppError,
-  ErrorCode,
-  Permission,
-  ROLE_PERMISSIONS,
   canAssignRole,
   canManageUser,
   effectivePermissions,
+  ErrorCode,
+  Permission,
+  ROLE_PERMISSIONS,
 } from '@orbit/shared';
-import { ulid } from '@orbit/utils';
+import { type Role, ROLE_RANK } from '@orbit/types';
+import { toDisplayString, ulid } from '@orbit/utils';
+import { Prisma } from '@prisma/client';
+import { Router } from 'express';
+import { z } from 'zod';
+
 import { prisma } from '../../db/prisma.js';
+import { checkPasswordStrength, DEFAULT_PASSWORD_POLICY, hashPassword } from '../../lib/crypto.js';
+import {
+  paginate,
+  paginationArgs,
+  paginationSchema,
+  searchFilter,
+  sortArgs,
+} from '../../lib/pagination.js';
+import { revokeUserTokens } from '../../lib/tokens.js';
 import { requireAuth, requirePermission } from '../../middleware/auth.js';
 import { auth, clientIp } from '../../middleware/context.js';
 import { asyncHandler } from '../../middleware/error.js';
 import { schemas, validate } from '../../middleware/validate.js';
-import { paginate, paginationArgs, paginationSchema, searchFilter, sortArgs } from '../../lib/pagination.js';
-import { revokeUserTokens } from '../../lib/tokens.js';
-import { DEFAULT_PASSWORD_POLICY, checkPasswordStrength, hashPassword } from '../../lib/crypto.js';
 
 const router: Router = Router();
 
@@ -79,8 +86,13 @@ router.get(
   asyncHandler(async (req, res) => {
     const subject = auth(req);
     const q = req.validated!.query as {
-      page: number; pageSize: number; search?: string; role?: string; status?: string;
-      sortBy?: string; sortDir?: 'asc' | 'desc';
+      page: number;
+      pageSize: number;
+      search?: string;
+      role?: string;
+      status?: string;
+      sortBy?: string;
+      sortDir?: 'asc' | 'desc';
     };
 
     const where: Prisma.UserWhereInput = {
@@ -127,7 +139,9 @@ router.get(
       where: { id, orgId: subject.orgId, deletedAt: null },
       select: {
         ...userSelect,
-        projectMemberships: { select: { project: { select: { id: true, name: true, code: true } } } },
+        projectMemberships: {
+          select: { project: { select: { id: true, name: true, code: true } } },
+        },
         devices: {
           where: { deletedAt: null },
           select: { id: true, name: true, platform: true, lastSeenAt: true, revokedAt: true },
@@ -177,7 +191,15 @@ router.post(
       email: schemas.email,
       firstName: z.string().min(1).max(100).trim(),
       lastName: z.string().min(1).max(100).trim(),
-      role: z.enum(['SUPER_ADMIN', 'ADMIN', 'MANAGER', 'SUPERVISOR', 'INSPECTOR', 'TECHNICIAN', 'VIEWER']),
+      role: z.enum([
+        'SUPER_ADMIN',
+        'ADMIN',
+        'MANAGER',
+        'SUPERVISOR',
+        'INSPECTOR',
+        'TECHNICIAN',
+        'VIEWER',
+      ]),
       department: z.string().max(120).nullable().optional(),
       jobTitle: z.string().max(120).nullable().optional(),
       registrationNumber: z.string().max(80).nullable().optional(),
@@ -188,9 +210,14 @@ router.post(
   asyncHandler(async (req, res) => {
     const subject = auth(req);
     const body = req.validated!.body as {
-      email: string; firstName: string; lastName: string; role: Role;
-      department?: string | null; jobTitle?: string | null;
-      registrationNumber?: string | null; projectIds?: string[];
+      email: string;
+      firstName: string;
+      lastName: string;
+      role: Role;
+      department?: string | null;
+      jobTitle?: string | null;
+      registrationNumber?: string | null;
+      projectIds?: string[];
       password?: string;
     };
 
@@ -206,7 +233,10 @@ router.post(
       select: { id: true, deletedAt: true },
     });
     if (existing && !existing.deletedAt) {
-      throw new AppError(ErrorCode.DUPLICATE_RESOURCE, 'A user with that email already exists in this organisation.');
+      throw new AppError(
+        ErrorCode.DUPLICATE_RESOURCE,
+        'A user with that email already exists in this organisation.',
+      );
     }
 
     // Same policy the user would face changing it themselves — an account
@@ -265,7 +295,11 @@ router.post(
           entity: 'User',
           entityId: userId,
           // Records that a password was set, never what it was.
-          metadata: { email: body.email, role: body.role, passwordSetByAdmin: Boolean(passwordHash) },
+          metadata: {
+            email: body.email,
+            role: body.role,
+            passwordSetByAdmin: Boolean(passwordHash),
+          },
           ipAddress: clientIp(req),
           requestId: req.requestId,
         },
@@ -289,7 +323,17 @@ router.patch(
       firstName: z.string().min(1).max(100).trim().optional(),
       lastName: z.string().min(1).max(100).trim().optional(),
       phone: z.string().max(32).nullable().optional(),
-      role: z.enum(['SUPER_ADMIN', 'ADMIN', 'MANAGER', 'SUPERVISOR', 'INSPECTOR', 'TECHNICIAN', 'VIEWER']).optional(),
+      role: z
+        .enum([
+          'SUPER_ADMIN',
+          'ADMIN',
+          'MANAGER',
+          'SUPERVISOR',
+          'INSPECTOR',
+          'TECHNICIAN',
+          'VIEWER',
+        ])
+        .optional(),
       department: z.string().max(120).nullable().optional(),
       jobTitle: z.string().max(120).nullable().optional(),
       registrationNumber: z.string().max(80).nullable().optional(),
@@ -310,7 +354,9 @@ router.patch(
     });
     if (!target) throw new AppError(ErrorCode.NOT_FOUND, 'That user was not found.');
 
-    if (!canManageUser(subject, { role: target.role as Role, orgId: target.orgId, userId: target.id })) {
+    if (
+      !canManageUser(subject, { role: target.role as Role, orgId: target.orgId, userId: target.id })
+    ) {
       throw new AppError(
         ErrorCode.PERMISSION_DENIED,
         target.id === subject.userId
@@ -321,7 +367,10 @@ router.patch(
 
     if (body.role !== undefined) {
       if (!canAssignRole(subject, body.role as Role)) {
-        throw new AppError(ErrorCode.PERMISSION_DENIED, `You cannot grant the ${String(body.role)} role.`);
+        throw new AppError(
+          ErrorCode.PERMISSION_DENIED,
+          `You cannot grant the ${toDisplayString(body.role)} role.`,
+        );
       }
       // Changing a role changes what their existing access tokens assert, so
       // the change must invalidate them.
@@ -331,11 +380,17 @@ router.patch(
     }
 
     if (body.status !== undefined && body.status !== target.status) {
-      if (!canManageUser(subject, { role: target.role as Role, orgId: target.orgId, userId: target.id })) {
-        throw new AppError(ErrorCode.PERMISSION_DENIED, 'You cannot change this user\'s status.');
+      if (
+        !canManageUser(subject, {
+          role: target.role as Role,
+          orgId: target.orgId,
+          userId: target.id,
+        })
+      ) {
+        throw new AppError(ErrorCode.PERMISSION_DENIED, "You cannot change this user's status.");
       }
       if (body.status !== 'ACTIVE') {
-        await revokeUserTokens(target.id, `status changed to ${String(body.status)}`);
+        await revokeUserTokens(target.id, `status changed to ${toDisplayString(body.status)}`);
       }
     }
 
@@ -409,7 +464,9 @@ router.delete(
     });
     if (!target) throw new AppError(ErrorCode.NOT_FOUND, 'That user was not found.');
 
-    if (!canManageUser(subject, { role: target.role as Role, orgId: target.orgId, userId: target.id })) {
+    if (
+      !canManageUser(subject, { role: target.role as Role, orgId: target.orgId, userId: target.id })
+    ) {
       throw new AppError(ErrorCode.PERMISSION_DENIED, 'You cannot deactivate this user.');
     }
 

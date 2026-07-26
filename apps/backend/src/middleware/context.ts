@@ -5,11 +5,12 @@
  * `req.auth` is either present and fully typed, or a compile error.
  */
 
-import type { NextFunction, Request, Response } from 'express';
-import type { Role } from '@orbit/types';
 import type { AccessSubject } from '@orbit/shared';
+import type { Role } from '@orbit/types';
 import { ulid } from '@orbit/utils';
-import { requestLogger, type Logger } from '../config/logger.js';
+import type { NextFunction, Request, Response } from 'express';
+
+import { type Logger, requestLogger } from '../config/logger.js';
 
 export interface AuthContext extends AccessSubject {
   userId: string;

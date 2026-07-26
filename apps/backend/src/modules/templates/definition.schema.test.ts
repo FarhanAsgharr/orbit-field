@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+
 import { validateDefinition } from './definition.schema.js';
 
 /** Minimal valid field. */
@@ -17,7 +18,10 @@ function field(overrides: Record<string, unknown> = {}): Record<string, unknown>
   };
 }
 
-function definition(fields: Array<Record<string, unknown>>, sectionOverrides: Record<string, unknown> = {}) {
+function definition(
+  fields: Array<Record<string, unknown>>,
+  sectionOverrides: Record<string, unknown> = {},
+) {
   return {
     sections: [
       {
@@ -111,7 +115,11 @@ describe('validateDefinition — shape', () => {
   it('caps follow-up nesting depth', () => {
     let nested: Record<string, unknown> = field({ id: '01JFIELDDEEP000000000000Z' });
     for (let i = 0; i < 12; i++) {
-      nested = field({ id: `01JFIELDDEEP00000000000${String(i).padStart(2, '0')}`, key: `deep${i}`, followUps: [nested] });
+      nested = field({
+        id: `01JFIELDDEEP00000000000${String(i).padStart(2, '0')}`,
+        key: `deep${i}`,
+        followUps: [nested],
+      });
     }
     const result = validateDefinition(definition([nested]));
     expect(result.ok).toBe(false);
@@ -122,14 +130,22 @@ describe('validateDefinition — logic integrity', () => {
   it('accepts a rule referencing an existing question', () => {
     const result = validateDefinition(
       definition([
-        field({ id: '01JFIELD00000000000000001', key: 'gate', type: 'YES_NO', options: [{ value: 'y', label: 'Yes' }] }),
+        field({
+          id: '01JFIELD00000000000000001',
+          key: 'gate',
+          type: 'YES_NO',
+          options: [{ value: 'y', label: 'Yes' }],
+        }),
         field({
           id: '01JFIELD00000000000000002',
           key: 'dependent',
           logic: [
             {
               id: 'r1',
-              when: { kind: 'CONDITION', condition: { fieldId: '01JFIELD00000000000000001', operator: 'EQUALS', value: 'y' } },
+              when: {
+                kind: 'CONDITION',
+                condition: { fieldId: '01JFIELD00000000000000001', operator: 'EQUALS', value: 'y' },
+              },
               effect: { type: 'HIDE' },
             },
           ],
@@ -148,7 +164,14 @@ describe('validateDefinition — logic integrity', () => {
           logic: [
             {
               id: 'r1',
-              when: { kind: 'CONDITION', condition: { fieldId: '01JGHOST000000000000000001', operator: 'EQUALS', value: 'x' } },
+              when: {
+                kind: 'CONDITION',
+                condition: {
+                  fieldId: '01JGHOST000000000000000001',
+                  operator: 'EQUALS',
+                  value: 'x',
+                },
+              },
               effect: { type: 'HIDE' },
             },
           ],
@@ -168,7 +191,10 @@ describe('validateDefinition — logic integrity', () => {
           logic: [
             {
               id: 'r1',
-              when: { kind: 'CONDITION', condition: { fieldId: '01JFIELD00000000000000001', operator: 'RESEMBLES' } },
+              when: {
+                kind: 'CONDITION',
+                condition: { fieldId: '01JFIELD00000000000000001', operator: 'RESEMBLES' },
+              },
               effect: { type: 'HIDE' },
             },
           ],
@@ -185,7 +211,10 @@ describe('validateDefinition — logic integrity', () => {
           logic: [
             {
               id: 'r1',
-              when: { kind: 'CONDITION', condition: { fieldId: '01JFIELD00000000000000001', operator: 'IS_EMPTY' } },
+              when: {
+                kind: 'CONDITION',
+                condition: { fieldId: '01JFIELD00000000000000001', operator: 'IS_EMPTY' },
+              },
               effect: { type: 'BLOCK_SUBMIT' },
             },
           ],
@@ -210,7 +239,10 @@ describe('validateDefinition — logic integrity', () => {
           logic: [
             {
               id: 'r1',
-              when: { kind: 'CONDITION', condition: { fieldId: '01JFIELD00000000000000001', operator: 'EQUALS', value: 'n' } },
+              when: {
+                kind: 'CONDITION',
+                condition: { fieldId: '01JFIELD00000000000000001', operator: 'EQUALS', value: 'n' },
+              },
               effect: { type: 'DISABLE' },
             },
           ],
@@ -232,7 +264,10 @@ describe('validateDefinition — logic integrity', () => {
           logic: [
             {
               id: 'r1',
-              when: { kind: 'CONDITION', condition: { fieldId: '01JFIELD0000000000000000B', operator: 'IS_NOT_EMPTY' } },
+              when: {
+                kind: 'CONDITION',
+                condition: { fieldId: '01JFIELD0000000000000000B', operator: 'IS_NOT_EMPTY' },
+              },
               effect: { type: 'SHOW' },
             },
           ],
@@ -243,7 +278,10 @@ describe('validateDefinition — logic integrity', () => {
           logic: [
             {
               id: 'r2',
-              when: { kind: 'CONDITION', condition: { fieldId: '01JFIELD0000000000000000A', operator: 'IS_NOT_EMPTY' } },
+              when: {
+                kind: 'CONDITION',
+                condition: { fieldId: '01JFIELD0000000000000000A', operator: 'IS_NOT_EMPTY' },
+              },
               effect: { type: 'SHOW' },
             },
           ],
@@ -264,7 +302,10 @@ describe('validateDefinition — logic integrity', () => {
         logic: [
           {
             id: `r-${key}`,
-            when: { kind: 'CONDITION', condition: { fieldId: dependsOn, operator: 'IS_NOT_EMPTY' } },
+            when: {
+              kind: 'CONDITION',
+              condition: { fieldId: dependsOn, operator: 'IS_NOT_EMPTY' },
+            },
             effect: { type: 'SHOW' },
           },
         ],
@@ -290,7 +331,10 @@ describe('validateDefinition — logic integrity', () => {
           logic: [
             {
               id: 'r1',
-              when: { kind: 'CONDITION', condition: { fieldId: '01JFIELD0000000000000000A', operator: 'IS_NOT_EMPTY' } },
+              when: {
+                kind: 'CONDITION',
+                condition: { fieldId: '01JFIELD0000000000000000A', operator: 'IS_NOT_EMPTY' },
+              },
               effect: { type: 'SHOW' },
             },
           ],
@@ -301,7 +345,10 @@ describe('validateDefinition — logic integrity', () => {
           logic: [
             {
               id: 'r2',
-              when: { kind: 'CONDITION', condition: { fieldId: '01JFIELD0000000000000000B', operator: 'IS_NOT_EMPTY' } },
+              when: {
+                kind: 'CONDITION',
+                condition: { fieldId: '01JFIELD0000000000000000B', operator: 'IS_NOT_EMPTY' },
+              },
               effect: { type: 'SHOW' },
             },
           ],
@@ -324,11 +371,25 @@ describe('validateDefinition — logic integrity', () => {
               when: {
                 kind: 'ANY',
                 children: [
-                  { kind: 'CONDITION', condition: { fieldId: '01JFIELD0000000000000000A', operator: 'EQUALS', value: 1 } },
+                  {
+                    kind: 'CONDITION',
+                    condition: {
+                      fieldId: '01JFIELD0000000000000000A',
+                      operator: 'EQUALS',
+                      value: 1,
+                    },
+                  },
                   {
                     kind: 'ALL',
                     children: [
-                      { kind: 'CONDITION', condition: { fieldId: '01JFIELD0000000000000000A', operator: 'GREATER_THAN', value: 5 } },
+                      {
+                        kind: 'CONDITION',
+                        condition: {
+                          fieldId: '01JFIELD0000000000000000A',
+                          operator: 'GREATER_THAN',
+                          value: 5,
+                        },
+                      },
                     ],
                   },
                 ],
@@ -367,7 +428,10 @@ describe('validateDefinition — normalisation', () => {
     });
     expect(result.ok).toBe(true);
     if (result.ok) {
-      const section = result.normalised.sections[0] as { id: string; fields: Array<{ id: string }> };
+      const section = result.normalised.sections[0] as {
+        id: string;
+        fields: Array<{ id: string }>;
+      };
       expect(section.id).toHaveLength(26);
       expect(section.fields[0]!.id).toHaveLength(26);
     }
@@ -396,7 +460,10 @@ describe('validateDefinition — normalisation', () => {
           logic: [
             {
               id: 'r1',
-              when: { kind: 'CONDITION', condition: { fieldId: '01JFIELD0000000000000000A', operator: 'IS_NOT_EMPTY' } },
+              when: {
+                kind: 'CONDITION',
+                condition: { fieldId: '01JFIELD0000000000000000A', operator: 'IS_NOT_EMPTY' },
+              },
               effect: { type: 'SHOW' },
             },
           ],
@@ -418,7 +485,11 @@ describe('validateDefinition — normalisation', () => {
 
   it('caps the number of reported errors', () => {
     const many = Array.from({ length: 40 }, (_, i) =>
-      field({ id: `01JFIELD000000000000000${String(i).padStart(2, '0')}`, key: `k${i}`, type: 'NONSENSE' }),
+      field({
+        id: `01JFIELD000000000000000${String(i).padStart(2, '0')}`,
+        key: `k${i}`,
+        type: 'NONSENSE',
+      }),
     );
     const result = validateDefinition(definition(many));
     expect(result.ok).toBe(false);

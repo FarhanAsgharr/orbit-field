@@ -8,14 +8,15 @@
  * family is revoked immediately and the user is forced to re-authenticate.
  */
 
-import jwt, { type SignOptions } from 'jsonwebtoken';
 import { AppError, ErrorCode } from '@orbit/shared';
+import type { Role } from '@orbit/types';
 import { ulid } from '@orbit/utils';
+import jwt, { type SignOptions } from 'jsonwebtoken';
+
 import { env } from '../config/env.js';
 import { logger } from '../config/logger.js';
 import { prisma } from '../db/prisma.js';
 import { randomToken, sha256 } from './crypto.js';
-import type { Role } from '@orbit/types';
 
 export interface AccessTokenClaims {
   sub: string;
@@ -145,7 +146,10 @@ export async function rotateRefreshToken(input: {
       { userId: existing.userId, familyId: existing.familyId, deviceId: input.deviceId },
       'refresh token reuse detected; family revoked',
     );
-    throw new AppError(ErrorCode.AUTH_TOKEN_REVOKED, 'This session has been revoked for security reasons.');
+    throw new AppError(
+      ErrorCode.AUTH_TOKEN_REVOKED,
+      'This session has been revoked for security reasons.',
+    );
   }
 
   if (existing.expiresAt.getTime() < Date.now()) {
@@ -156,7 +160,10 @@ export async function rotateRefreshToken(input: {
   // a different installation is a strong theft signal.
   if (existing.deviceId && input.deviceId && existing.deviceId !== input.deviceId) {
     await revokeTokenFamily(existing.familyId, 'device mismatch on refresh');
-    throw new AppError(ErrorCode.AUTH_TOKEN_REVOKED, 'This session has been revoked for security reasons.');
+    throw new AppError(
+      ErrorCode.AUTH_TOKEN_REVOKED,
+      'This session has been revoked for security reasons.',
+    );
   }
 
   const issued = await issueRefreshToken({

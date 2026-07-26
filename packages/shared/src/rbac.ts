@@ -12,7 +12,7 @@
  * without inventing a new role.
  */
 
-import { ROLE_RANK, type Role } from '@orbit/types';
+import { type Role, ROLE_RANK } from '@orbit/types';
 
 /** Every permission the system recognises. `resource:action`. */
 export const Permission = {
@@ -217,7 +217,10 @@ export function canAny(subject: AccessSubject, permissions: Array<Permission | s
  * other, which prevents two admins from locking one another out, and nobody
  * except a SUPER_ADMIN can touch a SUPER_ADMIN.
  */
-export function canManageUser(actor: AccessSubject, target: { role: Role; orgId: string; userId: string }): boolean {
+export function canManageUser(
+  actor: AccessSubject,
+  target: { role: Role; orgId: string; userId: string },
+): boolean {
   if (actor.orgId !== target.orgId && actor.role !== 'SUPER_ADMIN') return false;
   if (actor.userId === target.userId) return false;
   if (!can(actor, Permission.USER_UPDATE)) return false;
@@ -241,26 +244,30 @@ export function canAccessProject(subject: AccessSubject, projectId: string | nul
 /** Record-level check for an inspection, combining ownership and project scope. */
 export function canAccessInspection(
   subject: AccessSubject,
-  inspection: { orgId: string; assignedToId: string | null; projectId: string | null; createdById?: string | null },
+  inspection: {
+    orgId: string;
+    assignedToId: string | null;
+    projectId: string | null;
+    createdById?: string | null;
+  },
 ): boolean {
   if (subject.orgId !== inspection.orgId) return false;
   if (!canAccessProject(subject, inspection.projectId)) return false;
   if (can(subject, Permission.INSPECTION_READ_ALL)) return true;
-  return (
-    inspection.assignedToId === subject.userId ||
-    inspection.createdById === subject.userId
-  );
+  return inspection.assignedToId === subject.userId || inspection.createdById === subject.userId;
 }
 
 export function canEditInspection(
   subject: AccessSubject,
-  inspection: { orgId: string; assignedToId: string | null; projectId: string | null; createdById?: string | null },
+  inspection: {
+    orgId: string;
+    assignedToId: string | null;
+    projectId: string | null;
+    createdById?: string | null;
+  },
 ): boolean {
   if (!canAccessInspection(subject, inspection)) return false;
   if (can(subject, Permission.INSPECTION_UPDATE_ANY)) return true;
   if (!can(subject, Permission.INSPECTION_UPDATE)) return false;
-  return (
-    inspection.assignedToId === subject.userId ||
-    inspection.createdById === subject.userId
-  );
+  return inspection.assignedToId === subject.userId || inspection.createdById === subject.userId;
 }

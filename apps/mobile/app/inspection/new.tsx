@@ -8,16 +8,17 @@
  * if the app dies on the next screen the inspection exists.
  */
 
+import { InspectionStatus } from '@orbit/types';
+import { useRouter } from 'expo-router';
 import React, { useCallback, useState } from 'react';
 import { Pressable, ScrollView, View } from 'react-native';
-import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { InspectionStatus } from '@orbit/types';
+
 import { Badge, Button, Card, EmptyState, Field, LoadingState, Txt } from '../../src/components/ui';
-import { useTheme } from '../../src/theme/ThemeProvider';
-import { useRuntime } from '../../src/stores/session.store';
-import { useLiveQuery, invalidateQueries } from '../../src/hooks/useLiveQuery';
 import { captureLocation } from '../../src/features/location/location.service';
+import { invalidateQueries, useLiveQuery } from '../../src/hooks/useLiveQuery';
+import { useRuntime } from '../../src/stores/session.store';
+import { useTheme } from '../../src/theme/ThemeProvider';
 
 export default function NewInspectionScreen(): React.ReactElement {
   const theme = useTheme();
@@ -86,7 +87,12 @@ export default function NewInspectionScreen(): React.ReactElement {
         }}
       >
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: theme.spacing.md }}>
-          <Txt variant="caption" color="accent" onPress={() => router.back()} accessibilityRole="button">
+          <Txt
+            variant="caption"
+            color="accent"
+            onPress={() => router.back()}
+            accessibilityRole="button"
+          >
             ‹ Cancel
           </Txt>
         </View>
@@ -163,10 +169,7 @@ export default function NewInspectionScreen(): React.ReactElement {
                 search ? (
                   <Button label="Clear search" variant="secondary" onPress={() => setSearch('')} />
                 ) : (
-                  <Button
-                    label="Sync now"
-                    onPress={() => void runtime.engine.sync('MANUAL')}
-                  />
+                  <Button label="Sync now" onPress={() => void runtime.engine.sync('MANUAL')} />
                 )
               }
             />
@@ -178,11 +181,17 @@ export default function NewInspectionScreen(): React.ReactElement {
               onPress={() => start(template.id, template.templateId, template.name)}
             >
               <View style={{ gap: theme.spacing.sm }}>
-                <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: theme.spacing.md }}>
+                <View
+                  style={{ flexDirection: 'row', alignItems: 'flex-start', gap: theme.spacing.md }}
+                >
                   <Txt variant="subheading" style={{ flex: 1 }}>
                     {template.name}
                   </Txt>
-                  {creating === template.id ? <LoadingState label="" /> : <Txt color="muted">›</Txt>}
+                  {creating === template.id ? (
+                    <LoadingState label="" />
+                  ) : (
+                    <Txt color="muted">›</Txt>
+                  )}
                 </View>
 
                 {template.description ? (
@@ -193,7 +202,9 @@ export default function NewInspectionScreen(): React.ReactElement {
 
                 <View style={{ flexDirection: 'row', gap: theme.spacing.sm, flexWrap: 'wrap' }}>
                   {template.category ? <Badge label={template.category} tone="accent" /> : null}
-                  {template.discipline ? <Badge label={template.discipline} tone="neutral" /> : null}
+                  {template.discipline ? (
+                    <Badge label={template.discipline} tone="neutral" />
+                  ) : null}
                   <Badge
                     label={`${template.fieldCount} question${template.fieldCount === 1 ? '' : 's'}`}
                     tone="neutral"

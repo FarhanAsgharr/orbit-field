@@ -15,18 +15,19 @@
 // ULID. See the module for what breaks without it.
 import '../src/lib/crypto-polyfill';
 
-import React, { useEffect } from 'react';
-import { StatusBar } from 'expo-status-bar';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { Slot, useRouter, useSegments } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
+import { StatusBar } from 'expo-status-bar';
+import React, { useEffect } from 'react';
+import { View } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { View } from 'react-native';
-import { ThemeProvider, useTheme } from '../src/theme/ThemeProvider';
-import { useSession } from '../src/stores/session.store';
-import { startNetworkMonitor, stopNetworkMonitor } from '../src/lib/network';
+
 import { AppErrorBoundary } from '../src/components/AppErrorBoundary';
+import { startNetworkMonitor, stopNetworkMonitor } from '../src/lib/network';
+import { useSession } from '../src/stores/session.store';
+import { ThemeProvider, useTheme } from '../src/theme/ThemeProvider';
 
 void SplashScreen.preventAutoHideAsync();
 
@@ -57,7 +58,6 @@ function RouteGuard({ children }: { children: React.ReactNode }): React.ReactEle
 
   const inAuthGroup = segments[0] === '(auth)';
   const signedIn = phase === 'AUTHENTICATED' || phase === 'AUTHENTICATED_UNVERIFIED';
-  const misplaced = phase !== 'BOOTING' && signedIn !== !inAuthGroup;
 
   useEffect(() => {
     if (phase === 'BOOTING') return;

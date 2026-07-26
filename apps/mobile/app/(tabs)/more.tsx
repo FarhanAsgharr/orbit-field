@@ -6,17 +6,18 @@
  * trying to work out why something has not uploaded.
  */
 
+import { formatBytes, formatRelativeTime } from '@orbit/utils';
+import * as Application from 'expo-application';
+import { useRouter } from 'expo-router';
 import React, { useCallback, useState } from 'react';
 import { Alert, Pressable, ScrollView, Switch, View } from 'react-native';
-import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import * as Application from 'expo-application';
-import { formatBytes, formatRelativeTime } from '@orbit/utils';
+
 import { Badge, Button, Card, Divider, Txt } from '../../src/components/ui';
-import { useTheme, useThemePreference } from '../../src/theme/ThemeProvider';
-import { useRuntime, useSession } from '../../src/stores/session.store';
-import { useLiveQuery, invalidateQueries } from '../../src/hooks/useLiveQuery';
+import { invalidateQueries, useLiveQuery } from '../../src/hooks/useLiveQuery';
 import { storage, STORAGE_KEYS } from '../../src/lib/storage';
+import { useRuntime, useSession } from '../../src/stores/session.store';
+import { useTheme, useThemePreference } from '../../src/theme/ThemeProvider';
 
 export default function MoreScreen(): React.ReactElement {
   const theme = useTheme();
@@ -35,12 +36,15 @@ export default function MoreScreen(): React.ReactElement {
     () => storage.getBoolean(STORAGE_KEYS.SYNC_AUTO) ?? true,
   );
 
-  const stats = useLiveQuery(() => ({
-    storageBytes: runtime.repositories.attachments.localStorageBytes(),
-    dbBytes: runtime.db.sizeBytes(),
-    queued: runtime.outbox.counts(),
-    templates: runtime.repositories.templates.count(),
-  }), []);
+  const stats = useLiveQuery(
+    () => ({
+      storageBytes: runtime.repositories.attachments.localStorageBytes(),
+      dbBytes: runtime.db.sizeBytes(),
+      queued: runtime.outbox.counts(),
+      templates: runtime.repositories.templates.count(),
+    }),
+    [],
+  );
 
   const pendingWork = stats.queued.pending + stats.queued.retrying + stats.queued.conflicted;
 

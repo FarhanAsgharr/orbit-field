@@ -7,22 +7,22 @@
  * I am about to drop in a puddle".
  */
 
+import { type Attachment, AttachmentState, type GeoPoint, type TemplateField } from '@orbit/types';
+import { formatBytes, gradeAccuracy } from '@orbit/utils';
 import React, { useCallback, useState } from 'react';
 import { Alert, Image, Modal, Pressable, ScrollView, View } from 'react-native';
-import {
-  AttachmentState,
-  type Attachment,
-  type GeoPoint,
-  type TemplateField,
-} from '@orbit/types';
-import { formatBytes, gradeAccuracy } from '@orbit/utils';
+
 import { Badge, Button, Txt } from '../../../components/ui';
 import { useTheme } from '../../../theme/ThemeProvider';
-import { SignaturePad, type SignatureData } from '../../signature/SignaturePad';
 import { captureLocation } from '../../location/location.service';
+import { type SignatureData, SignaturePad } from '../../signature/SignaturePad';
 
 /** Per-attachment sync badge. */
-function attachmentBadge(state: AttachmentState): { label: string; tone: 'success' | 'warning' | 'danger' | 'neutral'; icon: string } {
+function attachmentBadge(state: AttachmentState): {
+  label: string;
+  tone: 'success' | 'warning' | 'danger' | 'neutral';
+  icon: string;
+} {
   switch (state) {
     case AttachmentState.UPLOADED:
     case AttachmentState.EVICTABLE:
@@ -140,9 +140,7 @@ export function PhotoField({
         <Txt variant="micro" color="muted">
           {attachments.length}
           {max !== undefined ? ` of ${max}` : ''} attached
-          {field.validation.minAttachments
-            ? ` · ${field.validation.minAttachments} required`
-            : ''}
+          {field.validation.minAttachments ? ` · ${field.validation.minAttachments} required` : ''}
         </Txt>
         {attachments.some((a) => a.state !== AttachmentState.UPLOADED) ? (
           <Txt variant="micro" color="warning">
@@ -169,7 +167,11 @@ function PhotoStrip({
   if (attachments.length === 0) return null;
 
   return (
-    <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: theme.spacing.sm }}>
+    <ScrollView
+      horizontal
+      showsHorizontalScrollIndicator={false}
+      contentContainerStyle={{ gap: theme.spacing.sm }}
+    >
       {attachments.map((attachment) => {
         const badge = attachmentBadge(attachment.state);
         return (
@@ -190,7 +192,10 @@ function PhotoStrip({
             }}
           >
             {attachment.localUri ? (
-              <Image source={{ uri: attachment.localUri }} style={{ width: '100%', height: '100%' }} />
+              <Image
+                source={{ uri: attachment.localUri }}
+                style={{ width: '100%', height: '100%' }}
+              />
             ) : (
               // Evicted locally but safe on the server — say so rather than
               // showing a broken image.
@@ -215,7 +220,17 @@ function PhotoStrip({
                 gap: 3,
               }}
             >
-              <Txt variant="micro" style={{ color: badge.tone === 'success' ? '#13A874' : badge.tone === 'danger' ? '#E24A2E' : '#C3CDDC' }}>
+              <Txt
+                variant="micro"
+                style={{
+                  color:
+                    badge.tone === 'success'
+                      ? '#13A874'
+                      : badge.tone === 'danger'
+                        ? '#E24A2E'
+                        : '#C3CDDC',
+                }}
+              >
                 {badge.icon}
               </Txt>
               <Txt variant="micro" style={{ color: '#C3CDDC', flex: 1 }} numberOfLines={1}>
@@ -364,7 +379,9 @@ export function LocationField({
             gap: theme.spacing.sm,
           }}
         >
-          <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+          <View
+            style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}
+          >
             <Txt variant="captionStrong" style={{ fontVariant: ['tabular-nums'] }}>
               {value.latitude.toFixed(6)}, {value.longitude.toFixed(6)}
             </Txt>
@@ -412,7 +429,9 @@ export function LocationField({
       ) : null}
 
       <Button
-        label={capturing ? (progress ?? 'Locating…') : value ? 'Update location' : 'Capture location'}
+        label={
+          capturing ? (progress ?? 'Locating…') : value ? 'Update location' : 'Capture location'
+        }
         variant={value ? 'secondary' : 'primary'}
         onPress={() => void capture()}
         busy={capturing}
@@ -491,7 +510,15 @@ export function SignatureField({
       </View>
 
       <Modal visible={open} animationType="slide" onRequestClose={() => setOpen(false)}>
-        <View style={{ flex: 1, backgroundColor: theme.colors.background, padding: theme.spacing.lg, paddingTop: theme.spacing.huge, gap: theme.spacing.lg }}>
+        <View
+          style={{
+            flex: 1,
+            backgroundColor: theme.colors.background,
+            padding: theme.spacing.lg,
+            paddingTop: theme.spacing.huge,
+            gap: theme.spacing.lg,
+          }}
+        >
           <Txt variant="title">{signerLabel} signature</Txt>
           <Txt variant="caption" color="secondary">
             By signing, you confirm the information recorded in this inspection is accurate.

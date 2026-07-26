@@ -14,17 +14,18 @@
  */
 
 import {
+  type Attachment,
   AttachmentKind,
   AttachmentState,
-  SyncEntity,
-  SyncOperation,
-  type Attachment,
   type GeoPoint,
   type JsonValue,
+  SyncEntity,
+  SyncOperation,
 } from '@orbit/types';
 import { ulid } from '@orbit/utils';
-import type { Database, SqlValue } from '../database';
+
 import type { Outbox } from '../../sync/outbox';
+import type { Database, SqlValue } from '../database';
 
 interface AttachmentRow {
   id: string;
@@ -298,7 +299,12 @@ export class AttachmentRepository {
   }
 
   /** Persist a resume point. Called after every acknowledged chunk. */
-  recordChunkProgress(id: string, uploadId: string, receivedChunks: number[], uploadedBytes: number): void {
+  recordChunkProgress(
+    id: string,
+    uploadId: string,
+    receivedChunks: number[],
+    uploadedBytes: number,
+  ): void {
     this.db.run(
       `UPDATE attachments
           SET upload_id = ?, received_chunks = ?, uploaded_bytes = ?,
@@ -309,11 +315,16 @@ export class AttachmentRepository {
   }
 
   /** Chunk indices already durably stored server-side. */
-  resumeState(id: string): { uploadId: string | null; receivedChunks: number[]; uploadedBytes: number } {
-    const row = this.db.getFirst<{ upload_id: string | null; received_chunks: string; uploaded_bytes: number }>(
-      `SELECT upload_id, received_chunks, uploaded_bytes FROM attachments WHERE id = ?`,
-      [id],
-    );
+  resumeState(id: string): {
+    uploadId: string | null;
+    receivedChunks: number[];
+    uploadedBytes: number;
+  } {
+    const row = this.db.getFirst<{
+      upload_id: string | null;
+      received_chunks: string;
+      uploaded_bytes: number;
+    }>(`SELECT upload_id, received_chunks, uploaded_bytes FROM attachments WHERE id = ?`, [id]);
     if (!row) return { uploadId: null, receivedChunks: [], uploadedBytes: 0 };
     let chunks: number[] = [];
     try {
@@ -354,10 +365,14 @@ export class AttachmentRepository {
     ).changes;
   }
 
-  updateMetadata(id: string, changes: { caption?: string | null; pairTag?: string | null; annotations?: JsonValue }): void {
+  updateMetadata(
+    id: string,
+    changes: { caption?: string | null; pairTag?: string | null; annotations?: JsonValue },
+  ): void {
     this.db.write(() => {
       const current = this.db.getFirst<{ version: number }>(
-        `SELECT version FROM attachments WHERE id = ?`, [id],
+        `SELECT version FROM attachments WHERE id = ?`,
+        [id],
       );
 
       const sets: string[] = [];
@@ -365,10 +380,14 @@ export class AttachmentRepository {
       const patch: Record<string, JsonValue> = {};
 
       if (changes.caption !== undefined) {
-        sets.push('caption = ?'); params.push(changes.caption); patch.caption = changes.caption;
+        sets.push('caption = ?');
+        params.push(changes.caption);
+        patch.caption = changes.caption;
       }
       if (changes.pairTag !== undefined) {
-        sets.push('pair_tag = ?'); params.push(changes.pairTag); patch.pairTag = changes.pairTag;
+        sets.push('pair_tag = ?');
+        params.push(changes.pairTag);
+        patch.pairTag = changes.pairTag;
       }
       if (changes.annotations !== undefined) {
         // Annotations are stored separately from the image so the original
@@ -397,10 +416,12 @@ export class AttachmentRepository {
   remove(id: string): void {
     this.db.write(() => {
       const current = this.db.getFirst<{ version: number }>(
-        `SELECT version FROM attachments WHERE id = ?`, [id],
+        `SELECT version FROM attachments WHERE id = ?`,
+        [id],
       );
       this.db.run(`UPDATE attachments SET deleted_at = ?, is_dirty = 1 WHERE id = ?`, [
-        new Date().toISOString(), id,
+        new Date().toISOString(),
+        id,
       ]);
       this.outbox.enqueue({
         entity: SyncEntity.ATTACHMENT,

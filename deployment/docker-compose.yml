@@ -116,7 +116,13 @@ services:
     ports:
       - '${BACKEND_PORT:-4000}:4000'
     healthcheck:
-      test: ['CMD', 'node', '-e', "fetch('http://localhost:4000/health/ready').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      test:
+        [
+          'CMD',
+          'node',
+          '-e',
+          "fetch('http://localhost:4000/health/ready').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))",
+        ]
       interval: 15s
       timeout: 5s
       retries: 5

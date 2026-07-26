@@ -10,13 +10,15 @@
 import {
   FieldType,
   InspectionOutcome,
-  SCOREABLE_FIELD_TYPES,
   type JsonValue,
+  SCOREABLE_FIELD_TYPES,
   type ScoringPolicy,
   type TemplateField,
   type TemplateSection,
 } from '@orbit/types';
-import { answerKey, evaluateForm, type AnswerMap } from './logic.js';
+
+import { toDisplayString } from './format.js';
+import { answerKey, type AnswerMap, evaluateForm } from './logic.js';
 
 export interface ScoredField {
   fieldId: string;
@@ -89,12 +91,11 @@ function earnedScoreFor(
     const n = Number(value);
     const { min, max } = field.validation;
     if (!Number.isFinite(n)) return { earned: 0, isFailure: false, isNotApplicable: false };
-    const inRange =
-      (min === undefined || n >= min) && (max === undefined || n <= max);
+    const inRange = (min === undefined || n >= min) && (max === undefined || n <= max);
     return { earned: inRange ? 1 : 0, isFailure: !inRange, isNotApplicable: false };
   }
 
-  const selected = Array.isArray(value) ? value.map(String) : [String(value)];
+  const selected = Array.isArray(value) ? value.map(toDisplayString) : [toDisplayString(value)];
   const matched = field.options.filter((o) => selected.includes(o.value));
 
   if (matched.length === 0) {
@@ -129,9 +130,7 @@ function isScoreable(field: TemplateField): boolean {
     return field.validation.min !== undefined || field.validation.max !== undefined;
   }
 
-  return field.options.some(
-    (o) => typeof o.score === 'number' || o.isFailure === true,
-  );
+  return field.options.some((o) => typeof o.score === 'number' || o.isFailure === true);
 }
 
 /**
@@ -162,7 +161,10 @@ export function scoreInspection(input: {
   let grandEarned = 0;
   let grandPossible = 0;
 
-  const walk = (field: TemplateField, acc: { earned: number; possible: number; failures: number }): void => {
+  const walk = (
+    field: TemplateField,
+    acc: { earned: number; possible: number; failures: number },
+  ): void => {
     const state = evaluation.fields[field.id];
     if (state?.visible) {
       const key = answerKey(field.id, repeatIndex);
@@ -267,9 +269,7 @@ export function deriveOutcome(
   }
   if (percentage === null) return InspectionOutcome.PENDING;
   if (percentage >= policy.passThreshold) {
-    return failedFields > 0
-      ? InspectionOutcome.PASS_WITH_OBSERVATIONS
-      : InspectionOutcome.PASS;
+    return failedFields > 0 ? InspectionOutcome.PASS_WITH_OBSERVATIONS : InspectionOutcome.PASS;
   }
   if (percentage >= policy.observationThreshold) {
     return InspectionOutcome.PASS_WITH_OBSERVATIONS;

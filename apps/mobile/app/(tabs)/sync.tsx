@@ -7,11 +7,12 @@
  * decision — rather than a spinner and a shrug.
  */
 
+import { formatBytes, formatDuration, formatRelativeTime } from '@orbit/utils';
+import { useRouter } from 'expo-router';
 import React, { useCallback } from 'react';
 import { RefreshControl, ScrollView, View } from 'react-native';
-import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { formatBytes, formatDuration, formatRelativeTime } from '@orbit/utils';
+
 import {
   Badge,
   Button,
@@ -21,10 +22,10 @@ import {
   ProgressBar,
   Txt,
 } from '../../src/components/ui';
-import { useTheme } from '../../src/theme/ThemeProvider';
-import { useRuntime, useSession } from '../../src/stores/session.store';
-import { useLiveQuery, useRefresh, invalidateQueries } from '../../src/hooks/useLiveQuery';
+import { invalidateQueries, useLiveQuery, useRefresh } from '../../src/hooks/useLiveQuery';
 import { getNetworkState } from '../../src/lib/network';
+import { useRuntime, useSession } from '../../src/stores/session.store';
+import { useTheme } from '../../src/theme/ThemeProvider';
 
 interface SyncLogRow {
   id: string;
@@ -57,25 +58,33 @@ export default function SyncScreen(): React.ReactElement {
   const runtime = useRuntime();
   const syncStatus = useSession((s) => s.syncStatus);
 
-  const data = useLiveQuery(() => ({
-    counts: runtime.outbox.counts(),
-    uploads: runtime.repositories.attachments.pendingUploadBytes(),
-    pendingUploadCount: runtime.repositories.attachments.pendingUploadCount(),
-    conflicts: runtime.db.getAll<{ operation_id: string; entity: string; entity_id: string; detected_at: string }>(
-      `SELECT operation_id, entity, entity_id, detected_at
+  const data = useLiveQuery(
+    () => ({
+      counts: runtime.outbox.counts(),
+      uploads: runtime.repositories.attachments.pendingUploadBytes(),
+      pendingUploadCount: runtime.repositories.attachments.pendingUploadCount(),
+      conflicts: runtime.db.getAll<{
+        operation_id: string;
+        entity: string;
+        entity_id: string;
+        detected_at: string;
+      }>(
+        `SELECT operation_id, entity, entity_id, detected_at
          FROM conflicts WHERE resolved_at IS NULL
         ORDER BY detected_at DESC LIMIT 50`,
-    ),
-    deadLetters: runtime.db.getAll<DeadLetterRow>(
-      `SELECT id, entity, entity_id, last_error, last_error_code, attempts, updated_at
+      ),
+      deadLetters: runtime.db.getAll<DeadLetterRow>(
+        `SELECT id, entity, entity_id, last_error, last_error_code, attempts, updated_at
          FROM outbox WHERE state = 'DEAD_LETTER'
         ORDER BY updated_at DESC LIMIT 50`,
-    ),
-    history: runtime.db.getAll<SyncLogRow>(
-      `SELECT * FROM sync_log ORDER BY started_at DESC LIMIT 20`,
-    ),
-    cursor: runtime.db.getCursor(),
-  }), []);
+      ),
+      history: runtime.db.getAll<SyncLogRow>(
+        `SELECT * FROM sync_log ORDER BY started_at DESC LIMIT 20`,
+      ),
+      cursor: runtime.db.getCursor(),
+    }),
+    [],
+  );
 
   const { refreshing, refresh } = useRefresh(
     useCallback(async () => {
@@ -103,7 +112,11 @@ export default function SyncScreen(): React.ReactElement {
         gap: theme.spacing.lg,
       }}
       refreshControl={
-        <RefreshControl refreshing={refreshing} onRefresh={refresh} tintColor={theme.colors.accent} />
+        <RefreshControl
+          refreshing={refreshing}
+          onRefresh={refresh}
+          tintColor={theme.colors.accent}
+        />
       }
     >
       <Txt variant="title">Sync</Txt>
@@ -111,7 +124,9 @@ export default function SyncScreen(): React.ReactElement {
       {/* --- headline state --- */}
       <Card>
         <View style={{ gap: theme.spacing.md }}>
-          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+          <View
+            style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}
+          >
             <Txt variant="subheading">
               {syncStatus?.state === 'SYNCING'
                 ? 'Syncing…'
@@ -120,7 +135,9 @@ export default function SyncScreen(): React.ReactElement {
                   : 'Changes waiting'}
             </Txt>
             <Badge
-              label={network.isConnected ? (network.isMetered ? 'Mobile data' : 'Online') : 'Offline'}
+              label={
+                network.isConnected ? (network.isMetered ? 'Mobile data' : 'Online') : 'Offline'
+              }
               tone={network.isConnected ? (network.isMetered ? 'warning' : 'success') : 'danger'}
               icon={network.isConnected ? '●' : '○'}
             />
@@ -141,7 +158,11 @@ export default function SyncScreen(): React.ReactElement {
 
           <Divider />
 
-          <Row label="Queued changes" value={String(queued)} tone={queued > 0 ? 'warning' : 'success'} />
+          <Row
+            label="Queued changes"
+            value={String(queued)}
+            tone={queued > 0 ? 'warning' : 'success'}
+          />
           <Row
             label="Media to upload"
             value={
@@ -189,8 +210,8 @@ export default function SyncScreen(): React.ReactElement {
             Needs your decision
           </Txt>
           <Txt variant="caption" color="secondary">
-            Someone else changed these records while you were offline. Nothing has been overwritten —
-            review each one and choose what to keep.
+            Someone else changed these records while you were offline. Nothing has been overwritten
+            — review each one and choose what to keep.
           </Txt>
 
           {data.conflicts.map((conflict) => (
@@ -251,7 +272,11 @@ export default function SyncScreen(): React.ReactElement {
 
         {data.history.length === 0 ? (
           <Card>
-            <EmptyState icon="⇅" title="No sync history yet" message="Sync runs will be listed here." />
+            <EmptyState
+              icon="⇅"
+              title="No sync history yet"
+              message="Sync runs will be listed here."
+            />
           </Card>
         ) : (
           <Card padded={false}>
@@ -259,7 +284,13 @@ export default function SyncScreen(): React.ReactElement {
               <View key={entry.id}>
                 {index > 0 ? <Divider /> : null}
                 <View style={{ padding: theme.spacing.lg, gap: theme.spacing.xs }}>
-                  <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <View
+                    style={{
+                      flexDirection: 'row',
+                      justifyContent: 'space-between',
+                      alignItems: 'center',
+                    }}
+                  >
                     <Badge
                       label={entry.outcome ?? 'RUNNING'}
                       tone={

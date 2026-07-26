@@ -8,6 +8,7 @@
  */
 
 import { SYNC_PROTOCOL_VERSION, type SyncPullResponse, type SyncPushResponse } from '@orbit/types';
+
 import type { ApiClient } from '../api/client';
 import type { SyncTransport } from './engine';
 

@@ -20,14 +20,15 @@
  *    device reboot clears iOS's scheduled tasks entirely.
  */
 
+import { ulid } from '@orbit/utils';
 import * as BackgroundFetch from 'expo-background-fetch';
 import * as TaskManager from 'expo-task-manager';
 import { AppState, type AppStateStatus } from 'react-native';
-import { ulid } from '@orbit/utils';
+
 import { getDatabase } from '../db/database';
 import { META_KEYS } from '../db/schema';
-import { storage, STORAGE_KEYS } from '../lib/storage';
 import { getNetworkState, onNetworkChange } from '../lib/network';
+import { storage, STORAGE_KEYS } from '../lib/storage';
 import type { SyncEngine, SyncTrigger } from './engine';
 
 export const BACKGROUND_SYNC_TASK = 'orbit-background-sync';
@@ -109,7 +110,11 @@ async function recordRun(record: Omit<BackgroundRunRecord, 'id'>): Promise<void>
 }
 
 /** Is there anything worth waking up for? */
-async function hasPendingWork(): Promise<{ pending: boolean; operations: number; uploads: number }> {
+async function hasPendingWork(): Promise<{
+  pending: boolean;
+  operations: number;
+  uploads: number;
+}> {
   try {
     const db = await getDatabase();
     const ops = db.getFirst<{ n: number }>(
@@ -202,7 +207,10 @@ TaskManager.defineTask(BACKGROUND_SYNC_TASK, async () => {
       clearTimeout(timeout);
 
       const counts = {
-        pushed: status.pendingOperations === 0 ? work.operations : work.operations - status.pendingOperations,
+        pushed:
+          status.pendingOperations === 0
+            ? work.operations
+            : work.operations - status.pendingOperations,
         pulled: 0,
         uploaded: work.uploads - status.pendingUploads,
       };
@@ -211,7 +219,11 @@ TaskManager.defineTask(BACKGROUND_SYNC_TASK, async () => {
         return finish('PARTIAL', counts, status.lastError ?? 'Sync reported an error.');
       }
       if (status.conflictedOperations > 0) {
-        return finish('PARTIAL', counts, `${status.conflictedOperations} change(s) need a decision.`);
+        return finish(
+          'PARTIAL',
+          counts,
+          `${status.conflictedOperations} change(s) need a decision.`,
+        );
       }
       return finish('SUCCESS', counts, null);
     } finally {
@@ -222,11 +234,7 @@ TaskManager.defineTask(BACKGROUND_SYNC_TASK, async () => {
   }
 });
 
-export type BackgroundStatus =
-  | 'AVAILABLE'
-  | 'DENIED'
-  | 'RESTRICTED'
-  | 'UNSUPPORTED';
+export type BackgroundStatus = 'AVAILABLE' | 'DENIED' | 'RESTRICTED' | 'UNSUPPORTED';
 
 export interface BackgroundState {
   registered: boolean;
@@ -332,7 +340,13 @@ export async function backgroundState(): Promise<BackgroundState> {
       reason: null,
     };
   } catch {
-    return { registered: false, status: 'UNSUPPORTED', lastRunAt: null, registeredAt: null, reason: null };
+    return {
+      registered: false,
+      status: 'UNSUPPORTED',
+      lastRunAt: null,
+      registeredAt: null,
+      reason: null,
+    };
   }
 }
 
@@ -341,13 +355,19 @@ export async function backgroundRunHistory(limit = 20): Promise<BackgroundRunRec
   const db = await getDatabase();
   return db
     .getAll<{
-      id: string; started_at: string; finished_at: string | null; trigger: string;
-      pushed_count: number; pulled_count: number; uploaded_count: number;
-      duration_ms: number | null; outcome: string | null; error: string | null;
-    }>(
-      `SELECT * FROM sync_log WHERE trigger = 'BACKGROUND' ORDER BY started_at DESC LIMIT ?`,
-      [limit],
-    )
+      id: string;
+      started_at: string;
+      finished_at: string | null;
+      trigger: string;
+      pushed_count: number;
+      pulled_count: number;
+      uploaded_count: number;
+      duration_ms: number | null;
+      outcome: string | null;
+      error: string | null;
+    }>(`SELECT * FROM sync_log WHERE trigger = 'BACKGROUND' ORDER BY started_at DESC LIMIT ?`, [
+      limit,
+    ])
     .map((row) => ({
       id: row.id,
       startedAt: row.started_at,

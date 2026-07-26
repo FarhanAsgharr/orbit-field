@@ -1,13 +1,14 @@
-import { describe, expect, it } from 'vitest';
 import {
   FieldType,
   InspectionOutcome,
   type TemplateField,
   type TemplateSection,
 } from '@orbit/types';
-import { evaluateForm, evaluateCondition, type AnswerMap } from './logic.js';
-import { validateInspection, validateValue } from './validation.js';
+import { describe, expect, it } from 'vitest';
+
+import { type AnswerMap, evaluateCondition, evaluateForm } from './logic.js';
 import { DEFAULT_SCORING_POLICY, scoreInspection } from './scoring.js';
+import { validateInspection, validateValue } from './validation.js';
 
 // --- builders --------------------------------------------------------------
 
@@ -35,7 +36,10 @@ function field(overrides: Partial<TemplateField> & { type: FieldType }): Templat
   } as TemplateField;
 }
 
-function section(fields: TemplateField[], overrides: Partial<TemplateSection> = {}): TemplateSection {
+function section(
+  fields: TemplateField[],
+  overrides: Partial<TemplateSection> = {},
+): TemplateSection {
   return {
     id: 'S1' as TemplateSection['id'],
     templateVersionId: 'TV1' as TemplateSection['templateVersionId'],
@@ -64,25 +68,42 @@ describe('evaluateCondition', () => {
   const answers: AnswerMap = { A: 400, B: 'transformer', C: ['r', 'y'], D: '' };
 
   it('compares numbers across string/number representations', () => {
-    expect(evaluateCondition({ fieldId: 'A' as never, operator: 'GREATER_THAN', value: '380' }, answers)).toBe(true);
-    expect(evaluateCondition({ fieldId: 'A' as never, operator: 'EQUALS', value: '400' }, answers)).toBe(true);
+    expect(
+      evaluateCondition({ fieldId: 'A' as never, operator: 'GREATER_THAN', value: '380' }, answers),
+    ).toBe(true);
+    expect(
+      evaluateCondition({ fieldId: 'A' as never, operator: 'EQUALS', value: '400' }, answers),
+    ).toBe(true);
   });
 
   it('does not let an unanswered question satisfy an ordering comparison', () => {
     // The dangerous default: `undefined < 5` coercing to true would reveal
     // branches that should stay hidden.
-    expect(evaluateCondition({ fieldId: 'MISSING' as never, operator: 'LESS_THAN', value: 5 }, answers)).toBe(false);
-    expect(evaluateCondition({ fieldId: 'MISSING' as never, operator: 'GREATER_THAN', value: -1 }, answers)).toBe(false);
+    expect(
+      evaluateCondition({ fieldId: 'MISSING' as never, operator: 'LESS_THAN', value: 5 }, answers),
+    ).toBe(false);
+    expect(
+      evaluateCondition(
+        { fieldId: 'MISSING' as never, operator: 'GREATER_THAN', value: -1 },
+        answers,
+      ),
+    ).toBe(false);
   });
 
   it('treats an empty string as empty', () => {
     expect(evaluateCondition({ fieldId: 'D' as never, operator: 'IS_EMPTY' }, answers)).toBe(true);
-    expect(evaluateCondition({ fieldId: 'B' as never, operator: 'IS_NOT_EMPTY' }, answers)).toBe(true);
+    expect(evaluateCondition({ fieldId: 'B' as never, operator: 'IS_NOT_EMPTY' }, answers)).toBe(
+      true,
+    );
   });
 
   it('CONTAINS works for both arrays and substrings', () => {
-    expect(evaluateCondition({ fieldId: 'C' as never, operator: 'CONTAINS', value: 'y' }, answers)).toBe(true);
-    expect(evaluateCondition({ fieldId: 'B' as never, operator: 'CONTAINS', value: 'FORM' }, answers)).toBe(true);
+    expect(
+      evaluateCondition({ fieldId: 'C' as never, operator: 'CONTAINS', value: 'y' }, answers),
+    ).toBe(true);
+    expect(
+      evaluateCondition({ fieldId: 'B' as never, operator: 'CONTAINS', value: 'FORM' }, answers),
+    ).toBe(true);
   });
 
   it('fails closed on a malformed regex instead of throwing', () => {
@@ -96,14 +117,28 @@ describe('evaluateCondition', () => {
 
 describe('evaluateForm', () => {
   it('hides a field when its HIDE rule fires', () => {
-    const trigger = field({ id: 'T1', type: FieldType.YES_NO, options: [
-      { value: 'yes', label: 'Yes' }, { value: 'no', label: 'No' },
-    ] });
+    const trigger = field({
+      id: 'T1',
+      type: FieldType.YES_NO,
+      options: [
+        { value: 'yes', label: 'Yes' },
+        { value: 'no', label: 'No' },
+      ],
+    });
     const dependent = field({
       id: 'D1',
       type: FieldType.TEXT,
       validation: { required: true },
-      logic: [{ id: 'r1', when: { kind: 'CONDITION', condition: { fieldId: 'T1' as never, operator: 'EQUALS', value: 'no' } }, effect: { type: 'HIDE' } }],
+      logic: [
+        {
+          id: 'r1',
+          when: {
+            kind: 'CONDITION',
+            condition: { fieldId: 'T1' as never, operator: 'EQUALS', value: 'no' },
+          },
+          effect: { type: 'HIDE' },
+        },
+      ],
     });
 
     const result = evaluateForm([section([trigger, dependent])], { T1: 'no' });
@@ -125,17 +160,26 @@ describe('evaluateForm', () => {
   });
 
   it('reveals follow-ups only when the parent rule fires', () => {
-    const followUp = field({ id: 'FU1', type: FieldType.TEXT_AREA, validation: { required: true } });
+    const followUp = field({
+      id: 'FU1',
+      type: FieldType.TEXT_AREA,
+      validation: { required: true },
+    });
     const parent = field({
       id: 'P1',
       type: FieldType.PASS_FAIL,
       options: PASS_FAIL_OPTIONS,
       followUps: [followUp],
-      logic: [{
-        id: 'r1',
-        when: { kind: 'CONDITION', condition: { fieldId: 'P1' as never, operator: 'EQUALS', value: 'fail' } },
-        effect: { type: 'REVEAL_FOLLOW_UPS' },
-      }],
+      logic: [
+        {
+          id: 'r1',
+          when: {
+            kind: 'CONDITION',
+            condition: { fieldId: 'P1' as never, operator: 'EQUALS', value: 'fail' },
+          },
+          effect: { type: 'REVEAL_FOLLOW_UPS' },
+        },
+      ],
     });
 
     const passing = evaluateForm([section([parent])], { P1: 'pass' });
@@ -151,12 +195,28 @@ describe('evaluateForm', () => {
       id: 'B1',
       type: FieldType.NUMBER,
       logic: [
-        { id: 'r1', when: { kind: 'CONDITION', condition: { fieldId: 'B1' as never, operator: 'GREATER_THAN', value: 100 } }, effect: { type: 'BLOCK_SUBMIT', message: 'Reading exceeds safe limit.' } },
-        { id: 'r2', when: { kind: 'CONDITION', condition: { fieldId: 'HIDE_ME' as never, operator: 'EQUALS', value: 'yes' } }, effect: { type: 'HIDE' } },
+        {
+          id: 'r1',
+          when: {
+            kind: 'CONDITION',
+            condition: { fieldId: 'B1' as never, operator: 'GREATER_THAN', value: 100 },
+          },
+          effect: { type: 'BLOCK_SUBMIT', message: 'Reading exceeds safe limit.' },
+        },
+        {
+          id: 'r2',
+          when: {
+            kind: 'CONDITION',
+            condition: { fieldId: 'HIDE_ME' as never, operator: 'EQUALS', value: 'yes' },
+          },
+          effect: { type: 'HIDE' },
+        },
       ],
     });
 
-    expect(evaluateForm([section([blocked])], { B1: 150 }).blockers).toEqual(['Reading exceeds safe limit.']);
+    expect(evaluateForm([section([blocked])], { B1: 150 }).blockers).toEqual([
+      'Reading exceeds safe limit.',
+    ]);
     // Once hidden, the same field must stop blocking submission.
     expect(evaluateForm([section([blocked])], { B1: 150, HIDE_ME: 'yes' }).blockers).toEqual([]);
   });
@@ -165,20 +225,34 @@ describe('evaluateForm', () => {
     const target = field({
       id: 'N1',
       type: FieldType.TEXT,
-      logic: [{
-        id: 'r1',
-        when: {
-          kind: 'ANY',
-          children: [
-            { kind: 'ALL', children: [
-              { kind: 'CONDITION', condition: { fieldId: 'V' as never, operator: 'GREATER_THAN', value: 400 } },
-              { kind: 'CONDITION', condition: { fieldId: 'PH' as never, operator: 'IN', value: ['R', 'Y'] } },
-            ] },
-            { kind: 'CONDITION', condition: { fieldId: 'EMG' as never, operator: 'EQUALS', value: 'yes' } },
-          ],
+      logic: [
+        {
+          id: 'r1',
+          when: {
+            kind: 'ANY',
+            children: [
+              {
+                kind: 'ALL',
+                children: [
+                  {
+                    kind: 'CONDITION',
+                    condition: { fieldId: 'V' as never, operator: 'GREATER_THAN', value: 400 },
+                  },
+                  {
+                    kind: 'CONDITION',
+                    condition: { fieldId: 'PH' as never, operator: 'IN', value: ['R', 'Y'] },
+                  },
+                ],
+              },
+              {
+                kind: 'CONDITION',
+                condition: { fieldId: 'EMG' as never, operator: 'EQUALS', value: 'yes' },
+              },
+            ],
+          },
+          effect: { type: 'REQUIRE' },
         },
-        effect: { type: 'REQUIRE' },
-      }],
+      ],
     });
 
     expect(evaluateForm([section([target])], { V: 500, PH: 'R' }).fields.N1!.required).toBe(true);
@@ -212,7 +286,10 @@ describe('validateValue', () => {
   it('enforces multi-select bounds and rejects duplicates', () => {
     const f = field({
       type: FieldType.MULTI_SELECT,
-      options: [{ value: 'a', label: 'A' }, { value: 'b', label: 'B' }],
+      options: [
+        { value: 'a', label: 'A' },
+        { value: 'b', label: 'B' },
+      ],
       validation: { minSelections: 2 },
     });
     expect(validateValue(f, ['a']).map((i) => i.code)).toContain('TOO_FEW_SELECTED');
@@ -222,13 +299,33 @@ describe('validateValue', () => {
 
   it('rejects a mocked GPS fix outright', () => {
     const f = field({ type: FieldType.GPS, validation: { required: true } });
-    const mocked = { latitude: 24.7, longitude: 46.7, accuracy: 5, altitude: null, altitudeAccuracy: null, heading: null, speed: null, capturedAt: '2026-07-24T10:00:00.000Z', mocked: true };
+    const mocked = {
+      latitude: 24.7,
+      longitude: 46.7,
+      accuracy: 5,
+      altitude: null,
+      altitudeAccuracy: null,
+      heading: null,
+      speed: null,
+      capturedAt: '2026-07-24T10:00:00.000Z',
+      mocked: true,
+    };
     expect(validateValue(f, mocked as never).map((i) => i.code)).toContain('LOCATION_MOCKED');
   });
 
   it('treats an inaccurate fix as a warning, not a hard failure', () => {
     const f = field({ type: FieldType.GPS, validation: { requiredGpsAccuracyMeters: 10 } });
-    const rough = { latitude: 24.7, longitude: 46.7, accuracy: 80, altitude: null, altitudeAccuracy: null, heading: null, speed: null, capturedAt: '2026-07-24T10:00:00.000Z', mocked: false };
+    const rough = {
+      latitude: 24.7,
+      longitude: 46.7,
+      accuracy: 80,
+      altitude: null,
+      altitudeAccuracy: null,
+      heading: null,
+      speed: null,
+      capturedAt: '2026-07-24T10:00:00.000Z',
+      mocked: false,
+    };
     const issues = validateValue(f, rough as never);
     expect(issues[0]!.code).toBe('LOCATION_INACCURATE');
     expect(issues[0]!.severity).toBe('WARNING');
@@ -236,7 +333,9 @@ describe('validateValue', () => {
 
   it('requires at least one attachment on a required photo field', () => {
     const f = field({ type: FieldType.PHOTO, validation: { required: true } });
-    expect(validateValue(f, null, { attachments: [] }).map((i) => i.code)).toEqual(['ATTACHMENT_REQUIRED']);
+    expect(validateValue(f, null, { attachments: [] }).map((i) => i.code)).toEqual([
+      'ATTACHMENT_REQUIRED',
+    ]);
   });
 });
 
@@ -246,11 +345,30 @@ describe('validateInspection', () => {
       id: 'H1',
       type: FieldType.TEXT,
       validation: { required: true },
-      logic: [{ id: 'r', when: { kind: 'CONDITION', condition: { fieldId: 'G1' as never, operator: 'EQUALS', value: 'no' } }, effect: { type: 'HIDE' } }],
+      logic: [
+        {
+          id: 'r',
+          when: {
+            kind: 'CONDITION',
+            condition: { fieldId: 'G1' as never, operator: 'EQUALS', value: 'no' },
+          },
+          effect: { type: 'HIDE' },
+        },
+      ],
     });
-    const gate = field({ id: 'G1', type: FieldType.YES_NO, options: [{ value: 'yes', label: 'Yes' }, { value: 'no', label: 'No' }] });
+    const gate = field({
+      id: 'G1',
+      type: FieldType.YES_NO,
+      options: [
+        { value: 'yes', label: 'Yes' },
+        { value: 'no', label: 'No' },
+      ],
+    });
 
-    const outcome = validateInspection({ sections: [section([gate, hidden])], answers: { G1: 'no' } });
+    const outcome = validateInspection({
+      sections: [section([gate, hidden])],
+      answers: { G1: 'no' },
+    });
     expect(outcome.valid).toBe(true);
     expect(outcome.errors).toHaveLength(0);
   });
@@ -323,9 +441,25 @@ describe('scoreInspection', () => {
     // An inspector who answers "no transformer on site" must not be penalised
     // for the transformer questions that were never shown.
     const hidden = mk('HQ', {
-      logic: [{ id: 'r', when: { kind: 'CONDITION', condition: { fieldId: 'GATE' as never, operator: 'EQUALS', value: 'no' } }, effect: { type: 'HIDE' } }],
+      logic: [
+        {
+          id: 'r',
+          when: {
+            kind: 'CONDITION',
+            condition: { fieldId: 'GATE' as never, operator: 'EQUALS', value: 'no' },
+          },
+          effect: { type: 'HIDE' },
+        },
+      ],
     });
-    const gate = field({ id: 'GATE', type: FieldType.YES_NO, options: [{ value: 'yes', label: 'Yes' }, { value: 'no', label: 'No' }] });
+    const gate = field({
+      id: 'GATE',
+      type: FieldType.YES_NO,
+      options: [
+        { value: 'yes', label: 'Yes' },
+        { value: 'no', label: 'No' },
+      ],
+    });
     const visible = mk('VQ');
 
     const result = scoreInspection({
@@ -374,10 +508,18 @@ describe('scoreInspection', () => {
 
   it('scores a numeric field by whether it falls inside the acceptable band', () => {
     const f = field({ id: 'NUM', type: FieldType.NUMBER, validation: { min: 0, max: 5 } });
-    const inBand = scoreInspection({ sections: [section([f])], answers: { NUM: 3 }, policy: DEFAULT_SCORING_POLICY });
+    const inBand = scoreInspection({
+      sections: [section([f])],
+      answers: { NUM: 3 },
+      policy: DEFAULT_SCORING_POLICY,
+    });
     expect(inBand.percentage).toBe(100);
 
-    const outOfBand = scoreInspection({ sections: [section([f])], answers: { NUM: 9 }, policy: DEFAULT_SCORING_POLICY });
+    const outOfBand = scoreInspection({
+      sections: [section([f])],
+      answers: { NUM: 9 },
+      policy: DEFAULT_SCORING_POLICY,
+    });
     expect(outOfBand.percentage).toBe(0);
     expect(outOfBand.failedFields).toBe(1);
   });

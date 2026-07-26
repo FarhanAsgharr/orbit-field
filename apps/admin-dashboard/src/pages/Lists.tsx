@@ -6,19 +6,31 @@
  * files would add navigation cost without adding clarity.
  */
 
+import { Permission } from '@orbit/shared';
+import { type Role, ROLE_RANK } from '@orbit/types';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import React, { useState } from 'react';
 import { Link } from 'react-router-dom';
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Permission } from '@orbit/shared';
-import { ROLE_RANK, type Role } from '@orbit/types';
-import { api } from '../lib/api';
-import { useSession } from '../lib/auth';
-import { DataTable, type Column } from '../components/DataTable';
+
+import { type Column, DataTable } from '../components/DataTable';
 import { PasswordInput } from '../components/PasswordInput';
 import {
-  Badge, Bar, Card, Empty, ErrorBanner, Loading, formatBytes, formatDate,
-  outcomeBadge, priorityBadge, relativeTime, roleBadge, statusBadge,
+  Badge,
+  Bar,
+  Card,
+  Empty,
+  ErrorBanner,
+  formatBytes,
+  formatDate,
+  Loading,
+  outcomeBadge,
+  priorityBadge,
+  relativeTime,
+  roleBadge,
+  statusBadge,
 } from '../components/ui';
+import { api } from '../lib/api';
+import { useSession } from '../lib/auth';
 
 // ---------------------------------------------------------------------------
 // Inspections
@@ -54,7 +66,9 @@ export function Inspections(): React.ReactElement {
       sortable: true,
       width: '150px',
       render: (row) => (
-        <Link className="num" to={`/inspections/${row.id}`}>{row.number}</Link>
+        <Link className="num" to={`/inspections/${row.id}`}>
+          {row.number}
+        </Link>
       ),
     },
     {
@@ -81,7 +95,9 @@ export function Inspections(): React.ReactElement {
       key: 'assignee',
       header: 'Inspector',
       render: (row) =>
-        row.assignedTo ? `${row.assignedTo.firstName} ${row.assignedTo.lastName}` : (
+        row.assignedTo ? (
+          `${row.assignedTo.firstName} ${row.assignedTo.lastName}`
+        ) : (
           <span className="muted">Unassigned</span>
         ),
     },
@@ -167,7 +183,13 @@ export function Inspections(): React.ReactElement {
         emptyBody="Work created in the field app will appear here as soon as a device syncs."
         filters={
           <>
-            <select className="select" style={{ width: 'auto' }} value={status} onChange={(e) => setStatus(e.target.value)} aria-label="Filter by status">
+            <select
+              className="select"
+              style={{ width: 'auto' }}
+              value={status}
+              onChange={(e) => setStatus(e.target.value)}
+              aria-label="Filter by status"
+            >
               <option value="">Any status</option>
               <option value="DRAFT">Draft</option>
               <option value="SCHEDULED">Scheduled</option>
@@ -177,7 +199,13 @@ export function Inspections(): React.ReactElement {
               <option value="APPROVED">Approved</option>
               <option value="REJECTED">Rejected</option>
             </select>
-            <select className="select" style={{ width: 'auto' }} value={outcome} onChange={(e) => setOutcome(e.target.value)} aria-label="Filter by result">
+            <select
+              className="select"
+              style={{ width: 'auto' }}
+              value={outcome}
+              onChange={(e) => setOutcome(e.target.value)}
+              aria-label="Filter by result"
+            >
               <option value="">Any result</option>
               <option value="PASS">Pass</option>
               <option value="PASS_WITH_OBSERVATIONS">Pass with observations</option>
@@ -218,7 +246,9 @@ export function People(): React.ReactElement {
       sortable: true,
       render: (row) => (
         <div>
-          <div className="table__primary">{row.firstName} {row.lastName}</div>
+          <div className="table__primary">
+            {row.firstName} {row.lastName}
+          </div>
           <div className="table__meta">{row.email}</div>
         </div>
       ),
@@ -231,8 +261,16 @@ export function People(): React.ReactElement {
         return <Badge label={badge.label} tone={badge.tone} />;
       },
     },
-    { key: 'jobTitle', header: 'Job title', render: (row) => row.jobTitle ?? <span className="muted">—</span> },
-    { key: 'department', header: 'Department', render: (row) => row.department ?? <span className="muted">—</span> },
+    {
+      key: 'jobTitle',
+      header: 'Job title',
+      render: (row) => row.jobTitle ?? <span className="muted">—</span>,
+    },
+    {
+      key: 'department',
+      header: 'Department',
+      render: (row) => row.department ?? <span className="muted">—</span>,
+    },
     {
       key: 'status',
       header: 'Account',
@@ -243,8 +281,20 @@ export function People(): React.ReactElement {
         />
       ),
     },
-    { key: 'devices', header: 'Devices', numeric: true, width: '90px', render: (row) => row._count.devices },
-    { key: 'work', header: 'Assigned', numeric: true, width: '90px', render: (row) => row._count.assignedInspections },
+    {
+      key: 'devices',
+      header: 'Devices',
+      numeric: true,
+      width: '90px',
+      render: (row) => row._count.devices,
+    },
+    {
+      key: 'work',
+      header: 'Assigned',
+      numeric: true,
+      width: '90px',
+      render: (row) => row._count.assignedInspections,
+    },
     {
       key: 'lastLoginAt',
       header: 'Last signed in',
@@ -273,16 +323,30 @@ export function People(): React.ReactElement {
         defaultSort={{ by: 'createdAt', dir: 'desc' }}
         emptyTitle="No people yet"
         filters={
-          <select className="select" style={{ width: 'auto' }} value={role} onChange={(e) => setRole(e.target.value)} aria-label="Filter by role">
+          <select
+            className="select"
+            style={{ width: 'auto' }}
+            value={role}
+            onChange={(e) => setRole(e.target.value)}
+            aria-label="Filter by role"
+          >
             <option value="">Any role</option>
-            {['SUPER_ADMIN', 'ADMIN', 'MANAGER', 'SUPERVISOR', 'INSPECTOR', 'TECHNICIAN', 'VIEWER'].map((r) => (
-              <option key={r} value={r}>{roleBadge(r).label}</option>
+            {[
+              'SUPER_ADMIN',
+              'ADMIN',
+              'MANAGER',
+              'SUPERVISOR',
+              'INSPECTOR',
+              'TECHNICIAN',
+              'VIEWER',
+            ].map((r) => (
+              <option key={r} value={r}>
+                {roleBadge(r).label}
+              </option>
             ))}
           </select>
         }
-        toolbarAction={
-          can(Permission.USER_INVITE) ? <InviteUserButton /> : null
-        }
+        toolbarAction={can(Permission.USER_INVITE) ? <InviteUserButton /> : null}
       />
     </>
   );
@@ -319,8 +383,9 @@ function InviteUserButton(): React.ReactElement {
   const [created, setCreated] = useState<string | null>(null);
 
   const actorRank = ROLE_RANK[(user?.role ?? 'VIEWER') as Role] ?? 0;
-  const assignable = (['ADMIN', 'MANAGER', 'SUPERVISOR', 'INSPECTOR', 'TECHNICIAN', 'VIEWER'] as Role[])
-    .filter((r) => actorRank > ROLE_RANK[r]);
+  const assignable = (
+    ['ADMIN', 'MANAGER', 'SUPERVISOR', 'INSPECTOR', 'TECHNICIAN', 'VIEWER'] as Role[]
+  ).filter((r) => actorRank > ROLE_RANK[r]);
 
   const close = (): void => {
     setOpen(false);
@@ -347,11 +412,16 @@ function InviteUserButton(): React.ReactElement {
         close();
       }
     },
-    onError: (err) => setError(err instanceof Error ? err.message : 'Could not create the account.'),
+    onError: (err) =>
+      setError(err instanceof Error ? err.message : 'Could not create the account.'),
   });
 
   if (!open) {
-    return <button className="btn" onClick={() => setOpen(true)}>Add someone</button>;
+    return (
+      <button className="btn" onClick={() => setOpen(true)}>
+        Add someone
+      </button>
+    );
   }
 
   if (created) {
@@ -359,15 +429,22 @@ function InviteUserButton(): React.ReactElement {
       <div className="card popover" role="dialog" aria-label="Account created">
         <div className="card__head">
           <h2 className="card__title">Account created</h2>
-          <button className="btn btn--ghost btn--sm" onClick={close}>Done</button>
+          <button className="btn btn--ghost btn--sm" onClick={close}>
+            Done
+          </button>
         </div>
         <div className="card__body stack gap-4">
           <p>
-            <strong>{created}</strong> can sign in now with the password you chose.
-            Pass it on directly and ask them to change it — this is the only time
-            it is shown.
+            <strong>{created}</strong> can sign in now with the password you chose. Pass it on
+            directly and ask them to change it — this is the only time it is shown.
           </p>
-          <button className="btn" onClick={() => { setCreated(null); setForm(EMPTY_INVITE); }}>
+          <button
+            className="btn"
+            onClick={() => {
+              setCreated(null);
+              setForm(EMPTY_INVITE);
+            }}
+          >
             Add another
           </button>
         </div>
@@ -379,42 +456,81 @@ function InviteUserButton(): React.ReactElement {
     <div className="card popover" role="dialog" aria-label="Add someone">
       <div className="card__head">
         <h2 className="card__title">Add someone</h2>
-        <button className="btn btn--ghost btn--sm" onClick={close}>Cancel</button>
+        <button className="btn btn--ghost btn--sm" onClick={close}>
+          Cancel
+        </button>
       </div>
       <div className="card__body stack gap-4">
         {error ? <ErrorBanner message={error} /> : null}
         <div className="field">
-          <label className="field__label" htmlFor="inv-email">Email</label>
-          <input id="inv-email" className="input" type="email" autoComplete="off" value={form.email}
-            onChange={(e) => setForm({ ...form, email: e.target.value })} />
+          <label className="field__label" htmlFor="inv-email">
+            Email
+          </label>
+          <input
+            id="inv-email"
+            className="input"
+            type="email"
+            autoComplete="off"
+            value={form.email}
+            onChange={(e) => setForm({ ...form, email: e.target.value })}
+          />
         </div>
         <div className="row gap-3">
           <div className="field grow">
-            <label className="field__label" htmlFor="inv-first">First name</label>
-            <input id="inv-first" className="input" value={form.firstName}
-              onChange={(e) => setForm({ ...form, firstName: e.target.value })} />
+            <label className="field__label" htmlFor="inv-first">
+              First name
+            </label>
+            <input
+              id="inv-first"
+              className="input"
+              value={form.firstName}
+              onChange={(e) => setForm({ ...form, firstName: e.target.value })}
+            />
           </div>
           <div className="field grow">
-            <label className="field__label" htmlFor="inv-last">Last name</label>
-            <input id="inv-last" className="input" value={form.lastName}
-              onChange={(e) => setForm({ ...form, lastName: e.target.value })} />
+            <label className="field__label" htmlFor="inv-last">
+              Last name
+            </label>
+            <input
+              id="inv-last"
+              className="input"
+              value={form.lastName}
+              onChange={(e) => setForm({ ...form, lastName: e.target.value })}
+            />
           </div>
         </div>
         <div className="field">
-          <label className="field__label" htmlFor="inv-role">Role</label>
-          <select id="inv-role" className="select" value={form.role}
-            onChange={(e) => setForm({ ...form, role: e.target.value })}>
+          <label className="field__label" htmlFor="inv-role">
+            Role
+          </label>
+          <select
+            id="inv-role"
+            className="select"
+            value={form.role}
+            onChange={(e) => setForm({ ...form, role: e.target.value })}
+          >
             {assignable.map((r) => (
-              <option key={r} value={r}>{roleBadge(r).label}</option>
+              <option key={r} value={r}>
+                {roleBadge(r).label}
+              </option>
             ))}
           </select>
           <span className="field__hint">Only roles below your own are listed.</span>
         </div>
 
         <div className="field">
-          <label className="field__label" htmlFor="inv-mode">How they get in</label>
-          <select id="inv-mode" className="select" value={setPasswordNow ? 'password' : 'email'}
-            onChange={(e) => { setSetPasswordNow(e.target.value === 'password'); setError(null); }}>
+          <label className="field__label" htmlFor="inv-mode">
+            How they get in
+          </label>
+          <select
+            id="inv-mode"
+            className="select"
+            value={setPasswordNow ? 'password' : 'email'}
+            onChange={(e) => {
+              setSetPasswordNow(e.target.value === 'password');
+              setError(null);
+            }}
+          >
             <option value="password">Set a password now</option>
             <option value="email">Email them an invitation</option>
           </select>
@@ -469,29 +585,54 @@ export function Templates(): React.ReactElement {
       render: (row) => (
         <div>
           <div className="table__primary">{row.name}</div>
-          {row.description ? <div className="table__meta truncate" style={{ maxWidth: 380 }}>{row.description}</div> : null}
+          {row.description ? (
+            <div className="table__meta truncate" style={{ maxWidth: 380 }}>
+              {row.description}
+            </div>
+          ) : null}
         </div>
       ),
     },
-    { key: 'category', header: 'Category', render: (row) => row.category ?? <span className="muted">—</span> },
+    {
+      key: 'category',
+      header: 'Category',
+      render: (row) => row.category ?? <span className="muted">—</span>,
+    },
     {
       key: 'published',
       header: 'Published version',
       render: (row) => {
         const active = row.versions.find((v) => v.id === row.activeVersionId);
-        return active
-          ? <Badge label={`v${active.version}`} tone="ok" glyph="✓" />
-          : <Badge label="Draft only" tone="warn" glyph="○" />;
+        return active ? (
+          <Badge label={`v${active.version}`} tone="ok" glyph="✓" />
+        ) : (
+          <Badge label="Draft only" tone="warn" glyph="○" />
+        );
       },
     },
-    { key: 'versions', header: 'Versions', numeric: true, width: '90px', render: (row) => row._count.versions },
-    { key: 'used', header: 'Inspections', numeric: true, width: '110px', render: (row) => row._count.inspections },
+    {
+      key: 'versions',
+      header: 'Versions',
+      numeric: true,
+      width: '90px',
+      render: (row) => row._count.versions,
+    },
+    {
+      key: 'used',
+      header: 'Inspections',
+      numeric: true,
+      width: '110px',
+      render: (row) => row._count.inspections,
+    },
     {
       key: 'state',
       header: 'State',
-      render: (row) => row.isArchived
-        ? <Badge label="Archived" tone="neutral" glyph="▣" />
-        : <Badge label="Available" tone="ok" glyph="●" />,
+      render: (row) =>
+        row.isArchived ? (
+          <Badge label="Archived" tone="neutral" glyph="▣" />
+        ) : (
+          <Badge label="Available" tone="ok" glyph="●" />
+        ),
     },
   ];
 
@@ -501,7 +642,8 @@ export function Templates(): React.ReactElement {
         <div>
           <h1 className="page__title">Checklists</h1>
           <p className="page__subtitle">
-            Publishing a version freezes it. Inspections in progress keep the version they started on.
+            Publishing a version freezes it. Inspections in progress keep the version they started
+            on.
           </p>
         </div>
       </header>
@@ -525,36 +667,90 @@ export function Templates(): React.ReactElement {
 // ---------------------------------------------------------------------------
 
 interface ClientRow {
-  id: string; name: string; code: string | null;
-  contactName: string | null; contactEmail: string | null; isActive: boolean;
+  id: string;
+  name: string;
+  code: string | null;
+  contactName: string | null;
+  contactEmail: string | null;
+  isActive: boolean;
   _count: { projects: number; sites: number; inspections: number };
 }
 
 export function Clients(): React.ReactElement {
   const columns: Array<Column<ClientRow>> = [
-    { key: 'name', header: 'Client', sortable: true, render: (row) => <span className="table__primary">{row.name}</span> },
-    { key: 'code', header: 'Code', render: (row) => row.code ? <span className="num">{row.code}</span> : <span className="muted">—</span> },
     {
-      key: 'contact', header: 'Contact',
-      render: (row) => row.contactName
-        ? <div><div>{row.contactName}</div><div className="table__meta">{row.contactEmail ?? ''}</div></div>
-        : <span className="muted">—</span>,
+      key: 'name',
+      header: 'Client',
+      sortable: true,
+      render: (row) => <span className="table__primary">{row.name}</span>,
     },
-    { key: 'projects', header: 'Projects', numeric: true, width: '90px', render: (row) => row._count.projects },
-    { key: 'sites', header: 'Sites', numeric: true, width: '80px', render: (row) => row._count.sites },
-    { key: 'inspections', header: 'Inspections', numeric: true, width: '110px', render: (row) => row._count.inspections },
-    { key: 'active', header: 'State', render: (row) => <Badge label={row.isActive ? 'Active' : 'Inactive'} tone={row.isActive ? 'ok' : 'neutral'} /> },
+    {
+      key: 'code',
+      header: 'Code',
+      render: (row) =>
+        row.code ? <span className="num">{row.code}</span> : <span className="muted">—</span>,
+    },
+    {
+      key: 'contact',
+      header: 'Contact',
+      render: (row) =>
+        row.contactName ? (
+          <div>
+            <div>{row.contactName}</div>
+            <div className="table__meta">{row.contactEmail ?? ''}</div>
+          </div>
+        ) : (
+          <span className="muted">—</span>
+        ),
+    },
+    {
+      key: 'projects',
+      header: 'Projects',
+      numeric: true,
+      width: '90px',
+      render: (row) => row._count.projects,
+    },
+    {
+      key: 'sites',
+      header: 'Sites',
+      numeric: true,
+      width: '80px',
+      render: (row) => row._count.sites,
+    },
+    {
+      key: 'inspections',
+      header: 'Inspections',
+      numeric: true,
+      width: '110px',
+      render: (row) => row._count.inspections,
+    },
+    {
+      key: 'active',
+      header: 'State',
+      render: (row) => (
+        <Badge
+          label={row.isActive ? 'Active' : 'Inactive'}
+          tone={row.isActive ? 'ok' : 'neutral'}
+        />
+      ),
+    },
   ];
 
   return (
     <>
       <header className="page__head">
-        <div><h1 className="page__title">Clients</h1>
-        <p className="page__subtitle">Organisations you carry out inspections for.</p></div>
+        <div>
+          <h1 className="page__title">Clients</h1>
+          <p className="page__subtitle">Organisations you carry out inspections for.</p>
+        </div>
       </header>
       <DataTable<ClientRow>
-        endpoint="/clients" queryKey={['clients']} columns={columns} rowKey={(r) => r.id}
-        searchPlaceholder="Search clients" emptyTitle="No clients yet"
+        endpoint="/clients"
+        queryKey={['clients']}
+        columns={columns}
+        rowKey={(r) => r.id}
+        searchPlaceholder="Search clients"
+        emptyTitle="No clients yet"
         emptyBody="Add a client to group projects, sites, and reports."
       />
     </>
@@ -562,7 +758,10 @@ export function Clients(): React.ReactElement {
 }
 
 interface ProjectRow {
-  id: string; name: string; code: string; isActive: boolean;
+  id: string;
+  name: string;
+  code: string;
+  isActive: boolean;
   client: { name: string } | null;
   manager: { firstName: string; lastName: string } | null;
   _count: { sites: number; inspections: number; members: number };
@@ -571,7 +770,9 @@ interface ProjectRow {
 export function Projects(): React.ReactElement {
   const columns: Array<Column<ProjectRow>> = [
     {
-      key: 'name', header: 'Project', sortable: true,
+      key: 'name',
+      header: 'Project',
+      sortable: true,
       render: (row) => (
         <div>
           <div className="table__primary">{row.name}</div>
@@ -579,33 +780,74 @@ export function Projects(): React.ReactElement {
         </div>
       ),
     },
-    { key: 'client', header: 'Client', render: (row) => row.client?.name ?? <span className="muted">—</span> },
     {
-      key: 'manager', header: 'Manager',
-      render: (row) => row.manager ? `${row.manager.firstName} ${row.manager.lastName}` : <span className="muted">Unassigned</span>,
+      key: 'client',
+      header: 'Client',
+      render: (row) => row.client?.name ?? <span className="muted">—</span>,
     },
-    { key: 'sites', header: 'Sites', numeric: true, width: '80px', render: (row) => row._count.sites },
-    { key: 'inspections', header: 'Inspections', numeric: true, width: '110px', render: (row) => row._count.inspections },
-    { key: 'active', header: 'State', render: (row) => <Badge label={row.isActive ? 'Active' : 'Closed'} tone={row.isActive ? 'ok' : 'neutral'} /> },
+    {
+      key: 'manager',
+      header: 'Manager',
+      render: (row) =>
+        row.manager ? (
+          `${row.manager.firstName} ${row.manager.lastName}`
+        ) : (
+          <span className="muted">Unassigned</span>
+        ),
+    },
+    {
+      key: 'sites',
+      header: 'Sites',
+      numeric: true,
+      width: '80px',
+      render: (row) => row._count.sites,
+    },
+    {
+      key: 'inspections',
+      header: 'Inspections',
+      numeric: true,
+      width: '110px',
+      render: (row) => row._count.inspections,
+    },
+    {
+      key: 'active',
+      header: 'State',
+      render: (row) => (
+        <Badge label={row.isActive ? 'Active' : 'Closed'} tone={row.isActive ? 'ok' : 'neutral'} />
+      ),
+    },
   ];
 
   return (
     <>
       <header className="page__head">
-        <div><h1 className="page__title">Projects</h1>
-        <p className="page__subtitle">Programmes of work, each with its own sites and inspectors.</p></div>
+        <div>
+          <h1 className="page__title">Projects</h1>
+          <p className="page__subtitle">
+            Programmes of work, each with its own sites and inspectors.
+          </p>
+        </div>
       </header>
       <DataTable<ProjectRow>
-        endpoint="/projects" queryKey={['projects']} columns={columns} rowKey={(r) => r.id}
-        searchPlaceholder="Search projects" emptyTitle="No projects yet"
+        endpoint="/projects"
+        queryKey={['projects']}
+        columns={columns}
+        rowKey={(r) => r.id}
+        searchPlaceholder="Search projects"
+        emptyTitle="No projects yet"
       />
     </>
   );
 }
 
 interface SiteRow {
-  id: string; name: string; code: string | null; address: string | null;
-  latitude: number | null; longitude: number | null; geofenceRadiusMeters: number | null;
+  id: string;
+  name: string;
+  code: string | null;
+  address: string | null;
+  latitude: number | null;
+  longitude: number | null;
+  geofenceRadiusMeters: number | null;
   isActive: boolean;
   client: { name: string } | null;
   project: { name: string } | null;
@@ -615,22 +857,39 @@ interface SiteRow {
 export function Sites(): React.ReactElement {
   const columns: Array<Column<SiteRow>> = [
     {
-      key: 'name', header: 'Site', sortable: true,
+      key: 'name',
+      header: 'Site',
+      sortable: true,
       render: (row) => (
         <div>
           <div className="table__primary">{row.name}</div>
-          {row.address ? <div className="table__meta truncate" style={{ maxWidth: 320 }}>{row.address}</div> : null}
+          {row.address ? (
+            <div className="table__meta truncate" style={{ maxWidth: 320 }}>
+              {row.address}
+            </div>
+          ) : null}
         </div>
       ),
     },
-    { key: 'client', header: 'Client', render: (row) => row.client?.name ?? <span className="muted">—</span> },
-    { key: 'project', header: 'Project', render: (row) => row.project?.name ?? <span className="muted">—</span> },
     {
-      key: 'location', header: 'Location',
+      key: 'client',
+      header: 'Client',
+      render: (row) => row.client?.name ?? <span className="muted">—</span>,
+    },
+    {
+      key: 'project',
+      header: 'Project',
+      render: (row) => row.project?.name ?? <span className="muted">—</span>,
+    },
+    {
+      key: 'location',
+      header: 'Location',
       render: (row) =>
         row.latitude !== null && row.longitude !== null ? (
           <div>
-            <div className="num small">{row.latitude.toFixed(4)}, {row.longitude.toFixed(4)}</div>
+            <div className="num small">
+              {row.latitude.toFixed(4)}, {row.longitude.toFixed(4)}
+            </div>
             {row.geofenceRadiusMeters ? (
               <div className="table__meta">Geofence {row.geofenceRadiusMeters} m</div>
             ) : null}
@@ -640,19 +899,39 @@ export function Sites(): React.ReactElement {
           <span className="muted">Not located</span>
         ),
     },
-    { key: 'assets', header: 'Assets', numeric: true, width: '80px', render: (row) => row._count.assets },
-    { key: 'inspections', header: 'Inspections', numeric: true, width: '110px', render: (row) => row._count.inspections },
+    {
+      key: 'assets',
+      header: 'Assets',
+      numeric: true,
+      width: '80px',
+      render: (row) => row._count.assets,
+    },
+    {
+      key: 'inspections',
+      header: 'Inspections',
+      numeric: true,
+      width: '110px',
+      render: (row) => row._count.inspections,
+    },
   ];
 
   return (
     <>
       <header className="page__head">
-        <div><h1 className="page__title">Sites</h1>
-        <p className="page__subtitle">Physical locations. Coordinates let the app confirm attendance.</p></div>
+        <div>
+          <h1 className="page__title">Sites</h1>
+          <p className="page__subtitle">
+            Physical locations. Coordinates let the app confirm attendance.
+          </p>
+        </div>
       </header>
       <DataTable<SiteRow>
-        endpoint="/sites" queryKey={['sites']} columns={columns} rowKey={(r) => r.id}
-        searchPlaceholder="Search sites" emptyTitle="No sites yet"
+        endpoint="/sites"
+        queryKey={['sites']}
+        columns={columns}
+        rowKey={(r) => r.id}
+        searchPlaceholder="Search sites"
+        emptyTitle="No sites yet"
       />
     </>
   );
@@ -663,9 +942,17 @@ export function Sites(): React.ReactElement {
 // ---------------------------------------------------------------------------
 
 interface DeviceRecord {
-  id: string; name: string; platform: string; osVersion: string; appVersion: string;
-  model: string | null; lastSeenAt: string | null; lastSyncAt: string | null;
-  revokedAt: string | null; revokedReason: string | null; createdAt: string;
+  id: string;
+  name: string;
+  platform: string;
+  osVersion: string;
+  appVersion: string;
+  model: string | null;
+  lastSeenAt: string | null;
+  lastSyncAt: string | null;
+  revokedAt: string | null;
+  revokedReason: string | null;
+  createdAt: string;
   userId: string;
 }
 
@@ -680,9 +967,11 @@ export function Devices(): React.ReactElement {
   });
 
   const revoke = useMutation({
-    mutationFn: (id: string) => api.delete(`/devices/${id}`, { reason: 'Revoked from the operations console' }),
+    mutationFn: (id: string) =>
+      api.delete(`/devices/${id}`, { reason: 'Revoked from the operations console' }),
     onSuccess: () => void queryClient.invalidateQueries({ queryKey: ['devices-all'] }),
-    onError: (err) => setError(err instanceof Error ? err.message : 'Could not revoke that device.'),
+    onError: (err) =>
+      setError(err instanceof Error ? err.message : 'Could not revoke that device.'),
   });
 
   return (
@@ -691,8 +980,8 @@ export function Devices(): React.ReactElement {
         <div>
           <h1 className="page__title">Devices</h1>
           <p className="page__subtitle">
-            Revoking a device signs it out and stops it syncing. Work already on it stays there until
-            somebody signs in again.
+            Revoking a device signs it out and stops it syncing. Work already on it stays there
+            until somebody signs in again.
           </p>
         </div>
       </header>
@@ -703,7 +992,10 @@ export function Devices(): React.ReactElement {
         {isLoading ? (
           <Loading rows={5} />
         ) : !data || data.length === 0 ? (
-          <Empty title="No devices enrolled" body="A device appears here the first time somebody signs in on it." />
+          <Empty
+            title="No devices enrolled"
+            body="A device appears here the first time somebody signs in on it."
+          />
         ) : (
           <div className="table-wrap">
             <table className="table">
@@ -725,21 +1017,29 @@ export function Devices(): React.ReactElement {
                       <div className="table__primary">{device.name}</div>
                       <div className="table__meta">{device.model ?? device.platform}</div>
                     </td>
-                    <td className="table__meta">{device.platform} {device.osVersion}</td>
+                    <td className="table__meta">
+                      {device.platform} {device.osVersion}
+                    </td>
                     <td className="table__meta num">{device.appVersion}</td>
                     <td className="table__num table__meta">{relativeTime(device.lastSeenAt)}</td>
                     <td className="table__num table__meta">{relativeTime(device.lastSyncAt)}</td>
                     <td>
-                      {device.revokedAt
-                        ? <Badge label="Revoked" tone="danger" glyph="✕" />
-                        : <Badge label="Active" tone="ok" glyph="●" />}
+                      {device.revokedAt ? (
+                        <Badge label="Revoked" tone="danger" glyph="✕" />
+                      ) : (
+                        <Badge label="Active" tone="ok" glyph="●" />
+                      )}
                     </td>
                     <td className="table__actions">
                       {!device.revokedAt && can(Permission.DEVICE_REVOKE) ? (
                         <button
                           className="btn btn--secondary btn--sm"
                           onClick={() => {
-                            if (window.confirm(`Revoke ${device.name}? It will be signed out immediately.`)) {
+                            if (
+                              window.confirm(
+                                `Revoke ${device.name}? It will be signed out immediately.`,
+                              )
+                            ) {
                               revoke.mutate(device.id);
                             }
                           }}

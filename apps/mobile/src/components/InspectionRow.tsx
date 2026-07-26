@@ -8,20 +8,21 @@
  * actually reached the server, without navigating away from the list.
  */
 
-import React from 'react';
-import { View } from 'react-native';
 import type { InspectionListItem } from '@orbit/types';
 import { formatRelativeTime } from '@orbit/utils';
+import React from 'react';
+import { View } from 'react-native';
+
+import { useTheme } from '../theme/ThemeProvider';
 import {
   Badge,
   Card,
-  ProgressBar,
-  Txt,
   outcomePresentation,
   priorityPresentation,
+  ProgressBar,
   statusPresentation,
+  Txt,
 } from './ui';
-import { useTheme } from '../theme/ThemeProvider';
 
 export function InspectionRow({
   item,
@@ -87,7 +88,9 @@ export function InspectionRow({
             />
             <Txt variant="micro" color="muted">
               {item.answeredFields} / {item.totalFields} answered
-              {item.attachmentCount > 0 ? ` · ${item.attachmentCount} attachment${item.attachmentCount === 1 ? '' : 's'}` : ''}
+              {item.attachmentCount > 0
+                ? ` · ${item.attachmentCount} attachment${item.attachmentCount === 1 ? '' : 's'}`
+                : ''}
             </Txt>
           </View>
         ) : null}
@@ -103,7 +106,11 @@ export function InspectionRow({
         >
           {item.dueAt ? (
             <Badge
-              label={isOverdue ? `Overdue ${formatRelativeTime(item.dueAt)}` : `Due ${formatRelativeTime(item.dueAt)}`}
+              label={
+                isOverdue
+                  ? `Overdue ${formatRelativeTime(item.dueAt)}`
+                  : `Due ${formatRelativeTime(item.dueAt)}`
+              }
               tone={isOverdue ? 'danger' : 'neutral'}
               icon={isOverdue ? '!' : '◔'}
             />

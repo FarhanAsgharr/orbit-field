@@ -7,8 +7,8 @@
  * rooted device is readable.
  */
 
-import { MMKV } from 'react-native-mmkv';
 import * as SecureStore from 'expo-secure-store';
+import { MMKV } from 'react-native-mmkv';
 
 export const storage = new MMKV({ id: 'orbit-field' });
 

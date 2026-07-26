@@ -7,19 +7,20 @@
  * that turn out not to be.
  */
 
-import * as FileSystem from 'expo-file-system';
-import * as Print from 'expo-print';
-import * as Sharing from 'expo-sharing';
 import {
-  SignatureRole,
   type Attachment,
   type Inspection,
   type InspectionResponse,
+  SignatureRole,
 } from '@orbit/types';
 import { safeFileName, scoreInspection, ulid } from '@orbit/utils';
+import * as FileSystem from 'expo-file-system';
+import * as Print from 'expo-print';
+import * as Sharing from 'expo-sharing';
+
 import type { Runtime } from '../../runtime/runtime';
-import { buildReportHtml, type ReportContext } from './report.template';
 import { deserialiseSignature, signatureToSvg } from '../signature/SignaturePad';
+import { buildReportHtml, type ReportContext } from './report.template';
 
 const REPORT_DIR = `${FileSystem.documentDirectory}orbit-reports/`;
 
@@ -111,10 +112,12 @@ export async function buildContext(
     : null;
 
   const site = inspection.siteId
-    ? runtime.db.getFirst<{ name: string; address: string | null; latitude: number | null; longitude: number | null }>(
-        `SELECT name, address, latitude, longitude FROM sites WHERE id = ?`,
-        [inspection.siteId],
-      )
+    ? runtime.db.getFirst<{
+        name: string;
+        address: string | null;
+        latitude: number | null;
+        longitude: number | null;
+      }>(`SELECT name, address, latitude, longitude FROM sites WHERE id = ?`, [inspection.siteId])
     : null;
 
   const inspector = runtime.db.getFirst<{ first_name: string; last_name: string; email: string }>(
@@ -162,9 +165,7 @@ export async function buildContext(
   const photoDataUris: Record<string, string> = {};
   if (options.includePhotos !== false) {
     const limit = options.maxPhotos ?? 40;
-    const photos = attachments
-      .filter((a) => a.kind === 'PHOTO' && a.localUri)
-      .slice(0, limit);
+    const photos = attachments.filter((a) => a.kind === 'PHOTO' && a.localUri).slice(0, limit);
 
     for (const photo of photos) {
       const dataUri = await toDataUri(photo.localUri!, photo.mimeType);
@@ -188,9 +189,16 @@ export async function buildContext(
       footerText: settings.reportFooterText ?? null,
       brandColor: settings.brandColor ?? null,
     },
-    client: client ? { name: client.name, contactName: client.contact_name, address: client.address } : null,
+    client: client
+      ? { name: client.name, contactName: client.contact_name, address: client.address }
+      : null,
     site: site
-      ? { name: site.name, address: site.address, latitude: site.latitude, longitude: site.longitude }
+      ? {
+          name: site.name,
+          address: site.address,
+          latitude: site.latitude,
+          longitude: site.longitude,
+        }
       : null,
     inspector: {
       name: inspector ? `${inspector.first_name} ${inspector.last_name}` : 'Unknown',
@@ -243,7 +251,11 @@ export async function generateReport(
 }
 
 /** Open the OS print dialog directly. */
-export async function printReport(runtime: Runtime, inspectionId: string, options: ReportOptions = {}): Promise<void> {
+export async function printReport(
+  runtime: Runtime,
+  inspectionId: string,
+  options: ReportOptions = {},
+): Promise<void> {
   const context = await buildContext(runtime, inspectionId, options);
   if (!context) throw new Error('This inspection is not available on this device.');
   await Print.printAsync({ html: buildReportHtml(context) });
@@ -267,7 +279,9 @@ export async function shareReport(report: GeneratedReport): Promise<void> {
 }
 
 /** Previously generated reports for an inspection. */
-export async function listReports(): Promise<Array<{ uri: string; fileName: string; sizeBytes: number }>> {
+export async function listReports(): Promise<
+  Array<{ uri: string; fileName: string; sizeBytes: number }>
+> {
   try {
     await ensureDir();
     const files = await FileSystem.readDirectoryAsync(REPORT_DIR);
@@ -276,7 +290,11 @@ export async function listReports(): Promise<Array<{ uri: string; fileName: stri
       const uri = `${REPORT_DIR}${file}`;
       const info = await FileSystem.getInfoAsync(uri, { size: true });
       if (info.exists) {
-        out.push({ uri, fileName: file.replace(/^[0-9A-Z]{26}-/, ''), sizeBytes: 'size' in info ? info.size : 0 });
+        out.push({
+          uri,
+          fileName: file.replace(/^[0-9A-Z]{26}-/, ''),
+          sizeBytes: 'size' in info ? info.size : 0,
+        });
       }
     }
     return out;
@@ -289,4 +307,4 @@ export async function deleteReport(uri: string): Promise<void> {
   await FileSystem.deleteAsync(uri, { idempotent: true });
 }
 
-export { SignatureRole, REPORT_DIR };
+export { REPORT_DIR, SignatureRole };

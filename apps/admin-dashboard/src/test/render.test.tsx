@@ -12,18 +12,18 @@
  * and error cases, because those are the states nobody clicks through by hand.
  */
 
-import React from 'react';
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { cleanup, render, screen, waitFor, within } from '@testing-library/react';
-import userEvent from '@testing-library/user-event';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { cleanup, render, screen, waitFor } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
+import React from 'react';
 import { MemoryRouter } from 'react-router-dom';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { type Column, DataTable } from '../components/DataTable';
+import { CursorLagRail, type SyncHealth } from '../components/Shell';
+import { Badge, formatBytes, Pagination, relativeTime } from '../components/ui';
 import * as apiModule from '../lib/api';
 import { SessionProvider } from '../lib/auth';
-import { CursorLagRail, type SyncHealth } from '../components/Shell';
-import { DataTable, type Column } from '../components/DataTable';
-import { Badge, Pagination, relativeTime, formatBytes } from '../components/ui';
 import { Login } from '../pages/Login';
 
 // --- fixtures ---------------------------------------------------------------
@@ -33,9 +33,42 @@ const health: SyncHealth = {
   unresolvedConflicts: 2,
   pendingUploads: 7,
   devices: [
-    { id: 'd1', name: 'Pixel 8', platform: 'android', appVersion: '1.0.0', userName: 'Tom Whitfield', lastSyncAt: new Date().toISOString(), lastSeenAt: new Date().toISOString(), cursor: 4190, behind: 0, stale: false },
-    { id: 'd2', name: 'iPad Pro', platform: 'ios', appVersion: '1.0.0', userName: 'Priya Nair', lastSyncAt: new Date(Date.now() - 3_600_000).toISOString(), lastSeenAt: new Date().toISOString(), cursor: 4180, behind: 10, stale: false },
-    { id: 'd3', name: 'Old Tablet', platform: 'android', appVersion: '0.9.0', userName: 'Jonas Berg', lastSyncAt: new Date(Date.now() - 5 * 86_400_000).toISOString(), lastSeenAt: null, cursor: 1200, behind: 2990, stale: true },
+    {
+      id: 'd1',
+      name: 'Pixel 8',
+      platform: 'android',
+      appVersion: '1.0.0',
+      userName: 'Tom Whitfield',
+      lastSyncAt: new Date().toISOString(),
+      lastSeenAt: new Date().toISOString(),
+      cursor: 4190,
+      behind: 0,
+      stale: false,
+    },
+    {
+      id: 'd2',
+      name: 'iPad Pro',
+      platform: 'ios',
+      appVersion: '1.0.0',
+      userName: 'Priya Nair',
+      lastSyncAt: new Date(Date.now() - 3_600_000).toISOString(),
+      lastSeenAt: new Date().toISOString(),
+      cursor: 4180,
+      behind: 10,
+      stale: false,
+    },
+    {
+      id: 'd3',
+      name: 'Old Tablet',
+      platform: 'android',
+      appVersion: '0.9.0',
+      userName: 'Jonas Berg',
+      lastSyncAt: new Date(Date.now() - 5 * 86_400_000).toISOString(),
+      lastSeenAt: null,
+      cursor: 1200,
+      behind: 2990,
+      stale: true,
+    },
   ],
 };
 
@@ -93,7 +126,9 @@ describe('primitives', () => {
   });
 
   it('pagination renders nothing when there is nothing to page', () => {
-    const { container } = render(<Pagination page={1} pageSize={25} total={0} onPage={() => undefined} />);
+    const { container } = render(
+      <Pagination page={1} pageSize={25} total={0} onPage={() => undefined} />,
+    );
     expect(container).toBeEmptyDOMElement();
   });
 });
@@ -156,7 +191,11 @@ describe('cursor lag rail', () => {
 
 // --- data table -------------------------------------------------------------
 
-interface Row { id: string; name: string; count: number }
+interface Row {
+  id: string;
+  name: string;
+  count: number;
+}
 
 const columns: Array<Column<Row>> = [
   { key: 'name', header: 'Name', sortable: true, render: (r) => r.name },
@@ -165,20 +204,38 @@ const columns: Array<Column<Row>> = [
 
 function mockPaged(items: Row[], total = items.length) {
   return vi.spyOn(apiModule.api, 'get').mockResolvedValue({
-    items, total, page: 1, pageSize: 25, hasMore: false,
+    items,
+    total,
+    page: 1,
+    pageSize: 25,
+    hasMore: false,
   } as never);
 }
 
 describe('data table', () => {
   it('renders rows returned by the API', async () => {
     mockPaged([{ id: '1', name: 'Bishopsgate', count: 12 }]);
-    render(wrap(<DataTable<Row> endpoint="/x" queryKey={['x']} columns={columns} rowKey={(r) => r.id} />));
+    render(
+      wrap(
+        <DataTable<Row> endpoint="/x" queryKey={['x']} columns={columns} rowKey={(r) => r.id} />,
+      ),
+    );
     expect(await screen.findByText('Bishopsgate')).toBeInTheDocument();
   });
 
   it('shows a distinct empty state when a search matches nothing', async () => {
     mockPaged([]);
-    render(wrap(<DataTable<Row> endpoint="/x" queryKey={['x']} columns={columns} rowKey={(r) => r.id} emptyTitle="No sites yet" />));
+    render(
+      wrap(
+        <DataTable<Row>
+          endpoint="/x"
+          queryKey={['x']}
+          columns={columns}
+          rowKey={(r) => r.id}
+          emptyTitle="No sites yet"
+        />,
+      ),
+    );
     expect(await screen.findByText('No sites yet')).toBeInTheDocument();
 
     await userEvent.type(screen.getByRole('searchbox'), 'zzz');
@@ -190,7 +247,11 @@ describe('data table', () => {
 
   it('debounces search so a typed word issues one request, not one per key', async () => {
     const spy = mockPaged([]);
-    render(wrap(<DataTable<Row> endpoint="/x" queryKey={['x']} columns={columns} rowKey={(r) => r.id} />));
+    render(
+      wrap(
+        <DataTable<Row> endpoint="/x" queryKey={['x']} columns={columns} rowKey={(r) => r.id} />,
+      ),
+    );
     await screen.findByText(/nothing here/i);
     spy.mockClear();
 
@@ -202,25 +263,38 @@ describe('data table', () => {
 
   it('surfaces a failed load instead of showing a misleading empty table', async () => {
     vi.spyOn(apiModule.api, 'get').mockRejectedValue(new Error('Database unreachable'));
-    render(wrap(<DataTable<Row> endpoint="/x" queryKey={['x']} columns={columns} rowKey={(r) => r.id} />));
+    render(
+      wrap(
+        <DataTable<Row> endpoint="/x" queryKey={['x']} columns={columns} rowKey={(r) => r.id} />,
+      ),
+    );
     expect(await screen.findByRole('alert')).toHaveTextContent(/database unreachable/i);
   });
 
   it('marks the sorted column for assistive technology', async () => {
     mockPaged([{ id: '1', name: 'A', count: 1 }]);
-    render(wrap(<DataTable<Row> endpoint="/x" queryKey={['x']} columns={columns} rowKey={(r) => r.id} />));
+    render(
+      wrap(
+        <DataTable<Row> endpoint="/x" queryKey={['x']} columns={columns} rowKey={(r) => r.id} />,
+      ),
+    );
     await screen.findByText('A');
 
     await userEvent.click(screen.getByRole('button', { name: /^Name/ }));
     await waitFor(() => {
-      expect(screen.getByRole('columnheader', { name: /Name/ })).toHaveAttribute('aria-sort', 'ascending');
+      expect(screen.getByRole('columnheader', { name: /Name/ })).toHaveAttribute(
+        'aria-sort',
+        'ascending',
+      );
     });
   });
 
   it('right-aligns numeric columns and applies tabular figures', async () => {
     mockPaged([{ id: '1', name: 'A', count: 42 }]);
     const { container } = render(
-      wrap(<DataTable<Row> endpoint="/x" queryKey={['x']} columns={columns} rowKey={(r) => r.id} />),
+      wrap(
+        <DataTable<Row> endpoint="/x" queryKey={['x']} columns={columns} rowKey={(r) => r.id} />,
+      ),
     );
     await screen.findByText('42');
     const cell = container.querySelector('td.table__num');
@@ -230,11 +304,17 @@ describe('data table', () => {
 
   it('resets to page one when the search changes', async () => {
     const spy = mockPaged([{ id: '1', name: 'A', count: 1 }], 500);
-    render(wrap(<DataTable<Row> endpoint="/x" queryKey={['x']} columns={columns} rowKey={(r) => r.id} />));
+    render(
+      wrap(
+        <DataTable<Row> endpoint="/x" queryKey={['x']} columns={columns} rowKey={(r) => r.id} />,
+      ),
+    );
     await screen.findByText('A');
 
     await userEvent.click(screen.getByRole('button', { name: /next/i }));
-    await waitFor(() => expect(spy).toHaveBeenCalledWith('/x', expect.objectContaining({ page: 2 })));
+    await waitFor(() =>
+      expect(spy).toHaveBeenCalledWith('/x', expect.objectContaining({ page: 2 })),
+    );
 
     spy.mockClear();
     await userEvent.type(screen.getByRole('searchbox'), 'q');
@@ -256,13 +336,25 @@ describe('sign in', () => {
   });
 
   it('labels both fields and wires autocomplete for password managers', () => {
-    render(wrap(<SessionProvider><Login /></SessionProvider>));
+    render(
+      wrap(
+        <SessionProvider>
+          <Login />
+        </SessionProvider>,
+      ),
+    );
     expect(screen.getByLabelText(/email/i)).toHaveAttribute('autocomplete', 'username');
     expect(screen.getByLabelText('Password')).toHaveAttribute('autocomplete', 'current-password');
   });
 
   it('flags a malformed email on blur rather than only on submit', async () => {
-    render(wrap(<SessionProvider><Login /></SessionProvider>));
+    render(
+      wrap(
+        <SessionProvider>
+          <Login />
+        </SessionProvider>,
+      ),
+    );
     const email = screen.getByLabelText(/email/i);
     await userEvent.type(email, 'not-an-email');
     await userEvent.tab();
@@ -270,13 +362,27 @@ describe('sign in', () => {
   });
 
   it('tells someone who wanted the field app that they are in the wrong place', () => {
-    render(wrap(<SessionProvider><Login /></SessionProvider>));
+    render(
+      wrap(
+        <SessionProvider>
+          <Login />
+        </SessionProvider>,
+      ),
+    );
     expect(screen.getByText(/mobile app/i)).toBeInTheDocument();
   });
 
   it('surfaces a rejected sign-in', async () => {
-    vi.spyOn(apiModule, 'login').mockRejectedValue(new Error('The email or password is incorrect.'));
-    render(wrap(<SessionProvider><Login /></SessionProvider>));
+    vi.spyOn(apiModule, 'login').mockRejectedValue(
+      new Error('The email or password is incorrect.'),
+    );
+    render(
+      wrap(
+        <SessionProvider>
+          <Login />
+        </SessionProvider>,
+      ),
+    );
 
     await userEvent.type(screen.getByLabelText(/email/i), 'a@b.com');
     await userEvent.type(screen.getByLabelText('Password'), 'wrong');
@@ -302,7 +408,13 @@ describe('password reveal', () => {
   });
 
   function renderLogin(): { input: HTMLInputElement; toggle: HTMLElement } {
-    render(wrap(<SessionProvider><Login /></SessionProvider>));
+    render(
+      wrap(
+        <SessionProvider>
+          <Login />
+        </SessionProvider>,
+      ),
+    );
     return {
       input: screen.getByLabelText('Password') as HTMLInputElement,
       toggle: screen.getByRole('button', { name: /show password/i }),
@@ -358,7 +470,13 @@ describe('password reveal', () => {
 
   it('keeps a new password visible while it is being checked against the rules', async () => {
     vi.spyOn(apiModule.api, 'get').mockResolvedValue({ available: true } as never);
-    render(wrap(<SessionProvider><Login /></SessionProvider>));
+    render(
+      wrap(
+        <SessionProvider>
+          <Login />
+        </SessionProvider>,
+      ),
+    );
 
     await userEvent.click(await screen.findByRole('tab', { name: /create account/i }));
 
@@ -377,7 +495,9 @@ describe('accessibility floor', () => {
   it('every interactive control has an accessible name', async () => {
     mockPaged([{ id: '1', name: 'A', count: 1 }]);
     const { container } = render(
-      wrap(<DataTable<Row> endpoint="/x" queryKey={['x']} columns={columns} rowKey={(r) => r.id} />),
+      wrap(
+        <DataTable<Row> endpoint="/x" queryKey={['x']} columns={columns} rowKey={(r) => r.id} />,
+      ),
     );
     await screen.findByText('A');
 
@@ -388,7 +508,9 @@ describe('accessibility floor', () => {
         control.getAttribute('title') ??
         control.textContent?.trim() ??
         '';
-      expect(name.length, `unlabelled control: ${control.outerHTML.slice(0, 90)}`).toBeGreaterThan(0);
+      expect(name.length, `unlabelled control: ${control.outerHTML.slice(0, 90)}`).toBeGreaterThan(
+        0,
+      );
     }
   });
 

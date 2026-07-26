@@ -8,8 +8,8 @@
  * offset pagination silently skips rows when the underlying set shifts.
  */
 
-import { z } from 'zod';
 import type { Paginated } from '@orbit/types';
+import { z } from 'zod';
 
 export const paginationSchema = z.object({
   page: z.coerce.number().int().positive().default(1),
@@ -51,7 +51,9 @@ export function sortArgs<T extends string>(
 }
 
 /** Case-insensitive contains filter, or undefined when the term is blank. */
-export function searchFilter(term: string | undefined): { contains: string; mode: 'insensitive' } | undefined {
+export function searchFilter(
+  term: string | undefined,
+): { contains: string; mode: 'insensitive' } | undefined {
   const trimmed = term?.trim();
   if (!trimmed) return undefined;
   return { contains: trimmed, mode: 'insensitive' };
@@ -61,7 +63,14 @@ export function searchFilter(term: string | undefined): { contains: string; mode
 export const csvArray = z
   .string()
   .optional()
-  .transform((value) => (value ? value.split(',').map((v) => v.trim()).filter(Boolean) : undefined));
+  .transform((value) =>
+    value
+      ? value
+          .split(',')
+          .map((v) => v.trim())
+          .filter(Boolean)
+      : undefined,
+  );
 
 /** Standard date-range filter fragment. */
 export function dateRange(from?: string, to?: string): { gte?: Date; lte?: Date } | undefined {

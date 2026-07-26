@@ -15,17 +15,29 @@
  *    one extra tap.
  */
 
+import { type BarcodeScanningResult, CameraView, useCameraPermissions } from 'expo-camera';
+import * as Haptics from 'expo-haptics';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { Modal, Pressable, StyleSheet, View } from 'react-native';
-import { CameraView, useCameraPermissions, type BarcodeScanningResult } from 'expo-camera';
-import * as Haptics from 'expo-haptics';
+
 import { Button, Field, Txt } from '../../components/ui';
 import { useTheme } from '../../theme/ThemeProvider';
 
 /** Symbologies worth decoding for asset and equipment labels. */
 export const SUPPORTED_SYMBOLOGIES = [
-  'qr', 'ean13', 'ean8', 'code128', 'code39', 'code93',
-  'codabar', 'itf14', 'upc_a', 'upc_e', 'datamatrix', 'pdf417', 'aztec',
+  'qr',
+  'ean13',
+  'ean8',
+  'code128',
+  'code39',
+  'code93',
+  'codabar',
+  'itf14',
+  'upc_a',
+  'upc_e',
+  'datamatrix',
+  'pdf417',
+  'aztec',
 ] as const;
 
 export interface ScanResult {
@@ -126,8 +138,15 @@ export function ScannerModal({
 
         {/* --- header --- */}
         <View style={[styles.header, { paddingTop: theme.spacing.huge }]}>
-          <Pressable onPress={onClose} hitSlop={16} accessibilityRole="button" accessibilityLabel="Cancel scanning">
-            <Txt variant="bodyStrong" style={{ color: '#fff' }}>Cancel</Txt>
+          <Pressable
+            onPress={onClose}
+            hitSlop={16}
+            accessibilityRole="button"
+            accessibilityLabel="Cancel scanning"
+          >
+            <Txt variant="bodyStrong" style={{ color: '#fff' }}>
+              Cancel
+            </Txt>
           </Pressable>
           <Txt variant="subheading" style={{ color: '#fff', flex: 1, textAlign: 'center' }}>
             {title}
@@ -141,7 +160,9 @@ export function ScannerModal({
             <Txt style={{ color: '#fff' }}>Checking camera access…</Txt>
           ) : !permission.granted && !showManual ? (
             <View style={{ gap: theme.spacing.md }}>
-              <Txt variant="subheading" style={{ color: '#fff' }}>Camera access needed</Txt>
+              <Txt variant="subheading" style={{ color: '#fff' }}>
+                Camera access needed
+              </Txt>
               <Txt variant="caption" style={{ color: '#C3CDDC' }}>
                 {permission.canAskAgain
                   ? 'Orbit Field uses the camera to read asset labels.'
@@ -150,7 +171,12 @@ export function ScannerModal({
               {permission.canAskAgain ? (
                 <Button label="Allow camera" onPress={() => void requestPermission()} fullWidth />
               ) : null}
-              <Button label="Type the code instead" variant="secondary" onPress={() => setShowManual(true)} fullWidth />
+              <Button
+                label="Type the code instead"
+                variant="secondary"
+                onPress={() => setShowManual(true)}
+                fullWidth
+              />
             </View>
           ) : candidate ? (
             // Confirm rather than auto-accept: labels sit next to each other on
@@ -164,7 +190,12 @@ export function ScannerModal({
                 {candidate.value}
               </Txt>
               <View style={{ flexDirection: 'row', gap: theme.spacing.md }}>
-                <Button label="Scan again" variant="secondary" onPress={rescan} style={{ flex: 1 }} />
+                <Button
+                  label="Scan again"
+                  variant="secondary"
+                  onPress={rescan}
+                  style={{ flex: 1 }}
+                />
                 <Button
                   label="Use this code"
                   onPress={() => accept(candidate.value, candidate.type, false)}

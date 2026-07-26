@@ -11,16 +11,17 @@
  */
 
 import {
-  SyncEntity,
-  SyncOperation,
   type GeoPoint,
   type InspectionResponse,
   type JsonValue,
+  SyncEntity,
+  SyncOperation,
 } from '@orbit/types';
-import { ulid } from '@orbit/utils';
 import type { AnswerMap } from '@orbit/utils';
-import type { Database, SqlValue } from '../database';
+import { ulid } from '@orbit/utils';
+
 import type { Outbox } from '../../sync/outbox';
+import type { Database, SqlValue } from '../database';
 
 interface ResponseRow {
   id: string;
@@ -319,10 +320,10 @@ export class ResponseRepository {
 
       const now = new Date().toISOString();
       for (const row of rows) {
-        this.db.run(
-          `UPDATE inspection_responses SET deleted_at = ?, is_dirty = 1 WHERE id = ?`,
-          [now, row.id],
-        );
+        this.db.run(`UPDATE inspection_responses SET deleted_at = ?, is_dirty = 1 WHERE id = ?`, [
+          now,
+          row.id,
+        ]);
         this.outbox.enqueue({
           entity: SyncEntity.RESPONSE,
           operation: SyncOperation.DELETE,

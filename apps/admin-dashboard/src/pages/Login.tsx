@@ -11,15 +11,19 @@
  */
 
 import React, { useEffect, useMemo, useState } from 'react';
-import { useSession } from '../lib/auth';
-import { api } from '../lib/api';
-import { ErrorBanner } from '../components/ui';
+
 import { PasswordInput } from '../components/PasswordInput';
+import { ErrorBanner } from '../components/ui';
+import { api } from '../lib/api';
+import { useSession } from '../lib/auth';
 
 type Mode = 'signIn' | 'register';
 
 /** Client-side mirror of the server's password policy. Advisory; the API decides. */
-function assessPassword(password: string, context: { email?: string; firstName?: string }): {
+function assessPassword(
+  password: string,
+  context: { email?: string; firstName?: string },
+): {
   score: number;
   problems: string[];
 } {
@@ -65,9 +69,15 @@ export function Login(): React.ReactElement {
     let cancelled = false;
     void api
       .get<{ available: boolean }>('/auth/signup-available')
-      .then((r) => { if (!cancelled) setSignupAvailable(r.available); })
-      .catch(() => { if (!cancelled) setSignupAvailable(false); });
-    return () => { cancelled = true; };
+      .then((r) => {
+        if (!cancelled) setSignupAvailable(r.available);
+      })
+      .catch(() => {
+        if (!cancelled) setSignupAvailable(false);
+      });
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   const emailInvalid = touched && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim());
@@ -151,7 +161,9 @@ export function Login(): React.ReactElement {
           {mode === 'register' ? (
             <>
               <div className="field">
-                <label className="field__label" htmlFor="organizationName">Company or team name</label>
+                <label className="field__label" htmlFor="organizationName">
+                  Company or team name
+                </label>
                 <input
                   id="organizationName"
                   className="input"
@@ -169,7 +181,9 @@ export function Login(): React.ReactElement {
 
               <div className="row gap-3">
                 <div className="field grow">
-                  <label className="field__label" htmlFor="firstName">First name</label>
+                  <label className="field__label" htmlFor="firstName">
+                    First name
+                  </label>
                   <input
                     id="firstName"
                     className="input"
@@ -181,7 +195,9 @@ export function Login(): React.ReactElement {
                   />
                 </div>
                 <div className="field grow">
-                  <label className="field__label" htmlFor="lastName">Last name</label>
+                  <label className="field__label" htmlFor="lastName">
+                    Last name
+                  </label>
                   <input
                     id="lastName"
                     className="input"
@@ -197,7 +213,9 @@ export function Login(): React.ReactElement {
           ) : null}
 
           <div className="field">
-            <label className="field__label" htmlFor="email">Email</label>
+            <label className="field__label" htmlFor="email">
+              Email
+            </label>
             <input
               id="email"
               className={`input${emailInvalid ? ' input--error' : ''}`}
@@ -209,7 +227,9 @@ export function Login(): React.ReactElement {
               disabled={busy}
               required
             />
-            {emailInvalid ? <span className="field__error">Enter a valid email address.</span> : null}
+            {emailInvalid ? (
+              <span className="field__error">Enter a valid email address.</span>
+            ) : null}
           </div>
 
           <PasswordInput
@@ -231,13 +251,18 @@ export function Login(): React.ReactElement {
                   <div className="bar">
                     <div
                       className="bar__fill"
-                      style={{ width: `${(assessment.score / 4) * 100}%`, background: strengthColour }}
+                      style={{
+                        width: `${(assessment.score / 4) * 100}%`,
+                        background: strengthColour,
+                      }}
                     />
                   </div>
                   {assessment.problems.length > 0 ? (
                     <ul className="stack gap-1" style={{ margin: 0, paddingLeft: 16 }}>
                       {assessment.problems.map((problem) => (
-                        <li key={problem} className="small muted">{problem}</li>
+                        <li key={problem} className="small muted">
+                          {problem}
+                        </li>
                       ))}
                     </ul>
                   ) : (
@@ -257,8 +282,12 @@ export function Login(): React.ReactElement {
             style={{ width: '100%', height: 38 }}
           >
             {busy
-              ? mode === 'register' ? 'Creating your workspace…' : 'Signing in…'
-              : mode === 'register' ? 'Create account' : 'Sign in'}
+              ? mode === 'register'
+                ? 'Creating your workspace…'
+                : 'Signing in…'
+              : mode === 'register'
+                ? 'Create account'
+                : 'Sign in'}
           </button>
 
           {mode === 'register' ? (

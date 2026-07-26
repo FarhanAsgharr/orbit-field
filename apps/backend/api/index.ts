@@ -33,9 +33,10 @@
  * `.d.ts` files keep this entry fully typed.
  */
 import type { IncomingMessage, ServerResponse } from 'node:http';
+
 import { createApp } from '../dist/app.js';
-import { assertProductionSecrets } from '../dist/middleware/security.js';
 import { logger } from '../dist/config/logger.js';
+import { assertProductionSecrets } from '../dist/middleware/security.js';
 
 /**
  * BigInt serialisation, again — and this time not through Express.
@@ -51,7 +52,9 @@ import { logger } from '../dist/config/logger.js';
  * happens to win, and matches the replacer's semantics exactly: Number, not
  * String, because the sync protocol declares `SyncCursor = Brand<number>`.
  */
-(BigInt.prototype as unknown as { toJSON(): number }).toJSON = function toJSON(this: bigint): number {
+(BigInt.prototype as unknown as { toJSON(): number }).toJSON = function toJSON(
+  this: bigint,
+): number {
   return Number(this);
 };
 

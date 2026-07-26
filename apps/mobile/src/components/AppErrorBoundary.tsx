@@ -8,9 +8,9 @@
  * makes people stop trusting the app.
  */
 
+import * as Application from 'expo-application';
 import React from 'react';
 import { ScrollView, StyleSheet, Text, View } from 'react-native';
-import * as Application from 'expo-application';
 
 interface Props {
   children: React.ReactNode;

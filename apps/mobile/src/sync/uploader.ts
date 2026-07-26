@@ -14,10 +14,11 @@
  *    started. Only a server-confirmed checksum retires the local copy.
  */
 
-import * as FileSystem from 'expo-file-system';
-import { AttachmentState, type UploadSession } from '@orbit/types';
 import { AppError, ErrorCode } from '@orbit/shared';
-import { MEDIA_BACKOFF, backoffDelay } from '@orbit/utils';
+import { AttachmentState, type UploadSession } from '@orbit/types';
+import { backoffDelay, MEDIA_BACKOFF } from '@orbit/utils';
+import * as FileSystem from 'expo-file-system';
+
 import type { ApiClient } from '../api/client';
 import type { AttachmentRepository } from '../db/repositories/attachment.repository';
 import type { MediaUploader as MediaUploaderContract } from './engine';
@@ -99,7 +100,10 @@ export class MediaUploader implements MediaUploaderContract {
     if (!attachment.localUri) {
       // Nothing to send. Either already evicted or registered without a file —
       // either way, retrying forever would be pointless.
-      this.options.attachments.markUploadFailed(attachmentId, 'The local file is no longer available.');
+      this.options.attachments.markUploadFailed(
+        attachmentId,
+        'The local file is no longer available.',
+      );
       return;
     }
 
@@ -114,7 +118,11 @@ export class MediaUploader implements MediaUploaderContract {
       return;
     }
 
-    const session = await this.openSession(attachment.id, attachment.sizeBytes, attachment.checksum);
+    const session = await this.openSession(
+      attachment.id,
+      attachment.sizeBytes,
+      attachment.checksum,
+    );
 
     // The server may report the work is already done: either these exact bytes
     // are present under another attachment (content-addressed dedupe), or a

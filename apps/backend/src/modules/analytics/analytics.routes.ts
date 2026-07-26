@@ -11,16 +11,18 @@
  * value is the bucket unit, which is selected from a closed allowlist.
  */
 
-import { Router } from 'express';
+import { AppError, can, ErrorCode, Permission } from '@orbit/shared';
+import { toDisplayString } from '@orbit/utils';
 import { Prisma } from '@prisma/client';
+import { Router } from 'express';
 import { z } from 'zod';
-import { AppError, ErrorCode, Permission, can } from '@orbit/shared';
+
 import { prisma } from '../../db/prisma.js';
+import { csvArray } from '../../lib/pagination.js';
 import { requireAuth, requirePermission } from '../../middleware/auth.js';
 import { auth } from '../../middleware/context.js';
 import { asyncHandler } from '../../middleware/error.js';
 import { validate } from '../../middleware/validate.js';
-import { csvArray } from '../../lib/pagination.js';
 
 const router: Router = Router();
 
@@ -52,13 +54,20 @@ function resolveRange(q: RangeQuery): { from: Date; to: Date } {
   // the first load of a dashboard is not a table scan.
   const from = q.from ? new Date(q.from) : new Date(to.getTime() - 30 * 86_400_000);
   if (from > to) {
-    throw new AppError(ErrorCode.VALIDATION_FAILED, 'The start of the range must be before its end.');
+    throw new AppError(
+      ErrorCode.VALIDATION_FAILED,
+      'The start of the range must be before its end.',
+    );
   }
   return { from, to };
 }
 
 /** Prisma filter shared by the non-raw queries. */
-function baseFilter(subject: ReturnType<typeof auth>, q: RangeQuery, range: { from: Date; to: Date }): Prisma.InspectionWhereInput {
+function baseFilter(
+  subject: ReturnType<typeof auth>,
+  q: RangeQuery,
+  range: { from: Date; to: Date },
+): Prisma.InspectionWhereInput {
   const where: Prisma.InspectionWhereInput = {
     orgId: subject.orgId,
     deletedAt: null,
@@ -125,7 +134,9 @@ router.get(
 
     const total = aggregate._count;
     const completed =
-      (statusCounts.APPROVED ?? 0) + (statusCounts.SUBMITTED ?? 0) + (statusCounts.UNDER_REVIEW ?? 0);
+      (statusCounts.APPROVED ?? 0) +
+      (statusCounts.SUBMITTED ?? 0) +
+      (statusCounts.UNDER_REVIEW ?? 0);
     const failed = outcomeCounts.FAIL ?? 0;
     const scored = (outcomeCounts.PASS ?? 0) + (outcomeCounts.PASS_WITH_OBSERVATIONS ?? 0) + failed;
 
@@ -154,7 +165,8 @@ router.get(
         // Guarded: a period with no work is 0%, not NaN.
         completionRate: total > 0 ? Math.round((completed / total) * 1000) / 10 : 0,
         failureRate: scored > 0 ? Math.round((failed / scored) * 1000) / 10 : 0,
-        averageScore: aggregate._avg.score !== null ? Math.round(aggregate._avg.score * 10) / 10 : null,
+        averageScore:
+          aggregate._avg.score !== null ? Math.round(aggregate._avg.score * 10) / 10 : null,
         averageDurationMinutes:
           duration[0]?.avg_minutes != null ? Math.round(duration[0].avg_minutes) : null,
       },
@@ -221,9 +233,16 @@ router.get(
 
     const rows = await prisma.$queryRaw<
       Array<{
-        user_id: string; first_name: string; last_name: string;
-        assigned: bigint; completed: bigint; failed: bigint;
-        avg_score: number | null; avg_minutes: number | null; on_time: bigint; with_due: bigint;
+        user_id: string;
+        first_name: string;
+        last_name: string;
+        assigned: bigint;
+        completed: bigint;
+        failed: bigint;
+        avg_score: number | null;
+        avg_minutes: number | null;
+        on_time: bigint;
+        with_due: bigint;
       }>
     >`
       SELECT u.id AS user_id, u."firstName" AS first_name, u."lastName" AS last_name,
@@ -284,8 +303,14 @@ router.get(
 
     const rows = await prisma.$queryRaw<
       Array<{
-        site_id: string; name: string; latitude: number | null; longitude: number | null;
-        total: bigint; failed: bigint; avg_score: number | null; last_inspected: Date | null;
+        site_id: string;
+        name: string;
+        latitude: number | null;
+        longitude: number | null;
+        total: bigint;
+        failed: bigint;
+        avg_score: number | null;
+        last_inspected: Date | null;
       }>
     >`
       SELECT s.id AS site_id, s.name, s.latitude, s.longitude,
@@ -337,7 +362,15 @@ router.get(
     const range = resolveRange(q);
 
     const rows = await prisma.$queryRaw<
-      Array<{ project_id: string; name: string; code: string; total: bigint; completed: bigint; failed: bigint; avg_score: number | null }>
+      Array<{
+        project_id: string;
+        name: string;
+        code: string;
+        total: bigint;
+        completed: bigint;
+        failed: bigint;
+        avg_score: number | null;
+      }>
     >`
       SELECT p.id AS project_id, p.name, p.code,
              COUNT(i.id)::bigint AS total,
@@ -461,7 +494,9 @@ router.get(
     /** RFC-4180 escaping. Quotes are doubled; anything risky is quoted. */
     const cell = (value: unknown): string => {
       if (value === null || value === undefined) return '';
-      const text = value instanceof Date ? value.toISOString() : String(value);
+      // An object would stringify to the literal "[object Object]", which in an
+      // exported spreadsheet looks like data rather than a bug.
+      const text = toDisplayString(value);
       // A leading =, +, -, or @ is interpreted as a formula by Excel; prefixing
       // with an apostrophe neutralises CSV injection.
       const safe = /^[=+\-@\t\r]/.test(text) ? `'${text}` : text;
@@ -469,27 +504,61 @@ router.get(
     };
 
     const header = [
-      'Number', 'Title', 'Template', 'Status', 'Outcome', 'Priority', 'Score',
-      'Client', 'Site', 'Project', 'Inspector',
-      'Created', 'Started', 'Completed', 'Due',
-      'Questions', 'Answered', 'Failed', 'Critical failures',
+      'Number',
+      'Title',
+      'Template',
+      'Status',
+      'Outcome',
+      'Priority',
+      'Score',
+      'Client',
+      'Site',
+      'Project',
+      'Inspector',
+      'Created',
+      'Started',
+      'Completed',
+      'Due',
+      'Questions',
+      'Answered',
+      'Failed',
+      'Critical failures',
     ];
 
     const lines = [header.join(',')];
     for (const row of rows) {
       lines.push(
         [
-          row.number, row.title, row.template?.name, row.status, row.outcome, row.priority, row.score,
-          row.client?.name, row.site?.name, row.project?.code,
+          row.number,
+          row.title,
+          row.template?.name,
+          row.status,
+          row.outcome,
+          row.priority,
+          row.score,
+          row.client?.name,
+          row.site?.name,
+          row.project?.code,
           row.assignedTo ? `${row.assignedTo.firstName} ${row.assignedTo.lastName}` : '',
-          row.createdAt, row.startedAt, row.completedAt, row.dueAt,
-          row.totalFields, row.answeredFields, row.failedFields, row.criticalFailures,
-        ].map(cell).join(','),
+          row.createdAt,
+          row.startedAt,
+          row.completedAt,
+          row.dueAt,
+          row.totalFields,
+          row.answeredFields,
+          row.failedFields,
+          row.criticalFailures,
+        ]
+          .map(cell)
+          .join(','),
       );
     }
 
     res.setHeader('Content-Type', 'text/csv; charset=utf-8');
-    res.setHeader('Content-Disposition', `attachment; filename="inspections-${range.from.toISOString().slice(0, 10)}-to-${range.to.toISOString().slice(0, 10)}.csv"`);
+    res.setHeader(
+      'Content-Disposition',
+      `attachment; filename="inspections-${range.from.toISOString().slice(0, 10)}-to-${range.to.toISOString().slice(0, 10)}.csv"`,
+    );
     // BOM so Excel opens UTF-8 correctly rather than mangling accented names.
     // Written as an escape, not a literal glyph — editors and formatters strip
     // an invisible leading BOM from source and the export silently regresses.

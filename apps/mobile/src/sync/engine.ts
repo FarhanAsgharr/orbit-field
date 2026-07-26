@@ -18,29 +18,25 @@
 import {
   OutboxState,
   SYNC_PROTOCOL_VERSION,
-  SyncEntity,
-  SyncOperation,
   type SyncChange,
   type SyncConflict,
+  SyncEntity,
+  SyncOperation,
   type SyncOperationResult,
   type SyncPullResponse,
   type SyncPushResponse,
   type SyncStatus,
 } from '@orbit/types';
 import { isRetryableCode, retryAfterMs, ulid } from '@orbit/utils';
-import { invalidateQueries } from '../hooks/useLiveQuery';
+
 import type { Database } from '../db/database';
 import { META_KEYS } from '../db/database';
-import { Outbox } from './outbox';
+import { invalidateQueries } from '../hooks/useLiveQuery';
 import { applyChange } from './apply-change';
+import { Outbox } from './outbox';
 
 export type SyncTrigger =
-  | 'MANUAL'
-  | 'INTERVAL'
-  | 'CONNECTIVITY'
-  | 'BACKGROUND'
-  | 'STARTUP'
-  | 'PUSH_NOTIFICATION';
+  'MANUAL' | 'INTERVAL' | 'CONNECTIVITY' | 'BACKGROUND' | 'STARTUP' | 'PUSH_NOTIFICATION';
 
 export interface NetworkState {
   isConnected: boolean;
@@ -99,7 +95,9 @@ export class SyncEngine {
       isOnline: network.isConnected,
       isMetered: network.isMetered,
       cursor: this.options.db.getCursor() as SyncStatus['cursor'],
-      lastSuccessfulSyncAt: this.options.db.getMeta(META_KEYS.LAST_SYNC_AT) as SyncStatus['lastSuccessfulSyncAt'],
+      lastSuccessfulSyncAt: this.options.db.getMeta(
+        META_KEYS.LAST_SYNC_AT,
+      ) as SyncStatus['lastSuccessfulSyncAt'],
       lastAttemptAt: null,
       pendingOperations: counts.pending + counts.retrying,
       inFlightOperations: counts.inFlight,
@@ -167,10 +165,11 @@ export class SyncEngine {
        * silent one.
        */
       logId = ulid();
-      this.options.db.run(
-        `INSERT INTO sync_log (id, started_at, trigger) VALUES (?, ?, ?)`,
-        [logId, new Date(startedAt).toISOString(), trigger],
-      );
+      this.options.db.run(`INSERT INTO sync_log (id, started_at, trigger) VALUES (?, ?, ?)`, [
+        logId,
+        new Date(startedAt).toISOString(),
+        trigger,
+      ]);
 
       // Recover anything the last run left mid-flight before queueing more.
       this.options.outbox.recoverInFlight();
@@ -200,7 +199,10 @@ export class SyncEngine {
       this.emit(conflicts > 0 ? 'ERROR' : 'IDLE', {
         currentPhase: null,
         progress: 1,
-        lastError: conflicts > 0 ? `${conflicts} change${conflicts === 1 ? '' : 's'} need your attention.` : null,
+        lastError:
+          conflicts > 0
+            ? `${conflicts} change${conflicts === 1 ? '' : 's'} need your attention.`
+            : null,
       });
     } catch (err) {
       error = err instanceof Error ? err.message : String(err);
@@ -224,7 +226,13 @@ export class SyncEngine {
             conflicts,
             uploaded,
             Date.now() - startedAt,
-            error === null ? (conflicts > 0 ? 'PARTIAL' : 'SUCCESS') : error === 'aborted' ? 'ABORTED' : 'FAILED',
+            error === null
+              ? conflicts > 0
+                ? 'PARTIAL'
+                : 'SUCCESS'
+              : error === 'aborted'
+                ? 'ABORTED'
+                : 'FAILED',
             error,
             logId,
           ],
@@ -284,9 +292,10 @@ export class SyncEngine {
         // Transport failure: the whole batch returns to pending with backoff.
         // Marking each entry individually keeps their attempt counters honest.
         const message = err instanceof Error ? err.message : String(err);
-        const after = err instanceof Object && 'retryAfter' in err
-          ? retryAfterMs(String((err as { retryAfter?: string }).retryAfter))
-          : null;
+        const after =
+          err instanceof Object && 'retryAfter' in err
+            ? retryAfterMs(String((err as { retryAfter?: string }).retryAfter))
+            : null;
         for (const entry of batch) {
           this.options.outbox.markRetry(entry.id, message, 'NETWORK_ERROR', after ?? undefined);
         }
@@ -324,7 +333,13 @@ export class SyncEngine {
           if (result.entityId && result.version !== undefined) {
             // The row is now in sync: clear the dirty flag and record the
             // acknowledged version as the new merge ancestor.
-            for (const table of ['inspections', 'inspection_responses', 'attachments', 'signatures', 'assets']) {
+            for (const table of [
+              'inspections',
+              'inspection_responses',
+              'attachments',
+              'signatures',
+              'assets',
+            ]) {
               db.run(
                 `UPDATE ${table}
                     SET version = ?, sync_cursor = ?, is_dirty = 0,
@@ -470,8 +485,15 @@ export class SyncEngine {
       return;
     }
 
-    applyChange.upsert(db, change.entity, change.entityId, change.data, change.version, change.syncCursor);
+    applyChange.upsert(
+      db,
+      change.entity,
+      change.entityId,
+      change.data,
+      change.version,
+      change.syncCursor,
+    );
   }
 }
 
-export { OutboxState, SyncEntity, isRetryableCode };
+export { isRetryableCode, OutboxState, SyncEntity };

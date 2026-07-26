@@ -10,6 +10,7 @@
  */
 
 import type { NextFunction, Request, Response } from 'express';
+
 import { increment, observe, routeLabel } from '../modules/observability/metrics.js';
 
 const EXCLUDED = /^\/(health|metrics)/;

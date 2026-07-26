@@ -8,12 +8,13 @@
  * the interface must not nudge them toward a default.
  */
 
-import React, { useMemo, useState } from 'react';
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import type { FieldDiff, JsonValue } from '@orbit/types';
-import { api } from '../lib/api';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import React, { useMemo, useState } from 'react';
+
 import { CursorLagRail, useSyncHealth } from '../components/Shell';
 import { Badge, Card, Empty, ErrorBanner, Loading, relativeTime } from '../components/ui';
+import { api } from '../lib/api';
 
 interface ConflictRecord {
   id: string;
@@ -64,9 +65,16 @@ function display(value: JsonValue): string {
 export function Sync(): React.ReactElement {
   const { data: health, isLoading: healthLoading } = useSyncHealth();
 
-  const { data: conflicts, isLoading: conflictsLoading } = useQuery<{ items: ConflictRecord[]; total: number }>({
+  const { data: conflicts, isLoading: conflictsLoading } = useQuery<{
+    items: ConflictRecord[];
+    total: number;
+  }>({
     queryKey: ['conflicts', 'unresolved'],
-    queryFn: () => api.get<{ items: ConflictRecord[]; total: number }>('/admin/conflicts', { resolved: false, pageSize: 50 }),
+    queryFn: () =>
+      api.get<{ items: ConflictRecord[]; total: number }>('/admin/conflicts', {
+        resolved: false,
+        pageSize: 50,
+      }),
     refetchInterval: 30_000,
   });
 
@@ -88,7 +96,11 @@ export function Sync(): React.ReactElement {
       </header>
 
       <Card title="Fleet position" flush>
-        {healthLoading ? <Loading rows={3} /> : health ? <CursorLagRail health={health} /> : (
+        {healthLoading ? (
+          <Loading rows={3} />
+        ) : health ? (
+          <CursorLagRail health={health} />
+        ) : (
           <Empty title="Fleet data unavailable" />
         )}
       </Card>
@@ -147,20 +159,28 @@ export function Sync(): React.ReactElement {
                       <td className="table__meta">{session.trigger.toLowerCase()}</td>
                       <td className="table__num num">{session.pushedCount}</td>
                       <td className="table__num num">{session.pulledCount}</td>
-                      <td className="table__num num" style={{ color: session.conflictCount ? 'var(--danger)' : undefined }}>
+                      <td
+                        className="table__num num"
+                        style={{ color: session.conflictCount ? 'var(--danger)' : undefined }}
+                      >
                         {session.conflictCount}
                       </td>
                       <td className="table__num num table__meta">
-                        {session.durationMs !== null ? `${(session.durationMs / 1000).toFixed(1)}s` : '—'}
+                        {session.durationMs !== null
+                          ? `${(session.durationMs / 1000).toFixed(1)}s`
+                          : '—'}
                       </td>
                       <td>
                         <Badge
                           label={(session.outcome ?? 'running').toLowerCase()}
                           tone={
-                            session.outcome === 'SUCCESS' ? 'ok'
-                            : session.outcome === 'PARTIAL' ? 'warn'
-                            : session.outcome === 'FAILED' ? 'danger'
-                            : 'neutral'
+                            session.outcome === 'SUCCESS'
+                              ? 'ok'
+                              : session.outcome === 'PARTIAL'
+                                ? 'warn'
+                                : session.outcome === 'FAILED'
+                                  ? 'danger'
+                                  : 'neutral'
                           }
                         />
                       </td>
@@ -198,10 +218,13 @@ function ConflictCard({ conflict }: { conflict: ConflictRecord }): React.ReactEl
       void queryClient.invalidateQueries({ queryKey: ['conflicts'] });
       void queryClient.invalidateQueries({ queryKey: ['sync-health'] });
     },
-    onError: (err) => setError(err instanceof Error ? err.message : 'Could not apply that decision.'),
+    onError: (err) =>
+      setError(err instanceof Error ? err.message : 'Could not apply that decision.'),
   });
 
-  const author = conflict.user ? `${conflict.user.firstName} ${conflict.user.lastName}` : 'An inspector';
+  const author = conflict.user
+    ? `${conflict.user.firstName} ${conflict.user.lastName}`
+    : 'An inspector';
 
   return (
     <div style={{ borderBottom: '1px solid var(--line)', padding: 'var(--s-5)' }}>
@@ -217,13 +240,19 @@ function ConflictCard({ conflict }: { conflict: ConflictRecord }): React.ReactEl
         </span>
       </div>
 
-      {error ? <div className="mt-4"><ErrorBanner message={error} /></div> : null}
+      {error ? (
+        <div className="mt-4">
+          <ErrorBanner message={error} />
+        </div>
+      ) : null}
 
       {clashing.length > 0 ? (
         <div className="stack gap-4 mt-4">
           {clashing.map((diff) => (
             <div key={diff.path}>
-              <div className="strong small" style={{ marginBottom: 'var(--s-2)' }}>{diff.label}</div>
+              <div className="strong small" style={{ marginBottom: 'var(--s-2)' }}>
+                {diff.label}
+              </div>
               <div className="grid grid--2 gap-3">
                 <ChoiceOption
                   title="Field version"
@@ -241,9 +270,7 @@ function ConflictCard({ conflict }: { conflict: ConflictRecord }): React.ReactEl
                 />
               </div>
               {diff.baseValue !== null && diff.baseValue !== undefined ? (
-                <p className="small muted mt-2">
-                  Before either change: {display(diff.baseValue)}
-                </p>
+                <p className="small muted mt-2">Before either change: {display(diff.baseValue)}</p>
               ) : null}
             </div>
           ))}
@@ -253,7 +280,8 @@ function ConflictCard({ conflict }: { conflict: ConflictRecord }): React.ReactEl
       {auto.length > 0 ? (
         <div className="mt-4">
           <button className="btn btn--ghost btn--sm" onClick={() => setExpanded((v) => !v)}>
-            {expanded ? 'Hide' : 'Show'} {auto.length} field{auto.length === 1 ? '' : 's'} merged automatically
+            {expanded ? 'Hide' : 'Show'} {auto.length} field{auto.length === 1 ? '' : 's'} merged
+            automatically
           </button>
           {expanded ? (
             <div className="stack gap-2 mt-2">
@@ -261,11 +289,17 @@ function ConflictCard({ conflict }: { conflict: ConflictRecord }): React.ReactEl
                 <div key={diff.path} className="row gap-3 small">
                   <span className="strong">{diff.label}</span>
                   <Badge
-                    label={diff.autoResolution === 'KEEP_LOCAL' ? 'field version kept' : 'server version kept'}
+                    label={
+                      diff.autoResolution === 'KEEP_LOCAL'
+                        ? 'field version kept'
+                        : 'server version kept'
+                    }
                     tone={diff.autoResolution === 'KEEP_LOCAL' ? 'accent' : 'info'}
                   />
                   <span className="right muted truncate" style={{ maxWidth: 320 }}>
-                    {display(diff.autoResolution === 'KEEP_LOCAL' ? diff.localValue : diff.serverValue)}
+                    {display(
+                      diff.autoResolution === 'KEEP_LOCAL' ? diff.localValue : diff.serverValue,
+                    )}
                   </span>
                 </div>
               ))}
@@ -282,10 +316,18 @@ function ConflictCard({ conflict }: { conflict: ConflictRecord }): React.ReactEl
         >
           {clashing.length > 0 ? 'Apply these choices' : 'Merge and continue'}
         </button>
-        <button className="btn btn--secondary" onClick={() => resolve.mutate('KEEP_LOCAL')} disabled={resolve.isPending}>
+        <button
+          className="btn btn--secondary"
+          onClick={() => resolve.mutate('KEEP_LOCAL')}
+          disabled={resolve.isPending}
+        >
           Keep all field versions
         </button>
-        <button className="btn btn--secondary" onClick={() => resolve.mutate('KEEP_SERVER')} disabled={resolve.isPending}>
+        <button
+          className="btn btn--secondary"
+          onClick={() => resolve.mutate('KEEP_SERVER')}
+          disabled={resolve.isPending}
+        >
           Keep all server versions
         </button>
         {clashing.length > 0 && !allDecided ? (
@@ -297,9 +339,17 @@ function ConflictCard({ conflict }: { conflict: ConflictRecord }): React.ReactEl
 }
 
 function ChoiceOption({
-  title, subtitle, value, selected, onSelect,
+  title,
+  subtitle,
+  value,
+  selected,
+  onSelect,
 }: {
-  title: string; subtitle: string; value: string; selected: boolean; onSelect: () => void;
+  title: string;
+  subtitle: string;
+  value: string;
+  selected: boolean;
+  onSelect: () => void;
 }): React.ReactElement {
   return (
     <button
@@ -320,7 +370,9 @@ function ChoiceOption({
         <span
           aria-hidden="true"
           style={{
-            width: 14, height: 14, borderRadius: '50%',
+            width: 14,
+            height: 14,
+            borderRadius: '50%',
             border: `2px solid ${selected ? 'var(--accent)' : 'var(--line-strong)'}`,
             background: selected ? 'var(--accent)' : 'transparent',
             flexShrink: 0,

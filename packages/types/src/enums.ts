@@ -48,8 +48,7 @@ export const InspectionStatus = {
   CANCELLED: 'CANCELLED',
   ARCHIVED: 'ARCHIVED',
 } as const;
-export type InspectionStatus =
-  (typeof InspectionStatus)[keyof typeof InspectionStatus];
+export type InspectionStatus = (typeof InspectionStatus)[keyof typeof InspectionStatus];
 
 /** Statuses in which an inspector may still mutate responses. */
 export const EDITABLE_INSPECTION_STATUSES: readonly InspectionStatus[] = [
@@ -73,8 +72,7 @@ export const InspectionOutcome = {
   NOT_APPLICABLE: 'NOT_APPLICABLE',
   PENDING: 'PENDING',
 } as const;
-export type InspectionOutcome =
-  (typeof InspectionOutcome)[keyof typeof InspectionOutcome];
+export type InspectionOutcome = (typeof InspectionOutcome)[keyof typeof InspectionOutcome];
 
 export const Priority = {
   LOW: 'LOW',
@@ -140,8 +138,7 @@ export const AttachmentKind = {
   SIGNATURE: 'SIGNATURE',
   REPORT_PDF: 'REPORT_PDF',
 } as const;
-export type AttachmentKind =
-  (typeof AttachmentKind)[keyof typeof AttachmentKind];
+export type AttachmentKind = (typeof AttachmentKind)[keyof typeof AttachmentKind];
 
 /** Lifecycle of a binary blob as it moves from device to object storage. */
 export const AttachmentState = {
@@ -156,8 +153,7 @@ export const AttachmentState = {
   /** Server copy confirmed; local original may be evicted under storage pressure. */
   EVICTABLE: 'EVICTABLE',
 } as const;
-export type AttachmentState =
-  (typeof AttachmentState)[keyof typeof AttachmentState];
+export type AttachmentState = (typeof AttachmentState)[keyof typeof AttachmentState];
 
 export const SignatureRole = {
   INSPECTOR: 'INSPECTOR',
@@ -165,8 +161,7 @@ export const SignatureRole = {
   SUPERVISOR: 'SUPERVISOR',
   WITNESS: 'WITNESS',
 } as const;
-export type SignatureRole =
-  (typeof SignatureRole)[keyof typeof SignatureRole];
+export type SignatureRole = (typeof SignatureRole)[keyof typeof SignatureRole];
 
 /** Entity families that participate in delta sync. */
 export const SyncEntity = {
@@ -212,8 +207,7 @@ export const ConflictResolution = {
   KEEP_SERVER: 'KEEP_SERVER',
   MERGE: 'MERGE',
 } as const;
-export type ConflictResolution =
-  (typeof ConflictResolution)[keyof typeof ConflictResolution];
+export type ConflictResolution = (typeof ConflictResolution)[keyof typeof ConflictResolution];
 
 export const NotificationChannel = {
   PUSH: 'PUSH',
@@ -221,8 +215,7 @@ export const NotificationChannel = {
   EMAIL: 'EMAIL',
   IN_APP: 'IN_APP',
 } as const;
-export type NotificationChannel =
-  (typeof NotificationChannel)[keyof typeof NotificationChannel];
+export type NotificationChannel = (typeof NotificationChannel)[keyof typeof NotificationChannel];
 
 export const NotificationTopic = {
   INSPECTION_ASSIGNED: 'INSPECTION_ASSIGNED',
@@ -235,8 +228,7 @@ export const NotificationTopic = {
   UPLOAD_FAILED: 'UPLOAD_FAILED',
   REPORT_READY: 'REPORT_READY',
 } as const;
-export type NotificationTopic =
-  (typeof NotificationTopic)[keyof typeof NotificationTopic];
+export type NotificationTopic = (typeof NotificationTopic)[keyof typeof NotificationTopic];
 
 export const OtpPurpose = {
   EMAIL_VERIFICATION: 'EMAIL_VERIFICATION',

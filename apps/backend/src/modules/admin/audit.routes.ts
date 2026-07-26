@@ -5,17 +5,24 @@
  * edit or delete one. A log an administrator can rewrite is not an audit trail.
  */
 
-import { Router } from 'express';
-import { Prisma } from '@prisma/client';
-import { z } from 'zod';
 import { AppError, ErrorCode, Permission } from '@orbit/shared';
 import { ulid } from '@orbit/utils';
+import { Prisma } from '@prisma/client';
+import { Router } from 'express';
+import { z } from 'zod';
+
 import { prisma } from '../../db/prisma.js';
+import {
+  csvArray,
+  dateRange,
+  paginate,
+  paginationArgs,
+  paginationSchema,
+} from '../../lib/pagination.js';
 import { requireAuth, requirePermission } from '../../middleware/auth.js';
 import { auth, clientIp } from '../../middleware/context.js';
 import { asyncHandler } from '../../middleware/error.js';
 import { schemas, validate } from '../../middleware/validate.js';
-import { csvArray, dateRange, paginate, paginationArgs, paginationSchema } from '../../lib/pagination.js';
 
 const router: Router = Router();
 
@@ -36,8 +43,14 @@ router.get(
   asyncHandler(async (req, res) => {
     const subject = auth(req);
     const q = req.validated!.query as {
-      page: number; pageSize: number; action?: string[]; entity?: string;
-      entityId?: string; userId?: string; from?: string; to?: string;
+      page: number;
+      pageSize: number;
+      action?: string[];
+      entity?: string;
+      entityId?: string;
+      userId?: string;
+      from?: string;
+      to?: string;
     };
 
     const where: Prisma.AuditLogWhereInput = {
@@ -85,8 +98,13 @@ router.get(
   asyncHandler(async (req, res) => {
     const subject = auth(req);
     const q = req.validated!.query as {
-      page: number; pageSize: number; deviceId?: string; userId?: string;
-      outcome?: string; from?: string; to?: string;
+      page: number;
+      pageSize: number;
+      deviceId?: string;
+      userId?: string;
+      outcome?: string;
+      from?: string;
+      to?: string;
     };
 
     const where: Prisma.SyncSessionWhereInput = {
@@ -130,8 +148,13 @@ router.get(
     const devices = await prisma.device.findMany({
       where: { orgId: subject.orgId, deletedAt: null, revokedAt: null },
       select: {
-        id: true, name: true, platform: true, appVersion: true,
-        lastSyncAt: true, lastSeenAt: true, lastSyncCursor: true,
+        id: true,
+        name: true,
+        platform: true,
+        appVersion: true,
+        lastSyncAt: true,
+        lastSeenAt: true,
+        lastSyncCursor: true,
         user: { select: { id: true, firstName: true, lastName: true } },
       },
       orderBy: { lastSyncAt: 'desc' },
@@ -141,7 +164,11 @@ router.get(
     const [unresolvedConflicts, pendingUploads] = await Promise.all([
       prisma.syncConflictRecord.count({ where: { orgId: subject.orgId, resolvedAt: null } }),
       prisma.attachment.count({
-        where: { orgId: subject.orgId, deletedAt: null, state: { in: ['QUEUED', 'UPLOADING', 'FAILED'] } },
+        where: {
+          orgId: subject.orgId,
+          deletedAt: null,
+          state: { in: ['QUEUED', 'UPLOADING', 'FAILED'] },
+        },
       }),
     ]);
 
@@ -187,10 +214,20 @@ router.get(
     const org = await prisma.organization.findUniqueOrThrow({
       where: { id: subject.orgId },
       select: {
-        id: true, name: true, slug: true, logoUrl: true, timezone: true,
-        locale: true, currency: true, settings: true, numberPrefix: true,
-        isActive: true, createdAt: true,
-        _count: { select: { users: true, projects: true, sites: true, inspections: true, devices: true } },
+        id: true,
+        name: true,
+        slug: true,
+        logoUrl: true,
+        timezone: true,
+        locale: true,
+        currency: true,
+        settings: true,
+        numberPrefix: true,
+        isActive: true,
+        createdAt: true,
+        _count: {
+          select: { users: true, projects: true, sites: true, inspections: true, devices: true },
+        },
       },
     });
 
@@ -209,7 +246,12 @@ router.patch(
       timezone: z.string().max(64).optional(),
       locale: z.string().max(16).optional(),
       currency: z.string().length(3).optional(),
-      numberPrefix: z.string().min(1).max(8).regex(/^[A-Z0-9-]+$/).optional(),
+      numberPrefix: z
+        .string()
+        .min(1)
+        .max(8)
+        .regex(/^[A-Z0-9-]+$/)
+        .optional(),
       settings: z
         .object({
           requireGpsOnSubmit: z.boolean().optional(),
@@ -222,7 +264,11 @@ router.patch(
           wifiOnlyMediaSync: z.boolean().optional(),
           photoCompressionQuality: z.number().min(0.1).max(1).optional(),
           photoWatermarkEnabled: z.boolean().optional(),
-          brandColor: z.string().regex(/^#[0-9A-Fa-f]{6}$/).nullable().optional(),
+          brandColor: z
+            .string()
+            .regex(/^#[0-9A-Fa-f]{6}$/)
+            .nullable()
+            .optional(),
           reportFooterText: z.string().max(500).nullable().optional(),
           passwordPolicy: z
             .object({
@@ -257,8 +303,10 @@ router.patch(
           ...(typeof (body.settings as Record<string, unknown>).passwordPolicy === 'object'
             ? {
                 passwordPolicy: {
-                  ...(((current.settings ?? {}) as Record<string, Record<string, unknown>>).passwordPolicy ?? {}),
-                  ...((body.settings as Record<string, Record<string, unknown>>).passwordPolicy ?? {}),
+                  ...(((current.settings ?? {}) as Record<string, Record<string, unknown>>)
+                    .passwordPolicy ?? {}),
+                  ...((body.settings as Record<string, Record<string, unknown>>).passwordPolicy ??
+                    {}),
                 },
               }
             : {}),
@@ -314,7 +362,11 @@ router.get(
 
     const where: Prisma.SyncConflictRecordWhereInput = {
       orgId: subject.orgId,
-      ...(q.resolved === undefined ? {} : q.resolved ? { resolvedAt: { not: null } } : { resolvedAt: null }),
+      ...(q.resolved === undefined
+        ? {}
+        : q.resolved
+          ? { resolvedAt: { not: null } }
+          : { resolvedAt: null }),
     };
 
     const [items, total] = await Promise.all([

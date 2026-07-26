@@ -6,29 +6,26 @@
  * without improving anything.
  */
 
+import { InspectionOutcome, InspectionStatus, type Priority } from '@orbit/types';
 import React from 'react';
 import {
   ActivityIndicator,
   Pressable,
+  type StyleProp,
   StyleSheet,
   Text,
   TextInput,
-  View,
-  type StyleProp,
   type TextInputProps,
   type TextProps,
   type TextStyle,
+  View,
   type ViewStyle,
 } from 'react-native';
-import {
-  InspectionOutcome,
-  InspectionStatus,
-  type Priority,
-} from '@orbit/types';
+
 import { useTheme } from '../../theme/ThemeProvider';
 
-export { Button } from './Button';
 export type { ButtonProps, ButtonVariant } from './Button';
+export { Button } from './Button';
 
 // ---------------------------------------------------------------------------
 // Card
@@ -168,7 +165,11 @@ export function outcomePresentation(outcome: InspectionOutcome): {
   }
 }
 
-export function priorityPresentation(priority: Priority): { label: string; tone: BadgeTone; icon: string } {
+export function priorityPresentation(priority: Priority): {
+  label: string;
+  tone: BadgeTone;
+  icon: string;
+} {
   switch (priority) {
     case 'CRITICAL':
       return { label: 'Critical', tone: 'danger', icon: '▲' };
@@ -203,7 +204,12 @@ export function Txt({
   numberOfLines?: number;
 } & Pick<
   TextProps,
-  'accessibilityLabel' | 'accessibilityRole' | 'accessibilityHint' | 'selectable' | 'testID' | 'onPress'
+  | 'accessibilityLabel'
+  | 'accessibilityRole'
+  | 'accessibilityHint'
+  | 'selectable'
+  | 'testID'
+  | 'onPress'
 >): React.ReactElement {
   const theme = useTheme();
   const colorMap = {
@@ -258,7 +264,10 @@ export function Field({
             {label}
           </Txt>
           {required ? (
-            <Text style={{ color: theme.colors.danger, fontSize: 14 }} accessibilityLabel="required">
+            <Text
+              style={{ color: theme.colors.danger, fontSize: 14 }}
+              accessibilityLabel="required"
+            >
               *
             </Text>
           ) : null}
@@ -441,7 +450,9 @@ export function ProgressBar({
 
 export function Divider(): React.ReactElement {
   const theme = useTheme();
-  return <View style={{ height: StyleSheet.hairlineWidth, backgroundColor: theme.colors.border }} />;
+  return (
+    <View style={{ height: StyleSheet.hairlineWidth, backgroundColor: theme.colors.border }} />
+  );
 }
 
 /** Label/value row used throughout detail screens. */

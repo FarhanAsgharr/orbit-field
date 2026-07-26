@@ -14,16 +14,17 @@
  *     "Their version" with the name of who changed it where known.
  */
 
-import React, { useCallback, useMemo, useState } from 'react';
-import { Pressable, ScrollView, View } from 'react-native';
-import { useLocalSearchParams, useRouter } from 'expo-router';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { ConflictResolution, type FieldDiff, type JsonValue } from '@orbit/types';
 import { formatRelativeTime } from '@orbit/utils';
+import { useLocalSearchParams, useRouter } from 'expo-router';
+import React, { useCallback, useMemo, useState } from 'react';
+import { Pressable, ScrollView, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+
 import { Badge, Button, Card, Divider, EmptyState, Txt } from '../../src/components/ui';
-import { useTheme } from '../../src/theme/ThemeProvider';
+import { invalidateQueries, useLiveQuery } from '../../src/hooks/useLiveQuery';
 import { useRuntime } from '../../src/stores/session.store';
-import { useLiveQuery, invalidateQueries } from '../../src/hooks/useLiveQuery';
+import { useTheme } from '../../src/theme/ThemeProvider';
 
 type Side = 'LOCAL' | 'SERVER';
 
@@ -73,10 +74,9 @@ export default function ConflictScreen(): React.ReactElement {
 
   const conflict = useLiveQuery(
     () =>
-      runtime.db.getFirst<ConflictRow>(
-        `SELECT * FROM conflicts WHERE operation_id = ?`,
-        [operationId ?? ''],
-      ),
+      runtime.db.getFirst<ConflictRow>(`SELECT * FROM conflicts WHERE operation_id = ?`, [
+        operationId ?? '',
+      ]),
     [operationId],
   );
 
@@ -108,7 +108,7 @@ export default function ConflictScreen(): React.ReactElement {
       setError(null);
 
       try {
-        const local = JSON.parse(conflict.local_record) as Record<string, JsonValue>;
+        const _local = JSON.parse(conflict.local_record) as Record<string, JsonValue>;
         const server = JSON.parse(conflict.server_record) as Record<string, JsonValue>;
 
         const merged: Record<string, JsonValue> = { ...server };
@@ -138,8 +138,15 @@ export default function ConflictScreen(): React.ReactElement {
             conflict.server_version,
           );
 
-          for (const table of ['inspections', 'inspection_responses', 'attachments', 'signatures']) {
-            runtime.db.run(`UPDATE ${table} SET has_conflict = 0 WHERE id = ?`, [conflict.entity_id]);
+          for (const table of [
+            'inspections',
+            'inspection_responses',
+            'attachments',
+            'signatures',
+          ]) {
+            runtime.db.run(`UPDATE ${table} SET has_conflict = 0 WHERE id = ?`, [
+              conflict.entity_id,
+            ]);
           }
         });
 
@@ -286,11 +293,23 @@ export default function ConflictScreen(): React.ReactElement {
               <View key={diff.path}>
                 {index > 0 ? <Divider /> : null}
                 <View style={{ padding: theme.spacing.lg, gap: theme.spacing.xs }}>
-                  <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <View
+                    style={{
+                      flexDirection: 'row',
+                      justifyContent: 'space-between',
+                      alignItems: 'center',
+                    }}
+                  >
                     <Txt variant="captionStrong">{diff.label}</Txt>
                     <Badge
-                      label={diff.autoResolution === ConflictResolution.KEEP_LOCAL ? 'Yours kept' : 'Theirs kept'}
-                      tone={diff.autoResolution === ConflictResolution.KEEP_LOCAL ? 'accent' : 'info'}
+                      label={
+                        diff.autoResolution === ConflictResolution.KEEP_LOCAL
+                          ? 'Yours kept'
+                          : 'Theirs kept'
+                      }
+                      tone={
+                        diff.autoResolution === ConflictResolution.KEEP_LOCAL ? 'accent' : 'info'
+                      }
                     />
                   </View>
                   <Txt variant="caption" color="secondary">
@@ -392,7 +411,12 @@ function ChoiceOption({
         >
           {selected ? (
             <View
-              style={{ width: 10, height: 10, borderRadius: 5, backgroundColor: theme.colors.accent }}
+              style={{
+                width: 10,
+                height: 10,
+                borderRadius: 5,
+                backgroundColor: theme.colors.accent,
+              }}
             />
           ) : null}
         </View>

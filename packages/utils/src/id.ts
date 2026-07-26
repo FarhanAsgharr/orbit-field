@@ -137,11 +137,7 @@ export function uuidv4(): string {
  * The sequence is allocated server-side; offline records display their ULID
  * suffix until they sync and receive the real number.
  */
-export function formatInspectionNumber(
-  prefix: string,
-  year: number,
-  sequence: number,
-): string {
+export function formatInspectionNumber(prefix: string, year: number, sequence: number): string {
   return `${prefix}-${year}-${String(sequence).padStart(6, '0')}`;
 }
 

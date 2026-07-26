@@ -7,16 +7,17 @@
  * rather than asking a bland "are you sure?".
  */
 
-import React, { useCallback, useState } from 'react';
-import { Alert, RefreshControl, ScrollView, View } from 'react-native';
-import { useRouter } from 'expo-router';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { AppError } from '@orbit/shared';
 import { formatRelativeTime } from '@orbit/utils';
+import { useRouter } from 'expo-router';
+import React, { useCallback, useState } from 'react';
+import { Alert, RefreshControl, ScrollView, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+
 import { Badge, Button, Card, EmptyState, LoadingState, Txt } from '../../src/components/ui';
-import { useTheme } from '../../src/theme/ThemeProvider';
-import { useRuntime } from '../../src/stores/session.store';
 import { getNetworkState } from '../../src/lib/network';
+import { useRuntime } from '../../src/stores/session.store';
+import { useTheme } from '../../src/theme/ThemeProvider';
 
 interface DeviceRecord {
   id: string;
@@ -107,11 +108,20 @@ export default function DevicesScreen(): React.ReactElement {
         gap: theme.spacing.lg,
       }}
       refreshControl={
-        <RefreshControl refreshing={loading} onRefresh={() => void load()} tintColor={theme.colors.accent} />
+        <RefreshControl
+          refreshing={loading}
+          onRefresh={() => void load()}
+          tintColor={theme.colors.accent}
+        />
       }
     >
       <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-        <Txt variant="caption" color="accent" onPress={() => router.back()} accessibilityRole="button">
+        <Txt
+          variant="caption"
+          color="accent"
+          onPress={() => router.back()}
+          accessibilityRole="button"
+        >
           ‹ Back
         </Txt>
       </View>
@@ -136,7 +146,11 @@ export default function DevicesScreen(): React.ReactElement {
 
       {devices?.length === 0 ? (
         <Card>
-          <EmptyState icon="▢" title="No devices" message="No devices are registered to your account." />
+          <EmptyState
+            icon="▢"
+            title="No devices"
+            message="No devices are registered to your account."
+          />
         </Card>
       ) : null}
 
@@ -145,7 +159,9 @@ export default function DevicesScreen(): React.ReactElement {
         return (
           <Card key={device.id}>
             <View style={{ gap: theme.spacing.md }}>
-              <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: theme.spacing.md }}>
+              <View
+                style={{ flexDirection: 'row', alignItems: 'flex-start', gap: theme.spacing.md }}
+              >
                 <View style={{ flex: 1, gap: 2 }}>
                   <Txt variant="subheading" numberOfLines={1}>
                     {device.name}
@@ -167,8 +183,7 @@ export default function DevicesScreen(): React.ReactElement {
                   {device.lastSeenAt ? formatRelativeTime(device.lastSeenAt) : 'unknown'}
                 </Txt>
                 <Txt variant="micro" color="muted">
-                  Last synced{' '}
-                  {device.lastSyncAt ? formatRelativeTime(device.lastSyncAt) : 'never'}
+                  Last synced {device.lastSyncAt ? formatRelativeTime(device.lastSyncAt) : 'never'}
                 </Txt>
               </View>
 

@@ -6,20 +6,16 @@
  * than assumed away.
  */
 
-import {
-  AppError,
-  ErrorCode,
-  ROLE_PERMISSIONS,
-  effectivePermissions,
-} from '@orbit/shared';
-import { ulid } from '@orbit/utils';
+import { AppError, effectivePermissions, ErrorCode, ROLE_PERMISSIONS } from '@orbit/shared';
 import type { AuthSession, DeviceInfo, Role } from '@orbit/types';
+import { ulid } from '@orbit/utils';
+
 import { env } from '../../config/env.js';
 import { logger } from '../../config/logger.js';
 import { prisma } from '../../db/prisma.js';
 import {
-  DEFAULT_PASSWORD_POLICY,
   checkPasswordStrength,
+  DEFAULT_PASSWORD_POLICY,
   dummyVerify,
   generateOtp,
   hashPassword,
@@ -55,7 +51,10 @@ async function upsertDevice(
 
   if (existing) {
     if (existing.revokedAt) {
-      throw new AppError(ErrorCode.DEVICE_REVOKED, 'This device has been revoked. Contact your administrator.');
+      throw new AppError(
+        ErrorCode.DEVICE_REVOKED,
+        'This device has been revoked. Contact your administrator.',
+      );
     }
     await prisma.device.update({
       where: { id: existing.id },
@@ -76,7 +75,10 @@ async function upsertDevice(
     where: { id: orgId },
     select: { settings: true },
   });
-  const settings = (org.settings ?? {}) as { maxDevicesPerUser?: number; deviceBindingEnabled?: boolean };
+  const settings = (org.settings ?? {}) as {
+    maxDevicesPerUser?: number;
+    deviceBindingEnabled?: boolean;
+  };
   const maxDevices = settings.maxDevicesPerUser ?? 5;
 
   const activeCount = await prisma.device.count({
@@ -263,11 +265,18 @@ export async function login(input: {
   }
 
   // Password expiry, when the org enables it.
-  const policy = { ...DEFAULT_PASSWORD_POLICY, ...((user.organization.settings as { passwordPolicy?: typeof DEFAULT_PASSWORD_POLICY })?.passwordPolicy ?? {}) };
+  const policy = {
+    ...DEFAULT_PASSWORD_POLICY,
+    ...((user.organization.settings as { passwordPolicy?: typeof DEFAULT_PASSWORD_POLICY })
+      ?.passwordPolicy ?? {}),
+  };
   if (policy.maxAgeDays > 0 && user.passwordChangedAt) {
     const ageDays = (Date.now() - user.passwordChangedAt.getTime()) / 86_400_000;
     if (ageDays > policy.maxAgeDays) {
-      throw new AppError(ErrorCode.PASSWORD_EXPIRED, 'Your password has expired and must be changed.');
+      throw new AppError(
+        ErrorCode.PASSWORD_EXPIRED,
+        'Your password has expired and must be changed.',
+      );
     }
   }
 
@@ -347,14 +356,22 @@ export async function refresh(input: {
       expiresIn: env.ACCESS_TOKEN_TTL_SECONDS,
       tokenType: 'Bearer',
     },
-    user: { ...safeUser, projectIds: user.projectMemberships.map((m) => m.projectId) } as unknown as AuthSession['user'],
+    user: {
+      ...safeUser,
+      projectIds: user.projectMemberships.map((m) => m.projectId),
+    } as unknown as AuthSession['user'],
     organization: user.organization as unknown as AuthSession['organization'],
     device: { id: (input.deviceId ?? '') as never, enrolled: input.deviceId !== null },
     permissions,
   };
 }
 
-export async function logout(input: { userId: string; sessionId: string; meta: RequestMeta; orgId: string }): Promise<void> {
+export async function logout(input: {
+  userId: string;
+  sessionId: string;
+  meta: RequestMeta;
+  orgId: string;
+}): Promise<void> {
   await revokeTokenFamily(input.sessionId, 'user logged out');
   await audit('AUTH_LOGOUT', { orgId: input.orgId, userId: input.userId, meta: input.meta });
 }
@@ -408,7 +425,8 @@ export async function verifyOtp(input: {
     orderBy: { createdAt: 'desc' },
   });
 
-  if (!record) throw new AppError(ErrorCode.AUTH_OTP_INVALID, 'The code is invalid or has expired.');
+  if (!record)
+    throw new AppError(ErrorCode.AUTH_OTP_INVALID, 'The code is invalid or has expired.');
 
   if (record.expiresAt.getTime() < Date.now()) {
     throw new AppError(ErrorCode.AUTH_OTP_EXPIRED, 'The code has expired. Request a new one.');
@@ -447,7 +465,8 @@ export async function resetPassword(input: {
 
   const policy = {
     ...DEFAULT_PASSWORD_POLICY,
-    ...((user.organization.settings as { passwordPolicy?: typeof DEFAULT_PASSWORD_POLICY })?.passwordPolicy ?? {}),
+    ...((user.organization.settings as { passwordPolicy?: typeof DEFAULT_PASSWORD_POLICY })
+      ?.passwordPolicy ?? {}),
   };
 
   const strength = checkPasswordStrength(input.newPassword, policy, {
@@ -474,7 +493,9 @@ export async function resetPassword(input: {
     data: {
       passwordHash: hash,
       passwordChangedAt: new Date(),
-      passwordHistory: [user.passwordHash, ...history].filter(Boolean).slice(0, policy.historyDepth) as never,
+      passwordHistory: [user.passwordHash, ...history]
+        .filter(Boolean)
+        .slice(0, policy.historyDepth) as never,
       failedLoginAttempts: 0,
       lockedUntil: null,
     },
@@ -504,7 +525,8 @@ export async function changePassword(input: {
 
   const policy = {
     ...DEFAULT_PASSWORD_POLICY,
-    ...((user.organization.settings as { passwordPolicy?: typeof DEFAULT_PASSWORD_POLICY })?.passwordPolicy ?? {}),
+    ...((user.organization.settings as { passwordPolicy?: typeof DEFAULT_PASSWORD_POLICY })
+      ?.passwordPolicy ?? {}),
   };
 
   const strength = checkPasswordStrength(input.newPassword, policy, {
@@ -530,7 +552,9 @@ export async function changePassword(input: {
     data: {
       passwordHash: await hashPassword(input.newPassword),
       passwordChangedAt: new Date(),
-      passwordHistory: [user.passwordHash, ...history].filter(Boolean).slice(0, policy.historyDepth) as never,
+      passwordHistory: [user.passwordHash, ...history]
+        .filter(Boolean)
+        .slice(0, policy.historyDepth) as never,
     },
   });
 

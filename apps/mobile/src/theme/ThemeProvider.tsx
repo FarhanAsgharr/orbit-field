@@ -8,6 +8,8 @@
 
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
 import { useColorScheme, useWindowDimensions } from 'react-native';
+
+import { storage } from '../lib/storage';
 import {
   breakpoints,
   darkColors,
@@ -16,11 +18,10 @@ import {
   motion,
   radius,
   spacing,
+  type ThemeColors,
   touchTarget,
   typography,
-  type ThemeColors,
 } from './tokens';
-import { storage } from '../lib/storage';
 
 export type ThemePreference = 'system' | 'light' | 'dark';
 
@@ -95,7 +96,10 @@ export function useTheme(): Theme {
   return ctx.theme;
 }
 
-export function useThemePreference(): { preference: ThemePreference; setPreference: (p: ThemePreference) => void } {
+export function useThemePreference(): {
+  preference: ThemePreference;
+  setPreference: (p: ThemePreference) => void;
+} {
   const ctx = useContext(ThemeContext);
   if (!ctx) throw new Error('useThemePreference must be used inside a ThemeProvider');
   return { preference: ctx.preference, setPreference: ctx.setPreference };

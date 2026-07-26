@@ -11,10 +11,11 @@
  */
 
 import React, { useCallback, useState } from 'react';
-import { Pressable, View, type TextInputProps } from 'react-native';
+import { Pressable, type TextInputProps, View } from 'react-native';
 import Svg, { Circle, Path } from 'react-native-svg';
-import { Field, Txt } from './index';
+
 import { useTheme } from '../../theme/ThemeProvider';
+import { Field } from './index';
 
 function EyeIcon({ open, color }: { open: boolean; color: string }): React.ReactElement {
   return open ? (

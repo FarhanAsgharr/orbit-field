@@ -8,16 +8,17 @@
  * unexpired access token is still in flight.
  */
 
+import { AppError, can, ErrorCode, Permission } from '@orbit/shared';
+import { ulid } from '@orbit/utils';
 import { Router } from 'express';
 import { z } from 'zod';
-import { AppError, ErrorCode, Permission, can } from '@orbit/shared';
-import { ulid } from '@orbit/utils';
+
 import { prisma } from '../../db/prisma.js';
-import { requireAuth, requirePermission } from '../../middleware/auth.js';
+import { revokeDeviceTokens } from '../../lib/tokens.js';
+import { requireAuth } from '../../middleware/auth.js';
 import { auth, clientIp } from '../../middleware/context.js';
 import { asyncHandler } from '../../middleware/error.js';
 import { schemas, validate } from '../../middleware/validate.js';
-import { revokeDeviceTokens } from '../../lib/tokens.js';
 import { notifyDeviceRevoked } from '../notifications/push.service.js';
 
 const router: Router = Router();
@@ -143,7 +144,10 @@ router.delete(
 
     const isOwn = device.userId === subject.userId;
     if (!isOwn && !can(subject, Permission.DEVICE_REVOKE)) {
-      throw new AppError(ErrorCode.PERMISSION_DENIED, 'You do not have permission to revoke this device.');
+      throw new AppError(
+        ErrorCode.PERMISSION_DENIED,
+        'You do not have permission to revoke this device.',
+      );
     }
     if (device.revokedAt) {
       throw new AppError(ErrorCode.CONFLICT, 'That device is already revoked.');
@@ -168,7 +172,11 @@ router.delete(
           action: 'DEVICE_REVOKED',
           entity: 'Device',
           entityId: deviceId,
-          metadata: { deviceName: device.name, targetUserId: device.userId, reason: reason ?? null },
+          metadata: {
+            deviceName: device.name,
+            targetUserId: device.userId,
+            reason: reason ?? null,
+          },
           ipAddress: clientIp(req),
           requestId: req.requestId,
         },
@@ -218,7 +226,8 @@ router.post(
       select: { id: true, revokedAt: true },
     });
     if (!device) throw new AppError(ErrorCode.NOT_FOUND, 'That device was not found.');
-    if (device.revokedAt) throw new AppError(ErrorCode.DEVICE_REVOKED, 'This device has been revoked.');
+    if (device.revokedAt)
+      throw new AppError(ErrorCode.DEVICE_REVOKED, 'This device has been revoked.');
 
     await prisma.$transaction(async (tx) => {
       await tx.device.updateMany({
@@ -254,7 +263,15 @@ router.get(
       where: { deviceId, revokedAt: null, expiresAt: { gt: new Date() } },
       // Never return the token hash — it is not secret-equivalent, but there is
       // no reason for a client to ever see it.
-      select: { id: true, familyId: true, createdAt: true, expiresAt: true, usedAt: true, ipAddress: true, userAgent: true },
+      select: {
+        id: true,
+        familyId: true,
+        createdAt: true,
+        expiresAt: true,
+        usedAt: true,
+        ipAddress: true,
+        userAgent: true,
+      },
       orderBy: { createdAt: 'desc' },
       take: 50,
     });

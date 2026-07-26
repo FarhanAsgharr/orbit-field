@@ -14,9 +14,9 @@
  *    inspection's location can be spoofed, the whole evidentiary value collapses.
  */
 
-import * as Location from 'expo-location';
 import type { GeoPoint } from '@orbit/types';
 import { bestFix, distanceMeters, gradeAccuracy } from '@orbit/utils';
+import * as Location from 'expo-location';
 
 export interface CaptureOptions {
   /** How long to keep sampling for a better fix, in ms. */
@@ -78,7 +78,9 @@ export async function isLocationEnabled(): Promise<boolean> {
  * Returns as soon as `targetAccuracyMeters` is met, so a good fix is fast and
  * only a poor environment costs the full window.
  */
-export async function captureLocation(options: CaptureOptions = {}): Promise<LocationCaptureResult> {
+export async function captureLocation(
+  options: CaptureOptions = {},
+): Promise<LocationCaptureResult> {
   const timeoutMs = options.timeoutMs ?? 8_000;
   const target = options.targetAccuracyMeters ?? 10;
 
@@ -170,12 +172,14 @@ export async function captureLocation(options: CaptureOptions = {}): Promise<Loc
           finish();
         }
       },
-    ).then((sub) => {
-      subscription = sub;
-      if (settled) sub.remove();
-    }).catch(() => {
-      finish();
-    });
+    )
+      .then((sub) => {
+        subscription = sub;
+        if (settled) sub.remove();
+      })
+      .catch(() => {
+        finish();
+      });
   });
 }
 
@@ -219,4 +223,4 @@ export function checkGeofence(
   return { inside: distance <= allowance, distanceMeters: distance, radius };
 }
 
-export { gradeAccuracy, distanceMeters };
+export { distanceMeters, gradeAccuracy };

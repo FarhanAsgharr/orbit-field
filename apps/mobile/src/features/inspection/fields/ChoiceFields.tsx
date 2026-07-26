@@ -8,9 +8,10 @@
  * colour-blind users.
  */
 
+import type { FieldOption, JsonValue, TemplateField } from '@orbit/types';
 import React, { useMemo, useState } from 'react';
 import { Modal, Pressable, ScrollView, View } from 'react-native';
-import type { FieldOption, JsonValue, TemplateField } from '@orbit/types';
+
 import { Badge, Button, Txt } from '../../../components/ui';
 import { useTheme } from '../../../theme/ThemeProvider';
 
@@ -89,10 +90,7 @@ export function SegmentedChoice({
             }}
           >
             {/* Glyph, not just colour — the state must survive greyscale. */}
-            <Txt
-              variant="bodyStrong"
-              style={{ color: selected ? accent : theme.colors.textMuted }}
-            >
+            <Txt variant="bodyStrong" style={{ color: selected ? accent : theme.colors.textMuted }}>
               {selected ? '●' : '○'}
             </Txt>
             <Txt
@@ -140,7 +138,11 @@ export function MultiSelectChoice({
         const isSelected = selected.includes(option.value);
         const tone = optionTone(option);
         const accent =
-          tone === 'danger' ? theme.colors.danger : tone === 'success' ? theme.colors.success : theme.colors.accent;
+          tone === 'danger'
+            ? theme.colors.danger
+            : tone === 'success'
+              ? theme.colors.success
+              : theme.colors.accent;
 
         return (
           <Pressable
@@ -266,7 +268,9 @@ export function DropdownChoice({
               <Txt variant="heading">{field.label}</Txt>
             </View>
 
-            <ScrollView contentContainerStyle={{ paddingHorizontal: theme.spacing.lg, gap: theme.spacing.sm }}>
+            <ScrollView
+              contentContainerStyle={{ paddingHorizontal: theme.spacing.lg, gap: theme.spacing.sm }}
+            >
               {field.options.map((option) => {
                 const isSelected = option.value === value;
                 const tone = optionTone(option);
@@ -284,7 +288,9 @@ export function DropdownChoice({
                       paddingHorizontal: theme.spacing.lg,
                       paddingVertical: theme.spacing.md,
                       borderRadius: theme.radius.md,
-                      backgroundColor: isSelected ? theme.colors.accentMuted : theme.colors.surfaceRaised,
+                      backgroundColor: isSelected
+                        ? theme.colors.accentMuted
+                        : theme.colors.surfaceRaised,
                       flexDirection: 'row',
                       alignItems: 'center',
                       gap: theme.spacing.md,
@@ -326,7 +332,9 @@ export function CheckboxField({
 
   // A field with options behaves as a choice list; only a bare checkbox is boolean.
   if (field.options.length > 0) {
-    return <MultiSelectChoice field={field} value={value} disabled={disabled} onChange={onChange} />;
+    return (
+      <MultiSelectChoice field={field} value={value} disabled={disabled} onChange={onChange} />
+    );
   }
 
   const checked = value === true;
@@ -418,7 +426,15 @@ export function RatingField({
                 variant="bodyStrong"
                 style={{ color: active ? theme.colors.accent : theme.colors.textMuted }}
               >
-                {icon === 'NUMBER' ? String(step) : icon === 'CIRCLE' ? (active ? '●' : '○') : active ? '★' : '☆'}
+                {icon === 'NUMBER'
+                  ? String(step)
+                  : icon === 'CIRCLE'
+                    ? active
+                      ? '●'
+                      : '○'
+                    : active
+                      ? '★'
+                      : '☆'}
               </Txt>
             </Pressable>
           );

@@ -6,18 +6,23 @@
  * sees everything here when they open the app.
  */
 
+import { AppError, ErrorCode, Permission } from '@orbit/shared';
+import { NotificationTopic } from '@orbit/types';
 import { Router } from 'express';
 import { z } from 'zod';
-import { NotificationTopic } from '@orbit/types';
-import { AppError, ErrorCode, Permission } from '@orbit/shared';
+
 import { prisma } from '../../db/prisma.js';
+import { paginate, paginationArgs, paginationSchema } from '../../lib/pagination.js';
 import { requireAuth, requirePermission } from '../../middleware/auth.js';
 import { auth } from '../../middleware/context.js';
 import { asyncHandler } from '../../middleware/error.js';
 import { schemas, validate } from '../../middleware/validate.js';
-import { paginate, paginationArgs, paginationSchema } from '../../lib/pagination.js';
 import {
-  DEFAULT_PREFERENCES, loadPreferences, notifyUsers, savePreferences, sweepDueInspections,
+  DEFAULT_PREFERENCES,
+  loadPreferences,
+  notifyUsers,
+  savePreferences,
+  sweepDueInspections,
 } from './push.service.js';
 
 const router: Router = Router();
@@ -34,7 +39,12 @@ router.get(
   }),
   asyncHandler(async (req, res) => {
     const subject = auth(req);
-    const q = req.validated!.query as { page: number; pageSize: number; unreadOnly: boolean; topic?: string };
+    const q = req.validated!.query as {
+      page: number;
+      pageSize: number;
+      unreadOnly: boolean;
+      topic?: string;
+    };
 
     const where = {
       userId: subject.userId,
@@ -132,7 +142,8 @@ const TOPIC_LABEL: Record<string, string> = {
 
 const TOPIC_DESCRIPTION: Record<string, string> = {
   [NotificationTopic.SYNC_CONFLICT]: 'Always on — your work stays queued until you choose.',
-  [NotificationTopic.SYNC_COMPLETED]: 'Off by default for most people; useful while troubleshooting.',
+  [NotificationTopic.SYNC_COMPLETED]:
+    'Off by default for most people; useful while troubleshooting.',
 };
 
 router.patch(
@@ -195,7 +206,10 @@ router.post(
   asyncHandler(async (req, res) => {
     const subject = auth(req);
     const input = req.validated!.body as {
-      title: string; body: string; role?: string; userIds?: string[];
+      title: string;
+      body: string;
+      role?: string;
+      userIds?: string[];
     };
 
     const recipients = input.userIds?.length
@@ -239,4 +253,4 @@ router.post(
   }),
 );
 
-export { router as notificationsRouter, DEFAULT_PREFERENCES };
+export { DEFAULT_PREFERENCES, router as notificationsRouter };

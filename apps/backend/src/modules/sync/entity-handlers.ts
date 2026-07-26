@@ -8,16 +8,17 @@
  * handler, not touching the engine.
  */
 
+import { can, canEditInspection, Permission } from '@orbit/shared';
 import {
   EDITABLE_INSPECTION_STATUSES,
-  SyncEntity,
   type InspectionStatus,
   type JsonValue,
+  SyncEntity,
   type SyncOperationEnvelope,
 } from '@orbit/types';
-import { Permission, can, canEditInspection } from '@orbit/shared';
-import { ulid } from '@orbit/utils';
+import { toDisplayString, ulid } from '@orbit/utils';
 import { Prisma } from '@prisma/client';
+
 import type { DbClient } from '../../db/prisma.js';
 import type { SyncActor } from './sync.service.js';
 
@@ -68,9 +69,23 @@ export interface EntityHandler {
     current: SyncableRow | null,
   ): Promise<string | null>;
 
-  create(tx: DbClient, actor: SyncActor, op: SyncOperationEnvelope, meta: WriteMeta): Promise<SyncableRow>;
-  update(tx: DbClient, actor: SyncActor, op: SyncOperationEnvelope, meta: WriteMeta): Promise<SyncableRow>;
-  softDelete(tx: DbClient, id: string, ctx: { version: number; cursor: bigint; actor: SyncActor }): Promise<void>;
+  create(
+    tx: DbClient,
+    actor: SyncActor,
+    op: SyncOperationEnvelope,
+    meta: WriteMeta,
+  ): Promise<SyncableRow>;
+  update(
+    tx: DbClient,
+    actor: SyncActor,
+    op: SyncOperationEnvelope,
+    meta: WriteMeta,
+  ): Promise<SyncableRow>;
+  softDelete(
+    tx: DbClient,
+    id: string,
+    ctx: { version: number; cursor: bigint; actor: SyncActor },
+  ): Promise<void>;
 
   /** Row → wire snapshot. Strips internals the device has no use for. */
   serialize(row: SyncableRow): Record<string, JsonValue>;
@@ -81,7 +96,10 @@ export interface EntityHandler {
 }
 
 /** Whitelist of columns a device may write, per entity. */
-function pick(patch: Record<string, JsonValue>, allowed: readonly string[]): Record<string, unknown> {
+function pick(
+  patch: Record<string, JsonValue>,
+  allowed: readonly string[],
+): Record<string, unknown> {
   const out: Record<string, unknown> = {};
   for (const key of allowed) {
     if (key in patch) out[key] = patch[key];
@@ -90,7 +108,10 @@ function pick(patch: Record<string, JsonValue>, allowed: readonly string[]): Rec
 }
 
 /** Coerce ISO strings in date-bearing columns to Date objects for Prisma. */
-function coerceDates(data: Record<string, unknown>, dateFields: readonly string[]): Record<string, unknown> {
+function coerceDates(
+  data: Record<string, unknown>,
+  dateFields: readonly string[],
+): Record<string, unknown> {
   for (const key of dateFields) {
     const value = data[key];
     if (typeof value === 'string') {
@@ -100,6 +121,21 @@ function coerceDates(data: Record<string, unknown>, dateFields: readonly string[
   }
   return data;
 }
+
+/**
+ * Coerce a device-supplied patch value to text.
+ *
+ * `op.patch` is `JsonValue`, so every field on it may legitimately be an object
+ * or an array — the client controls that shape entirely. Passing one to
+ * `String()` yields the literal "[object Object]", which then gets written to
+ * the database as if it were a real identifier or title: a corrupt row that
+ * looks valid and is only noticed much later, by a human reading a report.
+ *
+ * Serialising instead keeps the bad value visible and debuggable. Schema
+ * validation upstream is what should reject it; this is the backstop for the
+ * case where it does not.
+ */
+const text = toDisplayString;
 
 function writerMeta(actor: SyncActor, meta: WriteMeta) {
   return {
@@ -137,14 +173,41 @@ function serializeRow(row: SyncableRow, omit: readonly string[] = []): Record<st
 // ---------------------------------------------------------------------------
 
 const INSPECTION_WRITABLE = [
-  'title', 'priority', 'category', 'department', 'notes', 'tags',
-  'siteId', 'clientId', 'projectId', 'assetId', 'assignedToId',
-  'status', 'startedAt', 'scheduledFor', 'dueAt', 'completedAt', 'submittedAt',
-  'startLocation', 'endLocation', 'distanceFromSiteMeters',
-  'score', 'outcome', 'totalFields', 'answeredFields', 'failedFields', 'criticalFailures',
+  'title',
+  'priority',
+  'category',
+  'department',
+  'notes',
+  'tags',
+  'siteId',
+  'clientId',
+  'projectId',
+  'assetId',
+  'assignedToId',
+  'status',
+  'startedAt',
+  'scheduledFor',
+  'dueAt',
+  'completedAt',
+  'submittedAt',
+  'startLocation',
+  'endLocation',
+  'distanceFromSiteMeters',
+  'score',
+  'outcome',
+  'totalFields',
+  'answeredFields',
+  'failedFields',
+  'criticalFailures',
 ] as const;
 
-const INSPECTION_DATES = ['startedAt', 'scheduledFor', 'dueAt', 'completedAt', 'submittedAt'] as const;
+const INSPECTION_DATES = [
+  'startedAt',
+  'scheduledFor',
+  'dueAt',
+  'completedAt',
+  'submittedAt',
+] as const;
 
 const inspectionHandler: EntityHandler = {
   async load(tx, orgId, id) {
@@ -199,7 +262,7 @@ const inspectionHandler: EntityHandler = {
         return 'An inspection must reference a template version.';
       }
       const templateVersion = await tx.templateVersion.findFirst({
-        where: { id: String(patch.templateVersionId), orgId: actor.orgId },
+        where: { id: text(patch.templateVersionId), orgId: actor.orgId },
         select: { id: true },
       });
       if (!templateVersion) return 'The referenced template version does not exist.';
@@ -215,8 +278,9 @@ const inspectionHandler: EntityHandler = {
       if (typeof value !== 'string') continue;
       // Cross-tenant reference check: a device must not be able to attach an
       // inspection to another organisation's site by guessing an id.
-      const exists = await (tx as never as Record<string, { findFirst: (a: unknown) => Promise<unknown> }>)[table]!
-        .findFirst({ where: { id: value, orgId: actor.orgId }, select: { id: true } });
+      const exists = await (
+        tx as never as Record<string, { findFirst: (a: unknown) => Promise<unknown> }>
+      )[table]!.findFirst({ where: { id: value, orgId: actor.orgId }, select: { id: true } });
       if (!exists) return `The referenced ${table} does not exist.`;
     }
 
@@ -236,7 +300,9 @@ const inspectionHandler: EntityHandler = {
 
     // The human-facing number is allocated server-side; until then the device
     // displays a provisional draft reference.
-    const org = await tx.$queryRaw<Array<{ number_sequence: number; number_prefix: string; number_year: number }>>`
+    const org = await tx.$queryRaw<
+      Array<{ number_sequence: number; number_prefix: string; number_year: number }>
+    >`
       UPDATE organizations
          SET "numberSequence" = CASE WHEN "numberYear" = EXTRACT(YEAR FROM NOW())::int
                                      THEN "numberSequence" + 1 ELSE 1 END,
@@ -253,9 +319,9 @@ const inspectionHandler: EntityHandler = {
         id: op.entityId,
         orgId: actor.orgId,
         number,
-        templateId: String(op.patch.templateId),
-        templateVersionId: String(op.patch.templateVersionId),
-        title: String(op.patch.title ?? 'Untitled inspection'),
+        templateId: text(op.patch.templateId),
+        templateVersionId: text(op.patch.templateVersionId),
+        title: text(op.patch.title ?? 'Untitled inspection'),
         createdById: actor.userId,
         ...writerMeta(actor, meta),
       },
@@ -295,7 +361,13 @@ const inspectionHandler: EntityHandler = {
 // ---------------------------------------------------------------------------
 
 const RESPONSE_WRITABLE = [
-  'value', 'comment', 'score', 'isFailure', 'isNotApplicable', 'location', 'answeredAt',
+  'value',
+  'comment',
+  'score',
+  'isFailure',
+  'isNotApplicable',
+  'location',
+  'answeredAt',
 ] as const;
 
 const responseHandler: EntityHandler = {
@@ -313,12 +385,20 @@ const responseHandler: EntityHandler = {
   },
 
   async authorize(tx, actor, op, current) {
-    const inspectionId = (current?.inspectionId as string | undefined) ?? String(op.patch.inspectionId ?? '');
+    const inspectionId =
+      (current?.inspectionId as string | undefined) ?? text(op.patch.inspectionId ?? '');
     if (!inspectionId) return 'A response must belong to an inspection.';
 
     const inspection = await tx.inspection.findFirst({
       where: { id: inspectionId, orgId: actor.orgId },
-      select: { id: true, orgId: true, assignedToId: true, projectId: true, createdById: true, status: true },
+      select: {
+        id: true,
+        orgId: true,
+        assignedToId: true,
+        projectId: true,
+        createdById: true,
+        status: true,
+      },
     });
     if (!inspection) return 'The parent inspection does not exist.';
 
@@ -348,8 +428,8 @@ const responseHandler: EntityHandler = {
     const row = await tx.inspectionResponse.upsert({
       where: {
         inspectionId_fieldId_repeatIndex: {
-          inspectionId: String(op.patch.inspectionId),
-          fieldId: String(op.patch.fieldId),
+          inspectionId: text(op.patch.inspectionId),
+          fieldId: text(op.patch.fieldId),
           repeatIndex: Number(op.patch.repeatIndex ?? 0),
         },
       },
@@ -357,9 +437,9 @@ const responseHandler: EntityHandler = {
         ...(data as Prisma.InspectionResponseUncheckedCreateInput),
         id: op.entityId,
         orgId: actor.orgId,
-        inspectionId: String(op.patch.inspectionId),
-        sectionId: String(op.patch.sectionId),
-        fieldId: String(op.patch.fieldId),
+        inspectionId: text(op.patch.inspectionId),
+        sectionId: text(op.patch.sectionId),
+        fieldId: text(op.patch.fieldId),
         repeatIndex: Number(op.patch.repeatIndex ?? 0),
         answeredById: actor.userId,
         ...writerMeta(actor, meta),
@@ -410,8 +490,15 @@ const responseHandler: EntityHandler = {
 // ---------------------------------------------------------------------------
 
 const ATTACHMENT_WRITABLE = [
-  'caption', 'pairTag', 'annotations', 'location', 'capturedAt', 'state',
-  'width', 'height', 'durationMs',
+  'caption',
+  'pairTag',
+  'annotations',
+  'location',
+  'capturedAt',
+  'state',
+  'width',
+  'height',
+  'durationMs',
 ] as const;
 
 const attachmentHandler: EntityHandler = {
@@ -455,10 +542,10 @@ const attachmentHandler: EntityHandler = {
         inspectionId: (op.patch.inspectionId as string | null) ?? null,
         responseId: (op.patch.responseId as string | null) ?? null,
         kind: op.patch.kind as Prisma.AttachmentCreateInput['kind'],
-        fileName: String(op.patch.fileName),
-        mimeType: String(op.patch.mimeType),
+        fileName: text(op.patch.fileName),
+        mimeType: text(op.patch.mimeType),
         sizeBytes: BigInt(Number(op.patch.sizeBytes ?? 0)),
-        checksum: String(op.patch.checksum),
+        checksum: text(op.patch.checksum),
         ...writerMeta(actor, meta),
       },
     });
@@ -498,7 +585,13 @@ const attachmentHandler: EntityHandler = {
 // ---------------------------------------------------------------------------
 
 const SIGNATURE_WRITABLE = [
-  'signerName', 'signerTitle', 'signerEmail', 'attachmentId', 'strokes', 'location', 'declaration',
+  'signerName',
+  'signerTitle',
+  'signerEmail',
+  'attachmentId',
+  'strokes',
+  'location',
+  'declaration',
 ] as const;
 
 const signatureHandler: EntityHandler = {
@@ -516,13 +609,16 @@ const signatureHandler: EntityHandler = {
   },
 
   async authorize(tx, actor, op, current) {
-    const inspectionId = (current?.inspectionId as string | undefined) ?? String(op.patch.inspectionId ?? '');
+    const inspectionId =
+      (current?.inspectionId as string | undefined) ?? text(op.patch.inspectionId ?? '');
     const inspection = await tx.inspection.findFirst({
       where: { id: inspectionId, orgId: actor.orgId },
       select: { orgId: true, assignedToId: true, projectId: true, createdById: true },
     });
     if (!inspection) return 'The parent inspection does not exist.';
-    return canEditInspection(actor, inspection) ? null : 'You do not have permission to sign this inspection.';
+    return canEditInspection(actor, inspection)
+      ? null
+      : 'You do not have permission to sign this inspection.';
   },
 
   async validate(_tx, _actor, op, current) {
@@ -539,10 +635,10 @@ const signatureHandler: EntityHandler = {
         ...(data as Prisma.SignatureUncheckedCreateInput),
         id: op.entityId,
         orgId: actor.orgId,
-        inspectionId: String(op.patch.inspectionId),
+        inspectionId: text(op.patch.inspectionId),
         role: op.patch.role as Prisma.SignatureCreateInput['role'],
-        signerName: String(op.patch.signerName),
-        signedAt: op.patch.signedAt ? new Date(String(op.patch.signedAt)) : new Date(),
+        signerName: text(op.patch.signerName),
+        signedAt: op.patch.signedAt ? new Date(text(op.patch.signedAt)) : new Date(),
         ...writerMeta(actor, meta),
       },
     });
@@ -581,8 +677,18 @@ const signatureHandler: EntityHandler = {
 // ---------------------------------------------------------------------------
 
 const ASSET_WRITABLE = [
-  'name', 'tag', 'category', 'manufacturer', 'model', 'serialNumber',
-  'installedAt', 'latitude', 'longitude', 'metadata', 'siteId', 'parentAssetId',
+  'name',
+  'tag',
+  'category',
+  'manufacturer',
+  'model',
+  'serialNumber',
+  'installedAt',
+  'latitude',
+  'longitude',
+  'metadata',
+  'siteId',
+  'parentAssetId',
 ] as const;
 
 const assetHandler: EntityHandler = {
@@ -600,7 +706,9 @@ const assetHandler: EntityHandler = {
   },
 
   async authorize(_tx, actor) {
-    return can(actor, Permission.ASSET_WRITE) ? null : 'You do not have permission to register assets.';
+    return can(actor, Permission.ASSET_WRITE)
+      ? null
+      : 'You do not have permission to register assets.';
   },
 
   async validate(_tx, _actor, op, current) {
@@ -617,8 +725,8 @@ const assetHandler: EntityHandler = {
         ...(data as Prisma.AssetUncheckedCreateInput),
         id: op.entityId,
         orgId: actor.orgId,
-        name: String(op.patch.name),
-        tag: String(op.patch.tag),
+        name: text(op.patch.name),
+        tag: text(op.patch.tag),
         ...writerMeta(actor, meta),
       },
     });

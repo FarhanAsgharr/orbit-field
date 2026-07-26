@@ -8,14 +8,15 @@
  */
 
 import type { Server } from 'node:http';
+
 import { createApp } from './app.js';
 import { env } from './config/env.js';
 import { logger } from './config/logger.js';
 import { connectDatabase, disconnectDatabase } from './db/prisma.js';
 import { connectRedis, disconnectRedis } from './db/redis.js';
-import { pruneSyncTables } from './modules/sync/sync.service.js';
 import { pruneExpiredTokens } from './lib/tokens.js';
 import { assertProductionSecrets } from './middleware/security.js';
+import { pruneSyncTables } from './modules/sync/sync.service.js';
 
 const SHUTDOWN_TIMEOUT_MS = 30_000;
 

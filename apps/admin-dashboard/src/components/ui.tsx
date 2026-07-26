@@ -7,8 +7,8 @@
  * @orbit/types; only the rendering differs per platform.
  */
 
-import React from 'react';
 import { InspectionOutcome, InspectionStatus, type Priority } from '@orbit/types';
+import React from 'react';
 
 export type Tone = 'neutral' | 'ok' | 'warn' | 'danger' | 'accent' | 'info';
 
@@ -35,40 +35,66 @@ export function Badge({
 
 export function statusBadge(status: string): { label: string; tone: Tone; glyph: string } {
   switch (status) {
-    case InspectionStatus.DRAFT: return { label: 'Draft', tone: 'neutral', glyph: '○' };
-    case InspectionStatus.SCHEDULED: return { label: 'Scheduled', tone: 'info', glyph: '◔' };
-    case InspectionStatus.IN_PROGRESS: return { label: 'In progress', tone: 'accent', glyph: '◑' };
-    case InspectionStatus.SUBMITTED: return { label: 'Submitted', tone: 'info', glyph: '↑' };
-    case InspectionStatus.UNDER_REVIEW: return { label: 'Under review', tone: 'warn', glyph: '◐' };
-    case InspectionStatus.APPROVED: return { label: 'Approved', tone: 'ok', glyph: '✓' };
-    case InspectionStatus.REJECTED: return { label: 'Rejected', tone: 'danger', glyph: '↺' };
-    case InspectionStatus.CANCELLED: return { label: 'Cancelled', tone: 'neutral', glyph: '✕' };
-    case InspectionStatus.ARCHIVED: return { label: 'Archived', tone: 'neutral', glyph: '▣' };
-    default: return { label: status, tone: 'neutral', glyph: '•' };
+    case InspectionStatus.DRAFT:
+      return { label: 'Draft', tone: 'neutral', glyph: '○' };
+    case InspectionStatus.SCHEDULED:
+      return { label: 'Scheduled', tone: 'info', glyph: '◔' };
+    case InspectionStatus.IN_PROGRESS:
+      return { label: 'In progress', tone: 'accent', glyph: '◑' };
+    case InspectionStatus.SUBMITTED:
+      return { label: 'Submitted', tone: 'info', glyph: '↑' };
+    case InspectionStatus.UNDER_REVIEW:
+      return { label: 'Under review', tone: 'warn', glyph: '◐' };
+    case InspectionStatus.APPROVED:
+      return { label: 'Approved', tone: 'ok', glyph: '✓' };
+    case InspectionStatus.REJECTED:
+      return { label: 'Rejected', tone: 'danger', glyph: '↺' };
+    case InspectionStatus.CANCELLED:
+      return { label: 'Cancelled', tone: 'neutral', glyph: '✕' };
+    case InspectionStatus.ARCHIVED:
+      return { label: 'Archived', tone: 'neutral', glyph: '▣' };
+    default:
+      return { label: status, tone: 'neutral', glyph: '•' };
   }
 }
 
 export function outcomeBadge(outcome: string): { label: string; tone: Tone; glyph: string } {
   switch (outcome) {
-    case InspectionOutcome.PASS: return { label: 'Pass', tone: 'ok', glyph: '✓' };
-    case InspectionOutcome.PASS_WITH_OBSERVATIONS: return { label: 'Observations', tone: 'warn', glyph: '!' };
-    case InspectionOutcome.FAIL: return { label: 'Fail', tone: 'danger', glyph: '✕' };
-    case InspectionOutcome.NOT_APPLICABLE: return { label: 'N/A', tone: 'neutral', glyph: '–' };
-    default: return { label: 'Pending', tone: 'neutral', glyph: '○' };
+    case InspectionOutcome.PASS:
+      return { label: 'Pass', tone: 'ok', glyph: '✓' };
+    case InspectionOutcome.PASS_WITH_OBSERVATIONS:
+      return { label: 'Observations', tone: 'warn', glyph: '!' };
+    case InspectionOutcome.FAIL:
+      return { label: 'Fail', tone: 'danger', glyph: '✕' };
+    case InspectionOutcome.NOT_APPLICABLE:
+      return { label: 'N/A', tone: 'neutral', glyph: '–' };
+    default:
+      return { label: 'Pending', tone: 'neutral', glyph: '○' };
   }
 }
 
-export function priorityBadge(priority: Priority | string): { label: string; tone: Tone; glyph: string } {
+export function priorityBadge(priority: Priority | string): {
+  label: string;
+  tone: Tone;
+  glyph: string;
+} {
   switch (priority) {
-    case 'CRITICAL': return { label: 'Critical', tone: 'danger', glyph: '▲' };
-    case 'HIGH': return { label: 'High', tone: 'warn', glyph: '▲' };
-    case 'LOW': return { label: 'Low', tone: 'neutral', glyph: '▼' };
-    default: return { label: 'Normal', tone: 'neutral', glyph: '■' };
+    case 'CRITICAL':
+      return { label: 'Critical', tone: 'danger', glyph: '▲' };
+    case 'HIGH':
+      return { label: 'High', tone: 'warn', glyph: '▲' };
+    case 'LOW':
+      return { label: 'Low', tone: 'neutral', glyph: '▼' };
+    default:
+      return { label: 'Normal', tone: 'neutral', glyph: '■' };
   }
 }
 
 export function roleBadge(role: string): { label: string; tone: Tone } {
-  const label = role.replace(/_/g, ' ').toLowerCase().replace(/^./, (c) => c.toUpperCase());
+  const label = role
+    .replace(/_/g, ' ')
+    .toLowerCase()
+    .replace(/^./, (c) => c.toUpperCase());
   if (role === 'SUPER_ADMIN' || role === 'ADMIN') return { label, tone: 'danger' };
   if (role === 'MANAGER' || role === 'SUPERVISOR') return { label, tone: 'accent' };
   if (role === 'VIEWER') return { label, tone: 'neutral' };
@@ -111,11 +137,15 @@ export function Metric({
   delta?: string;
 }): React.ReactElement {
   const colour =
-    tone === 'ok' ? 'var(--ok)'
-    : tone === 'warn' ? 'var(--warn)'
-    : tone === 'danger' ? 'var(--danger)'
-    : tone === 'accent' ? 'var(--accent)'
-    : 'var(--ink)';
+    tone === 'ok'
+      ? 'var(--ok)'
+      : tone === 'warn'
+        ? 'var(--warn)'
+        : tone === 'danger'
+          ? 'var(--danger)'
+          : tone === 'accent'
+            ? 'var(--accent)'
+            : 'var(--ink)';
 
   return (
     <div className="card">
@@ -158,7 +188,12 @@ export function ErrorBanner({ message }: { message: string }): React.ReactElemen
 
 export function Loading({ rows = 5 }: { rows?: number }): React.ReactElement {
   return (
-    <div className="stack gap-3" style={{ padding: 'var(--s-5)' }} aria-busy="true" aria-label="Loading">
+    <div
+      className="stack gap-3"
+      style={{ padding: 'var(--s-5)' }}
+      aria-busy="true"
+      aria-label="Loading"
+    >
       {Array.from({ length: rows }, (_, i) => (
         <div key={i} className="skeleton" style={{ width: `${100 - i * 7}%` }} />
       ))}
@@ -166,13 +201,22 @@ export function Loading({ rows = 5 }: { rows?: number }): React.ReactElement {
   );
 }
 
-export function Bar({ value, tone = 'accent' }: { value: number; tone?: Tone }): React.ReactElement {
+export function Bar({
+  value,
+  tone = 'accent',
+}: {
+  value: number;
+  tone?: Tone;
+}): React.ReactElement {
   const clamped = Math.max(0, Math.min(1, Number.isFinite(value) ? value : 0));
   const colour =
-    tone === 'ok' ? 'var(--ok)'
-    : tone === 'warn' ? 'var(--warn)'
-    : tone === 'danger' ? 'var(--danger)'
-    : 'var(--accent)';
+    tone === 'ok'
+      ? 'var(--ok)'
+      : tone === 'warn'
+        ? 'var(--warn)'
+        : tone === 'danger'
+          ? 'var(--danger)'
+          : 'var(--accent)';
 
   return (
     <div
@@ -244,7 +288,11 @@ export function relativeTime(value: string | Date | null | undefined): string {
 
   if (abs < 45_000) return 'just now';
   if (abs > 7 * 86_400_000) {
-    return new Intl.DateTimeFormat(undefined, { day: '2-digit', month: 'short', year: 'numeric' }).format(then);
+    return new Intl.DateTimeFormat(undefined, {
+      day: '2-digit',
+      month: 'short',
+      year: 'numeric',
+    }).format(then);
   }
 
   const units: Array<[number, Intl.RelativeTimeFormatUnit]> = [
@@ -271,7 +319,11 @@ export function formatDate(value: string | Date | null | undefined): string {
   const d = typeof value === 'string' ? new Date(value) : value;
   if (Number.isNaN(d.getTime())) return '—';
   return new Intl.DateTimeFormat(undefined, {
-    day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit',
+    day: '2-digit',
+    month: 'short',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
   }).format(d);
 }
 

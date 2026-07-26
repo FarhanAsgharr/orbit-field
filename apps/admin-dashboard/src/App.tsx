@@ -1,16 +1,17 @@
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import React from 'react';
 import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom';
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { SessionProvider, useSession } from './lib/auth';
-import { ApiRequestError } from './lib/api';
+
 import { Shell } from './components/Shell';
-import { Login } from './pages/Login';
-import { Overview } from './pages/Overview';
-import { Clients, Devices, Inspections, People, Projects, Sites, Templates } from './pages/Lists';
-import { Sync } from './pages/Sync';
+import { Empty } from './components/ui';
+import { ApiRequestError } from './lib/api';
+import { SessionProvider, useSession } from './lib/auth';
 import { Analytics } from './pages/Analytics';
 import { Audit, Settings } from './pages/AuditSettings';
-import { Empty } from './components/ui';
+import { Clients, Devices, Inspections, People, Projects, Sites, Templates } from './pages/Lists';
+import { Login } from './pages/Login';
+import { Overview } from './pages/Overview';
+import { Sync } from './pages/Sync';
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -48,7 +49,11 @@ function NotFound(): React.ReactElement {
     <Empty
       title="Page not found"
       body="That link does not point anywhere in the console."
-      action={<a className="btn" href="/">Back to overview</a>}
+      action={
+        <a className="btn" href="/">
+          Back to overview
+        </a>
+      }
     />
   );
 }

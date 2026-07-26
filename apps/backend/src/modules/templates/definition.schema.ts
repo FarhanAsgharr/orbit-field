@@ -17,7 +17,7 @@
  */
 
 import { FieldType } from '@orbit/types';
-import { ulid } from '@orbit/utils';
+import { toDisplayString, ulid } from '@orbit/utils';
 
 export interface ValidationSuccess {
   ok: true;
@@ -37,14 +37,31 @@ export type DefinitionValidation = ValidationSuccess | ValidationFailure;
 const VALID_FIELD_TYPES = new Set<string>(Object.values(FieldType));
 
 const VALID_OPERATORS = new Set([
-  'EQUALS', 'NOT_EQUALS', 'GREATER_THAN', 'GREATER_THAN_OR_EQUAL',
-  'LESS_THAN', 'LESS_THAN_OR_EQUAL', 'CONTAINS', 'NOT_CONTAINS',
-  'IN', 'NOT_IN', 'IS_EMPTY', 'IS_NOT_EMPTY', 'MATCHES_REGEX',
+  'EQUALS',
+  'NOT_EQUALS',
+  'GREATER_THAN',
+  'GREATER_THAN_OR_EQUAL',
+  'LESS_THAN',
+  'LESS_THAN_OR_EQUAL',
+  'CONTAINS',
+  'NOT_CONTAINS',
+  'IN',
+  'NOT_IN',
+  'IS_EMPTY',
+  'IS_NOT_EMPTY',
+  'MATCHES_REGEX',
 ]);
 
 const VALID_EFFECTS = new Set([
-  'SHOW', 'HIDE', 'REQUIRE', 'OPTIONAL', 'DISABLE',
-  'SET_VALUE', 'WARN', 'BLOCK_SUBMIT', 'REVEAL_FOLLOW_UPS',
+  'SHOW',
+  'HIDE',
+  'REQUIRE',
+  'OPTIONAL',
+  'DISABLE',
+  'SET_VALUE',
+  'WARN',
+  'BLOCK_SUBMIT',
+  'REVEAL_FOLLOW_UPS',
 ]);
 
 interface RawField {
@@ -90,7 +107,10 @@ export function validateDefinition(
   const errors: Record<string, string> = {};
 
   if (input === null || typeof input !== 'object') {
-    return { ok: false, errors: { definition: 'The definition must be an object with a "sections" array.' } };
+    return {
+      ok: false,
+      errors: { definition: 'The definition must be an object with a "sections" array.' },
+    };
   }
 
   // Accept both the wrapped and bare shapes — early exports used a bare array.
@@ -99,13 +119,22 @@ export function validateDefinition(
     : (input as { sections?: unknown }).sections;
 
   if (!Array.isArray(rawSections)) {
-    return { ok: false, errors: { 'definition.sections': 'A definition must contain a "sections" array.' } };
+    return {
+      ok: false,
+      errors: { 'definition.sections': 'A definition must contain a "sections" array.' },
+    };
   }
   if (rawSections.length === 0) {
-    return { ok: false, errors: { 'definition.sections': 'A template must contain at least one section.' } };
+    return {
+      ok: false,
+      errors: { 'definition.sections': 'A template must contain at least one section.' },
+    };
   }
   if (rawSections.length > 100) {
-    return { ok: false, errors: { 'definition.sections': 'A template may contain at most 100 sections.' } };
+    return {
+      ok: false,
+      errors: { 'definition.sections': 'A template may contain at most 100 sections.' },
+    };
   }
 
   const seenFieldIds = new Set<string>();
@@ -118,7 +147,12 @@ export function validateDefinition(
   let fieldCount = 0;
 
   /** Pass 1: shape, ids, and dependency collection. */
-  function walkField(raw: unknown, sectionId: string, path: string, depth: number): RawField | null {
+  function walkField(
+    raw: unknown,
+    sectionId: string,
+    path: string,
+    depth: number,
+  ): RawField | null {
     if (raw === null || typeof raw !== 'object') {
       errors[path] = 'Each field must be an object.';
       return null;
@@ -144,7 +178,8 @@ export function validateDefinition(
     // may carry ids that are not 26-character ULIDs; reminting those without
     // remapping their logic references would silently sever every conditional
     // rule in the template — the failure mode this validator exists to catch.
-    const providedId = typeof field.id === 'string' && field.id.trim() !== '' ? field.id.trim() : null;
+    const providedId =
+      typeof field.id === 'string' && field.id.trim() !== '' ? field.id.trim() : null;
     const id = options.remintIds || !providedId || providedId.length !== 26 ? ulid() : providedId;
     if (providedId) idRemap.set(providedId, id);
 
@@ -154,11 +189,13 @@ export function validateDefinition(
     seenFieldIds.add(id);
     declaredFieldIds.add(id);
 
-    const key = typeof field.key === 'string' && field.key.trim() ? field.key.trim() : `field_${fieldCount}`;
+    const key =
+      typeof field.key === 'string' && field.key.trim() ? field.key.trim() : `field_${fieldCount}`;
     if (seenKeys.has(key)) {
       // Keys appear in CSV exports and integrations, where a duplicate silently
       // overwrites a column.
-      errors[`${path}.key`] = `Duplicate field key "${key}". Keys must be unique — they are used in exports and integrations.`;
+      errors[`${path}.key`] =
+        `Duplicate field key "${key}". Keys must be unique — they are used in exports and integrations.`;
     }
     seenKeys.add(key);
 
@@ -187,9 +224,17 @@ export function validateDefinition(
     }
 
     const choiceTypes: readonly string[] = [
-      FieldType.RADIO, FieldType.DROPDOWN, FieldType.MULTI_SELECT, FieldType.PASS_FAIL, FieldType.YES_NO,
+      FieldType.RADIO,
+      FieldType.DROPDOWN,
+      FieldType.MULTI_SELECT,
+      FieldType.PASS_FAIL,
+      FieldType.YES_NO,
     ];
-    if (typeof field.type === 'string' && choiceTypes.includes(field.type) && options_.length === 0) {
+    if (
+      typeof field.type === 'string' &&
+      choiceTypes.includes(field.type) &&
+      options_.length === 0
+    ) {
       errors[`${path}.options`] = `A ${field.type} question must offer at least one option.`;
     }
 
@@ -198,7 +243,11 @@ export function validateDefinition(
     if (typeof rules.min === 'number' && typeof rules.max === 'number' && rules.min > rules.max) {
       errors[`${path}.validation`] = 'The minimum value cannot exceed the maximum.';
     }
-    if (typeof rules.minLength === 'number' && typeof rules.maxLength === 'number' && rules.minLength > rules.maxLength) {
+    if (
+      typeof rules.minLength === 'number' &&
+      typeof rules.maxLength === 'number' &&
+      rules.minLength > rules.maxLength
+    ) {
       errors[`${path}.validation`] = 'The minimum length cannot exceed the maximum.';
     }
     if (typeof rules.pattern === 'string') {
@@ -233,7 +282,7 @@ export function validateDefinition(
       id,
       sectionId,
       key,
-      label: String(field.label ?? ''),
+      label: toDisplayString(field.label),
       type: field.type,
       order: typeof field.order === 'number' ? field.order : fieldCount,
       options: options_,
@@ -259,10 +308,11 @@ export function validateDefinition(
     if (!effect || typeof effect.type !== 'string' || !VALID_EFFECTS.has(effect.type)) {
       errors[`${path}.effect`] = `Unknown logic effect "${String(effect?.type)}".`;
     }
-    if ((effect?.type === 'WARN' || effect?.type === 'BLOCK_SUBMIT')) {
+    if (effect?.type === 'WARN' || effect?.type === 'BLOCK_SUBMIT') {
       const message = (effect as { message?: unknown }).message;
       if (typeof message !== 'string' || message.trim() === '') {
-        errors[`${path}.effect.message`] = 'A warning or blocking rule must carry a message for the inspector.';
+        errors[`${path}.effect.message`] =
+          'A warning or blocking rule must carry a message for the inspector.';
       }
     }
 
@@ -339,17 +389,19 @@ export function validateDefinition(
     }
     dependencies.set(sectionId, sectionDeps);
 
-    const repeatMin = typeof section.repeatMinInstances === 'number' ? section.repeatMinInstances : 1;
+    const repeatMin =
+      typeof section.repeatMinInstances === 'number' ? section.repeatMinInstances : 1;
     const repeatMax =
       typeof section.repeatMaxInstances === 'number' ? section.repeatMaxInstances : null;
     if (repeatMax !== null && repeatMax < repeatMin) {
-      errors[`sections[${i}].repeatMaxInstances`] = 'The maximum repeat count cannot be below the minimum.';
+      errors[`sections[${i}].repeatMaxInstances`] =
+        'The maximum repeat count cannot be below the minimum.';
     }
 
     normalisedSections.push({
       id: sectionId,
       templateVersionId: '',
-      title: String(section.title ?? ''),
+      title: toDisplayString(section.title),
       description: typeof section.description === 'string' ? section.description : null,
       order: typeof section.order === 'number' ? section.order : i,
       fields,
@@ -370,7 +422,8 @@ export function validateDefinition(
       if (!declaredFieldIds.has(resolved)) {
         // This is the failure mode that produces a checklist which looks fine
         // in the builder and quietly never reveals a question in the field.
-        errors[`logic.${ownerId}`] = `A logic rule references question "${dep}", which does not exist in this template.`;
+        errors[`logic.${ownerId}`] =
+          `A logic rule references question "${dep}", which does not exist in this template.`;
       }
     }
   }
@@ -384,7 +437,8 @@ export function validateDefinition(
   function visit(node: string, trail: string[]): boolean {
     const state = colour.get(node) ?? CYCLE_WHITE;
     if (state === CYCLE_GREY) {
-      errors['logic.cycle'] = `Circular logic detected: ${[...trail, node].join(' → ')}. Each rule must depend only on questions resolved before it.`;
+      errors['logic.cycle'] =
+        `Circular logic detected: ${[...trail, node].join(' → ')}. Each rule must depend only on questions resolved before it.`;
       return true;
     }
     if (state === CYCLE_BLACK) return false;

@@ -48,7 +48,11 @@ function renderLabels(labels: Labels): string {
   return `{${entries.map(([k, v]) => `${k}="${escapeLabel(v)}"`).join(',')}}`;
 }
 
-export function defineCounter(name: string, help: string, type: 'counter' | 'gauge' = 'counter'): void {
+export function defineCounter(
+  name: string,
+  help: string,
+  type: 'counter' | 'gauge' = 'counter',
+): void {
   if (!counters.has(name)) counters.set(name, { help, type, values: new Map() });
 }
 

@@ -6,13 +6,15 @@
  * audit trail, and the interface should not imply otherwise.
  */
 
-import React, { useState } from 'react';
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Permission } from '@orbit/shared';
+import { toDisplayString } from '@orbit/utils';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import React, { useState } from 'react';
+
+import { type Column, DataTable } from '../components/DataTable';
+import { Badge, Card, ErrorBanner, formatDate, Loading, relativeTime } from '../components/ui';
 import { api } from '../lib/api';
 import { useSession } from '../lib/auth';
-import { DataTable, type Column } from '../components/DataTable';
-import { Badge, Card, ErrorBanner, Loading, formatDate, relativeTime } from '../components/ui';
 
 interface AuditRow {
   id: string;
@@ -27,8 +29,10 @@ interface AuditRow {
 
 /** Actions that deserve to stand out when scanning the log. */
 function actionTone(action: string): 'neutral' | 'ok' | 'warn' | 'danger' | 'accent' {
-  if (action.includes('DENIED') || action.includes('REUSE') || action.includes('FAILED')) return 'danger';
-  if (action.includes('DELETED') || action.includes('REVOKED') || action.includes('REJECTED')) return 'warn';
+  if (action.includes('DENIED') || action.includes('REUSE') || action.includes('FAILED'))
+    return 'danger';
+  if (action.includes('DELETED') || action.includes('REVOKED') || action.includes('REJECTED'))
+    return 'warn';
   if (action.includes('APPROVED') || action.includes('CREATED')) return 'ok';
   if (action.startsWith('AUTH_')) return 'accent';
   return 'neutral';
@@ -62,7 +66,9 @@ export function Audit(): React.ReactElement {
       render: (row) =>
         row.user ? (
           <div>
-            <div className="table__primary">{row.user.firstName} {row.user.lastName}</div>
+            <div className="table__primary">
+              {row.user.firstName} {row.user.lastName}
+            </div>
             <div className="table__meta">{row.user.email}</div>
           </div>
         ) : (
@@ -76,7 +82,11 @@ export function Audit(): React.ReactElement {
         row.entity ? (
           <div>
             <div>{row.entity}</div>
-            {row.entityId ? <div className="table__meta num truncate" style={{ maxWidth: 180 }}>{row.entityId}</div> : null}
+            {row.entityId ? (
+              <div className="table__meta num truncate" style={{ maxWidth: 180 }}>
+                {row.entityId}
+              </div>
+            ) : null}
           </div>
         ) : (
           <span className="muted">—</span>
@@ -86,15 +96,29 @@ export function Audit(): React.ReactElement {
       key: 'detail',
       header: 'Detail',
       render: (row) => {
-        if (!row.metadata || Object.keys(row.metadata).length === 0) return <span className="muted">—</span>;
+        if (!row.metadata || Object.keys(row.metadata).length === 0)
+          return <span className="muted">—</span>;
         const summary = Object.entries(row.metadata)
           .slice(0, 3)
-          .map(([k, v]) => `${k}: ${typeof v === 'object' ? JSON.stringify(v) : String(v)}`)
+          .map(([k, v]) => `${k}: ${toDisplayString(v)}`)
           .join(' · ');
-        return <span className="table__meta truncate" style={{ maxWidth: 320, display: 'inline-block' }}>{summary}</span>;
+        return (
+          <span className="table__meta truncate" style={{ maxWidth: 320, display: 'inline-block' }}>
+            {summary}
+          </span>
+        );
       },
     },
-    { key: 'ip', header: 'From', render: (row) => row.ipAddress ? <span className="num small">{row.ipAddress}</span> : <span className="muted">—</span> },
+    {
+      key: 'ip',
+      header: 'From',
+      render: (row) =>
+        row.ipAddress ? (
+          <span className="num small">{row.ipAddress}</span>
+        ) : (
+          <span className="muted">—</span>
+        ),
+    },
   ];
 
   return (
@@ -119,8 +143,13 @@ export function Audit(): React.ReactElement {
         emptyTitle="No audit entries"
         pageSize={50}
         filters={
-          <select className="select" style={{ width: 'auto' }} value={action}
-            onChange={(e) => setAction(e.target.value)} aria-label="Filter by action">
+          <select
+            className="select"
+            style={{ width: 'auto' }}
+            value={action}
+            onChange={(e) => setAction(e.target.value)}
+            aria-label="Filter by action"
+          >
             <option value="">Any action</option>
             <optgroup label="Access">
               <option value="AUTH_LOGIN">Sign in</option>
@@ -174,8 +203,14 @@ interface OrgSettings {
 }
 
 interface Organization {
-  id: string; name: string; slug: string; timezone: string; locale: string;
-  currency: string; numberPrefix: string; settings: OrgSettings;
+  id: string;
+  name: string;
+  slug: string;
+  timezone: string;
+  locale: string;
+  currency: string;
+  numberPrefix: string;
+  settings: OrgSettings;
   _count: { users: number; projects: number; sites: number; inspections: number; devices: number };
 }
 
@@ -199,7 +234,8 @@ export function Settings(): React.ReactElement {
       setSaved(true);
       setTimeout(() => setSaved(false), 3000);
     },
-    onError: (err) => setError(err instanceof Error ? err.message : 'Could not save these settings.'),
+    onError: (err) =>
+      setError(err instanceof Error ? err.message : 'Could not save these settings.'),
   });
 
   if (isLoading || !data) return <Loading rows={6} />;
@@ -221,11 +257,19 @@ export function Settings(): React.ReactElement {
         </div>
         {editable ? (
           <div className="row gap-3">
-            {saved ? <span className="small" style={{ color: 'var(--ok)' }}>Saved</span> : null}
+            {saved ? (
+              <span className="small" style={{ color: 'var(--ok)' }}>
+                Saved
+              </span>
+            ) : null}
             <button className="btn btn--secondary" onClick={() => setDraft(null)} disabled={!dirty}>
               Discard
             </button>
-            <button className="btn" onClick={() => draft && save.mutate(draft)} disabled={!dirty || save.isPending}>
+            <button
+              className="btn"
+              onClick={() => draft && save.mutate(draft)}
+              disabled={!dirty || save.isPending}
+            >
               {save.isPending ? 'Saving…' : 'Save changes'}
             </button>
           </div>
@@ -235,10 +279,22 @@ export function Settings(): React.ReactElement {
       {error ? <ErrorBanner message={error} /> : null}
 
       <div className="grid grid--4">
-        <Card><div className="metric__value num">{data._count.users}</div><div className="metric__label">People</div></Card>
-        <Card><div className="metric__value num">{data._count.devices}</div><div className="metric__label">Devices</div></Card>
-        <Card><div className="metric__value num">{data._count.sites}</div><div className="metric__label">Sites</div></Card>
-        <Card><div className="metric__value num">{data._count.inspections.toLocaleString()}</div><div className="metric__label">Inspections</div></Card>
+        <Card>
+          <div className="metric__value num">{data._count.users}</div>
+          <div className="metric__label">People</div>
+        </Card>
+        <Card>
+          <div className="metric__value num">{data._count.devices}</div>
+          <div className="metric__label">Devices</div>
+        </Card>
+        <Card>
+          <div className="metric__value num">{data._count.sites}</div>
+          <div className="metric__label">Sites</div>
+        </Card>
+        <Card>
+          <div className="metric__value num">{data._count.inspections.toLocaleString()}</div>
+          <div className="metric__label">Inspections</div>
+        </Card>
       </div>
 
       <div className="grid grid--2 mt-6">
@@ -325,7 +381,9 @@ export function Settings(): React.ReactElement {
               suffix="passwords"
               value={settings.passwordPolicy?.historyDepth ?? 5}
               disabled={!editable}
-              onChange={(v) => set('passwordPolicy', { ...settings.passwordPolicy, historyDepth: v })}
+              onChange={(v) =>
+                set('passwordPolicy', { ...settings.passwordPolicy, historyDepth: v })
+              }
             />
             <Number
               label="Force a change after"
@@ -343,13 +401,23 @@ export function Settings(): React.ReactElement {
 }
 
 function Toggle({
-  label, hint, checked, disabled, onChange,
+  label,
+  hint,
+  checked,
+  disabled,
+  onChange,
 }: {
-  label: string; hint?: string; checked: boolean; disabled?: boolean;
+  label: string;
+  hint?: string;
+  checked: boolean;
+  disabled?: boolean;
   onChange: (value: boolean) => void;
 }): React.ReactElement {
   return (
-    <label className="row gap-3" style={{ alignItems: 'flex-start', cursor: disabled ? 'default' : 'pointer' }}>
+    <label
+      className="row gap-3"
+      style={{ alignItems: 'flex-start', cursor: disabled ? 'default' : 'pointer' }}
+    >
       <input
         type="checkbox"
         checked={checked}
@@ -359,17 +427,30 @@ function Toggle({
       />
       <span className="grow">
         <span className="strong small">{label}</span>
-        {hint ? <span className="field__hint" style={{ display: 'block' }}>{hint}</span> : null}
+        {hint ? (
+          <span className="field__hint" style={{ display: 'block' }}>
+            {hint}
+          </span>
+        ) : null}
       </span>
     </label>
   );
 }
 
 function Number({
-  label, hint, suffix, value, disabled, onChange,
+  label,
+  hint,
+  suffix,
+  value,
+  disabled,
+  onChange,
 }: {
-  label: string; hint?: string; suffix?: string; value: number;
-  disabled?: boolean; onChange: (value: number) => void;
+  label: string;
+  hint?: string;
+  suffix?: string;
+  value: number;
+  disabled?: boolean;
+  onChange: (value: number) => void;
 }): React.ReactElement {
   return (
     <div className="field">

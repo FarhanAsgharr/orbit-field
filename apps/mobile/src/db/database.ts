@@ -8,6 +8,7 @@
  */
 
 import * as SQLite from 'expo-sqlite';
+
 import { CONNECTION_PRAGMAS, META_KEYS, MIGRATIONS, SCHEMA_VERSION } from './schema';
 
 export type SqlValue = string | number | null | Uint8Array;
@@ -59,10 +60,9 @@ export class Database {
       `CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY NOT NULL, value TEXT);`,
     );
 
-    const row = this.getFirst<{ value: string }>(
-      `SELECT value FROM meta WHERE key = ?`,
-      [META_KEYS.SCHEMA_VERSION],
-    );
+    const row = this.getFirst<{ value: string }>(`SELECT value FROM meta WHERE key = ?`, [
+      META_KEYS.SCHEMA_VERSION,
+    ]);
     const current = row ? Number(row.value) : 0;
 
     if (current >= SCHEMA_VERSION) return;
@@ -144,7 +144,9 @@ export class Database {
   // --- meta helpers --------------------------------------------------------
 
   getMeta(key: string): string | null {
-    return this.getFirst<{ value: string }>(`SELECT value FROM meta WHERE key = ?`, [key])?.value ?? null;
+    return (
+      this.getFirst<{ value: string }>(`SELECT value FROM meta WHERE key = ?`, [key])?.value ?? null
+    );
   }
 
   setMeta(key: string, value: string): void {
@@ -190,13 +192,21 @@ export class Database {
   resetForFullResync(): void {
     this.write(() => {
       for (const table of [
-        'organizations', 'users', 'clients', 'projects', 'sites', 'assets',
-        'template_versions', 'inspections', 'inspection_responses',
-        'signatures', 'notifications',
+        'organizations',
+        'users',
+        'clients',
+        'projects',
+        'sites',
+        'assets',
+        'template_versions',
+        'inspections',
+        'inspection_responses',
+        'signatures',
+        'notifications',
       ]) {
         // Rows with pending local changes are kept; the delta pull will
         // reconcile them and any true conflict surfaces normally.
-        this.run(`DELETE FROM ${table} WHERE is_dirty = 0`).changes;
+        this.run(`DELETE FROM ${table} WHERE is_dirty = 0`);
       }
       // Attachments are kept unconditionally: the local file may be the only
       // copy of a photo that has not finished uploading.

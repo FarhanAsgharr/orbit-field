@@ -9,20 +9,27 @@
  * than four near-identical files that drift apart over time.
  */
 
-import { Router, type Router as ExpressRouter } from 'express';
-import { Prisma } from '@prisma/client';
-import { z, type ZodTypeAny } from 'zod';
-import { SyncEntity, SyncOperation } from '@orbit/types';
 import { AppError, ErrorCode, type Permission } from '@orbit/shared';
+import { Permission as P } from '@orbit/shared';
+import { SyncEntity, SyncOperation } from '@orbit/types';
 import { ulid } from '@orbit/utils';
+import { Prisma } from '@prisma/client';
+import { type Router as ExpressRouter, Router } from 'express';
+import { z, type ZodTypeAny } from 'zod';
+
 import { prisma } from '../../db/prisma.js';
+import {
+  paginate,
+  paginationArgs,
+  paginationSchema,
+  searchFilter,
+  sortArgs,
+} from '../../lib/pagination.js';
 import { requireAuth, requirePermission } from '../../middleware/auth.js';
 import { auth, clientIp } from '../../middleware/context.js';
 import { asyncHandler } from '../../middleware/error.js';
 import { schemas, validate } from '../../middleware/validate.js';
-import { paginate, paginationArgs, paginationSchema, searchFilter, sortArgs } from '../../lib/pagination.js';
 import { recordChange } from '../sync/change-log.js';
-import { Permission as P } from '@orbit/shared';
 
 /** Prisma delegates share this surface; typing it avoids four casts per resource. */
 interface Delegate {
@@ -65,8 +72,12 @@ function buildResourceRouter(config: ResourceConfig): ExpressRouter {
     asyncHandler(async (req, res) => {
       const subject = auth(req);
       const q = req.validated!.query as {
-        page: number; pageSize: number; search?: string; isActive?: boolean;
-        sortBy?: string; sortDir?: 'asc' | 'desc';
+        page: number;
+        pageSize: number;
+        search?: string;
+        isActive?: boolean;
+        sortBy?: string;
+        sortDir?: 'asc' | 'desc';
       };
 
       const where: Record<string, unknown> = {
@@ -395,11 +406,19 @@ export const sitesRouter = buildResourceRouter({
         return 'A geofence radius requires the site to have coordinates.';
       }
     }
-    for (const [field, table] of [['clientId', 'client'], ['projectId', 'project']] as const) {
+    for (const [field, table] of [
+      ['clientId', 'client'],
+      ['projectId', 'project'],
+    ] as const) {
       const value = body[field];
       if (typeof value !== 'string') continue;
-      const delegate = (prisma as unknown as Record<string, { findFirst: (a: unknown) => Promise<unknown> }>)[table]!;
-      const exists = await delegate.findFirst({ where: { id: value, orgId, deletedAt: null }, select: { id: true } });
+      const delegate = (
+        prisma as unknown as Record<string, { findFirst: (a: unknown) => Promise<unknown> }>
+      )[table]!;
+      const exists = await delegate.findFirst({
+        where: { id: value, orgId, deletedAt: null },
+        select: { id: true },
+      });
       if (!exists) return `The referenced ${table} does not exist.`;
     }
     return null;

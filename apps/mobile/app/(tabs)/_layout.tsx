@@ -7,11 +7,12 @@
  * because it is status, not a destination.
  */
 
-import React from 'react';
 import { Tabs } from 'expo-router';
+import React from 'react';
 import { Text, View } from 'react-native';
-import { useTheme } from '../../src/theme/ThemeProvider';
+
 import { useSession } from '../../src/stores/session.store';
+import { useTheme } from '../../src/theme/ThemeProvider';
 
 /**
  * Glyph-based icons.
@@ -83,8 +84,7 @@ export default function TabsLayout(): React.ReactElement | null {
   // Anything the user must act on: failed operations and unresolved conflicts.
   // Merely pending work is not badged — that is normal and constant offline,
   // and badging it would train people to ignore the badge.
-  const actionable =
-    (syncStatus?.failedOperations ?? 0) + (syncStatus?.conflictedOperations ?? 0);
+  const actionable = (syncStatus?.failedOperations ?? 0) + (syncStatus?.conflictedOperations ?? 0);
 
   return (
     <Tabs

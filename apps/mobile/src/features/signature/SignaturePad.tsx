@@ -11,10 +11,11 @@
  * time, so the two can never disagree.
  */
 
-import React, { useCallback, useMemo, useRef, useState } from 'react';
-import { PanResponder, View, type LayoutChangeEvent } from 'react-native';
-import Svg, { Path } from 'react-native-svg';
 import type { JsonValue } from '@orbit/types';
+import React, { useCallback, useMemo, useRef, useState } from 'react';
+import { type LayoutChangeEvent, PanResponder, View } from 'react-native';
+import Svg, { Path } from 'react-native-svg';
+
 import { Button, Txt } from '../../components/ui';
 import { useTheme } from '../../theme/ThemeProvider';
 
@@ -73,7 +74,10 @@ export function signatureToSvg(
   options: { strokeWidth?: number; color?: string } = {},
 ): string {
   const paths = data.strokes
-    .map((s) => `<path d="${strokeToPath(s)}" fill="none" stroke="${options.color ?? '#000000'}" stroke-width="${options.strokeWidth ?? 2.5}" stroke-linecap="round" stroke-linejoin="round"/>`)
+    .map(
+      (s) =>
+        `<path d="${strokeToPath(s)}" fill="none" stroke="${options.color ?? '#000000'}" stroke-width="${options.strokeWidth ?? 2.5}" stroke-linecap="round" stroke-linejoin="round"/>`,
+    )
     .join('');
   return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${data.width} ${data.height}" width="${data.width}" height="${data.height}">${paths}</svg>`;
 }

@@ -150,11 +150,7 @@ export function evaluateCondition(
       return hay.toLowerCase().includes(needle.toLowerCase());
     }
     case 'NOT_CONTAINS':
-      return !evaluateCondition(
-        { ...condition, operator: 'CONTAINS' },
-        answers,
-        repeatIndex,
-      );
+      return !evaluateCondition({ ...condition, operator: 'CONTAINS' }, answers, repeatIndex);
 
     case 'IN': {
       const set = asArray(expected ?? null);
@@ -163,11 +159,7 @@ export function evaluateCondition(
       return actuals.some((a) => set.some((e) => looseEquals(a, e)));
     }
     case 'NOT_IN':
-      return !evaluateCondition(
-        { ...condition, operator: 'IN' },
-        answers,
-        repeatIndex,
-      );
+      return !evaluateCondition({ ...condition, operator: 'IN' }, answers, repeatIndex);
 
     case 'MATCHES_REGEX': {
       const subject = toComparableString(actual);
@@ -188,11 +180,7 @@ export function evaluateCondition(
 }
 
 /** Evaluate a boolean expression tree. */
-export function evaluateNode(
-  node: ConditionNode,
-  answers: AnswerMap,
-  repeatIndex = 0,
-): boolean {
+export function evaluateNode(node: ConditionNode, answers: AnswerMap, repeatIndex = 0): boolean {
   switch (node.kind) {
     case 'CONDITION':
       return evaluateCondition(node.condition, answers, repeatIndex);
@@ -220,7 +208,12 @@ function defaultFieldState(field: TemplateField): FieldState {
   };
 }
 
-function applyRules(state: FieldState, rules: LogicRule[], answers: AnswerMap, repeatIndex: number): void {
+function applyRules(
+  state: FieldState,
+  rules: LogicRule[],
+  answers: AnswerMap,
+  repeatIndex: number,
+): void {
   for (const rule of rules) {
     if (!evaluateNode(rule.when, answers, repeatIndex)) continue;
     switch (rule.effect.type) {
@@ -272,11 +265,7 @@ export function evaluateForm(
   const sectionStates: Record<string, { visible: boolean }> = {};
   const blockers: string[] = [];
 
-  const walk = (
-    field: TemplateField,
-    sectionVisible: boolean,
-    parentRevealed: boolean,
-  ): void => {
+  const walk = (field: TemplateField, sectionVisible: boolean, parentRevealed: boolean): void => {
     const state = defaultFieldState(field);
     applyRules(state, field.logic, answers, repeatIndex);
 
@@ -295,11 +284,8 @@ export function evaluateForm(
     // A follow-up is reachable when the parent is visible and either explicitly
     // revealed by a rule, or the parent has no REVEAL rule at all (in which case
     // follow-ups are always shown — authors use this for grouping).
-    const parentHasRevealRule = field.logic.some(
-      (r) => r.effect.type === 'REVEAL_FOLLOW_UPS',
-    );
-    const childrenReachable =
-      state.visible && (!parentHasRevealRule || state.followUpsRevealed);
+    const parentHasRevealRule = field.logic.some((r) => r.effect.type === 'REVEAL_FOLLOW_UPS');
+    const childrenReachable = state.visible && (!parentHasRevealRule || state.followUpsRevealed);
 
     for (const child of field.followUps) {
       walk(child, sectionVisible, childrenReachable);
@@ -337,9 +323,7 @@ export function flattenFields(sections: TemplateSection[]): TemplateField[] {
 }
 
 /** Index fields by id for O(1) lookup during rendering and validation. */
-export function indexFields(
-  sections: TemplateSection[],
-): Map<FieldId, TemplateField> {
+export function indexFields(sections: TemplateSection[]): Map<FieldId, TemplateField> {
   const map = new Map<FieldId, TemplateField>();
   for (const field of flattenFields(sections)) map.set(field.id, field);
   return map;

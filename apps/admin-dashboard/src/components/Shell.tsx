@@ -8,10 +8,11 @@
  * looking for it.
  */
 
+import { Permission } from '@orbit/shared';
+import { useQuery } from '@tanstack/react-query';
 import React from 'react';
 import { NavLink, Outlet } from 'react-router-dom';
-import { useQuery } from '@tanstack/react-query';
-import { Permission } from '@orbit/shared';
+
 import { api } from '../lib/api';
 import { useSession } from '../lib/auth';
 import { initials, relativeTime } from './ui';
@@ -55,7 +56,13 @@ interface NavItem {
   badge?: number;
 }
 
-function NavGroup({ label, items }: { label: string; items: NavItem[] }): React.ReactElement | null {
+function NavGroup({
+  label,
+  items,
+}: {
+  label: string;
+  items: NavItem[];
+}): React.ReactElement | null {
   const { can } = useSession();
   const visible = items.filter((item) => !item.permission || can(item.permission));
   if (visible.length === 0) return null;
@@ -104,14 +111,18 @@ function StatusBar({ health }: { health: SyncHealth | undefined }): React.ReactE
 
       <div className="statusbar__item">
         <span className="statusbar__label">Behind</span>
-        <span className={`statusbar__value num${behind > 0 ? ' statusbar__value--warn' : ' statusbar__value--ok'}`}>
+        <span
+          className={`statusbar__value num${behind > 0 ? ' statusbar__value--warn' : ' statusbar__value--ok'}`}
+        >
           {health ? behind : '—'}
         </span>
       </div>
 
       <div className="statusbar__item">
         <span className="statusbar__label">Silent 24h+</span>
-        <span className={`statusbar__value num${stale > 0 ? ' statusbar__value--warn' : ' statusbar__value--ok'}`}>
+        <span
+          className={`statusbar__value num${stale > 0 ? ' statusbar__value--warn' : ' statusbar__value--ok'}`}
+        >
           {health ? stale : '—'}
         </span>
       </div>
@@ -120,14 +131,18 @@ function StatusBar({ health }: { health: SyncHealth | undefined }): React.ReactE
 
       <div className="statusbar__item">
         <span className="statusbar__label">Conflicts</span>
-        <span className={`statusbar__value num${conflicts > 0 ? ' statusbar__value--danger' : ' statusbar__value--ok'}`}>
+        <span
+          className={`statusbar__value num${conflicts > 0 ? ' statusbar__value--danger' : ' statusbar__value--ok'}`}
+        >
           {health ? conflicts : '—'}
         </span>
       </div>
 
       <div className="statusbar__item">
         <span className="statusbar__label">Media queued</span>
-        <span className={`statusbar__value num${uploads > 0 ? ' statusbar__value--warn' : ' statusbar__value--ok'}`}>
+        <span
+          className={`statusbar__value num${uploads > 0 ? ' statusbar__value--warn' : ' statusbar__value--ok'}`}
+        >
           {health ? uploads : '—'}
         </span>
       </div>
@@ -141,7 +156,9 @@ export function Shell(): React.ReactElement {
 
   return (
     <div className="shell">
-      <a className="skip-link" href="#main">Skip to content</a>
+      <a className="skip-link" href="#main">
+        Skip to content
+      </a>
 
       <nav className="rail" aria-label="Sections">
         <div className="rail__brand">
@@ -198,7 +215,9 @@ export function Shell(): React.ReactElement {
               <div className="small strong truncate">
                 {user?.firstName} {user?.lastName}
               </div>
-              <div className="small muted truncate">{user?.role.replace(/_/g, ' ').toLowerCase()}</div>
+              <div className="small muted truncate">
+                {user?.role.replace(/_/g, ' ').toLowerCase()}
+              </div>
             </div>
           </div>
           <button
@@ -266,13 +285,19 @@ export function CursorLagRail({ health }: { health: SyncHealth }): React.ReactEl
           <div className="metric__label">Up to date</div>
         </div>
         <div>
-          <div className="metric__value num" style={{ color: counts.behind ? 'var(--warn)' : undefined }}>
+          <div
+            className="metric__value num"
+            style={{ color: counts.behind ? 'var(--warn)' : undefined }}
+          >
             {counts.near + counts.behind}
           </div>
           <div className="metric__label">Behind head</div>
         </div>
         <div>
-          <div className="metric__value num" style={{ color: counts.stale ? 'var(--danger)' : undefined }}>
+          <div
+            className="metric__value num"
+            style={{ color: counts.stale ? 'var(--danger)' : undefined }}
+          >
             {counts.stale}
           </div>
           <div className="metric__label">Silent 24h+</div>
@@ -312,7 +337,8 @@ export function CursorLagRail({ health }: { health: SyncHealth }): React.ReactEl
           <span className="lagrail__swatch" style={{ background: 'var(--ok)' }} /> At head
         </span>
         <span className="lagrail__legend-item">
-          <span className="lagrail__swatch" style={{ background: 'var(--accent)' }} /> Nearly current
+          <span className="lagrail__swatch" style={{ background: 'var(--accent)' }} /> Nearly
+          current
         </span>
         <span className="lagrail__legend-item">
           <span className="lagrail__swatch" style={{ background: 'var(--warn)' }} /> Behind

@@ -8,6 +8,7 @@
  */
 
 import pino from 'pino';
+
 import { env, isProduction } from './env.js';
 
 export const logger = pino({
@@ -45,7 +46,14 @@ export const logger = pino({
   // Pretty output locally; JSON in production for the log pipeline.
   transport: isProduction
     ? undefined
-    : { target: 'pino-pretty', options: { colorize: true, translateTime: 'HH:MM:ss.l', ignore: 'pid,hostname,service,env' } },
+    : {
+        target: 'pino-pretty',
+        options: {
+          colorize: true,
+          translateTime: 'HH:MM:ss.l',
+          ignore: 'pid,hostname,service,env',
+        },
+      },
 });
 
 export type Logger = typeof logger;

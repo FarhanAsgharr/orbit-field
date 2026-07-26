@@ -26,10 +26,11 @@
 
 /* Resolves to `dist/` for the same reason as `api/index.ts`. */
 import type { IncomingMessage, ServerResponse } from 'node:http';
+
 import { logger } from '../../dist/config/logger.js';
+import { pruneExpiredTokens } from '../../dist/lib/tokens.js';
 import { pruneSyncTables } from '../../dist/modules/sync/sync.service.js';
 import { pruneExpiredUploads } from '../../dist/modules/uploads/uploads.routes.js';
-import { pruneExpiredTokens } from '../../dist/lib/tokens.js';
 
 /**
  * Vercel signs cron invocations with `Authorization: Bearer $CRON_SECRET`.
@@ -57,7 +58,10 @@ function authorised(req: IncomingMessage): boolean {
 }
 
 /** Run one sweep, converting a failure into a reported result rather than a throw. */
-async function sweep<T>(name: string, run: () => Promise<T>): Promise<{ ok: boolean; result?: T; error?: string }> {
+async function sweep<T>(
+  name: string,
+  run: () => Promise<T>,
+): Promise<{ ok: boolean; result?: T; error?: string }> {
   try {
     return { ok: true, result: await run() };
   } catch (err) {
@@ -70,7 +74,11 @@ export default async function handler(req: IncomingMessage, res: ServerResponse)
   if (!authorised(req)) {
     res.statusCode = 401;
     res.setHeader('Content-Type', 'application/json');
-    res.end(JSON.stringify({ error: { code: 'UNAUTHORIZED', message: 'This endpoint is invoked by the scheduler.' } }));
+    res.end(
+      JSON.stringify({
+        error: { code: 'UNAUTHORIZED', message: 'This endpoint is invoked by the scheduler.' },
+      }),
+    );
     return;
   }
 
@@ -84,7 +92,13 @@ export default async function handler(req: IncomingMessage, res: ServerResponse)
   const allOk = syncTables.ok && tokens.ok && uploads.ok;
 
   logger.info(
-    { syncTables: syncTables.result, tokens: tokens.result, uploads: uploads.result, durationMs, allOk },
+    {
+      syncTables: syncTables.result,
+      tokens: tokens.result,
+      uploads: uploads.result,
+      durationMs,
+      allOk,
+    },
     'maintenance prune complete',
   );
 

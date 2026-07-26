@@ -7,9 +7,10 @@
  * under the user's finger.
  */
 
+import { FieldType, type JsonValue, type TemplateField } from '@orbit/types';
 import React, { useCallback, useEffect, useState } from 'react';
 import { Modal, Platform, Pressable, View } from 'react-native';
-import { FieldType, type JsonValue, type TemplateField } from '@orbit/types';
+
 import { Button, Field, Txt } from '../../../components/ui';
 import { useTheme } from '../../../theme/ThemeProvider';
 
@@ -58,7 +59,6 @@ export function NumberField({
   onChange,
   onBlur,
 }: InputFieldProps): React.ReactElement {
-  const theme = useTheme();
   const isCurrency = field.type === FieldType.CURRENCY;
 
   // Local draft so partial input ("12.", "-", "0.0") survives until blur.
@@ -135,7 +135,11 @@ export function DateTimeField({
   const [open, setOpen] = useState(false);
 
   const mode: 'date' | 'time' | 'datetime' =
-    field.type === FieldType.TIME ? 'time' : field.type === FieldType.DATETIME ? 'datetime' : 'date';
+    field.type === FieldType.TIME
+      ? 'time'
+      : field.type === FieldType.DATETIME
+        ? 'datetime'
+        : 'date';
 
   const display = (): string => {
     if (typeof value !== 'string' || value === '') return 'Not set';
@@ -148,7 +152,9 @@ export function DateTimeField({
   const setNow = (): void => {
     const now = new Date();
     if (mode === 'time') {
-      onChange(`${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`);
+      onChange(
+        `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`,
+      );
     } else if (mode === 'datetime') {
       onChange(now.toISOString());
     } else {
@@ -207,10 +213,14 @@ export function DateTimeField({
           >
             <Txt variant="heading">{field.label}</Txt>
 
-            <ManualDateEntry mode={mode} value={typeof value === 'string' ? value : ''} onCommit={(next) => {
-              onChange(next);
-              setOpen(false);
-            }} />
+            <ManualDateEntry
+              mode={mode}
+              value={typeof value === 'string' ? value : ''}
+              onCommit={(next) => {
+                onChange(next);
+                setOpen(false);
+              }}
+            />
 
             <View style={{ flexDirection: 'row', gap: theme.spacing.md }}>
               <Button
@@ -252,10 +262,13 @@ function ManualDateEntry({
     if (mode === 'time') return value;
     const parsed = new Date(value);
     if (Number.isNaN(parsed.getTime())) return '';
-    return mode === 'date' ? parsed.toISOString().slice(0, 10) : parsed.toISOString().slice(0, 16).replace('T', ' ');
+    return mode === 'date'
+      ? parsed.toISOString().slice(0, 10)
+      : parsed.toISOString().slice(0, 16).replace('T', ' ');
   });
 
-  const placeholder = mode === 'time' ? 'HH:MM' : mode === 'date' ? 'YYYY-MM-DD' : 'YYYY-MM-DD HH:MM';
+  const placeholder =
+    mode === 'time' ? 'HH:MM' : mode === 'date' ? 'YYYY-MM-DD' : 'YYYY-MM-DD HH:MM';
 
   const commit = (): void => {
     const trimmed = draft.trim();
@@ -333,7 +346,13 @@ export function BarcodeField({
         }
       />
       {onScan ? (
-        <Button label="Scan code" variant="secondary" onPress={onScan} disabled={disabled} fullWidth />
+        <Button
+          label="Scan code"
+          variant="secondary"
+          onPress={onScan}
+          disabled={disabled}
+          fullWidth
+        />
       ) : null}
     </View>
   );

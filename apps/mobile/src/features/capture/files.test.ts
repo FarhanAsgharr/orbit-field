@@ -24,10 +24,11 @@ vi.mock('expo-crypto', () => ({
   digestStringAsync: vi.fn(),
 }));
 
+import * as Crypto from 'expo-crypto';
 import * as DocumentPicker from 'expo-document-picker';
 import * as FileSystem from 'expo-file-system';
-import * as Crypto from 'expo-crypto';
-import { DOCUMENT_MIME_TYPES, describeFileType, pickDocuments } from './files';
+
+import { describeFileType, DOCUMENT_MIME_TYPES, pickDocuments } from './files';
 
 const picker = vi.mocked(DocumentPicker.getDocumentAsync);
 const fs = vi.mocked(FileSystem);

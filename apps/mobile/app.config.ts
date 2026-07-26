@@ -34,9 +34,7 @@ function resolveApiUrl(): string {
 
   if (configured) {
     if (!/^https?:\/\//.test(configured)) {
-      throw new Error(
-        `EXPO_PUBLIC_API_URL must include the scheme, got "${configured}".`,
-      );
+      throw new Error(`EXPO_PUBLIC_API_URL must include the scheme, got "${configured}".`);
     }
     // A device on a mobile network cannot reach a private address, and the
     // resulting failure looks identical to the server being down.
@@ -57,9 +55,7 @@ function resolveApiUrl(): string {
     if (isPackagedBuild() && configured.startsWith('http://')) {
       // Android blocks cleartext traffic by default from API 28, so an http://
       // backend fails every request on a release build with no useful error.
-      throw new Error(
-        `EXPO_PUBLIC_API_URL is "${configured}". A release build requires https.`,
-      );
+      throw new Error(`EXPO_PUBLIC_API_URL is "${configured}". A release build requires https.`);
     }
     return configured.replace(/\/+$/, '');
   }

@@ -10,11 +10,19 @@
  * on screen gets missed.
  */
 
+import {
+  type Attachment,
+  FieldType,
+  type GeoPoint,
+  type JsonValue,
+  type TemplateField,
+} from '@orbit/types';
 import React from 'react';
 import { View } from 'react-native';
-import { FieldType, type Attachment, type GeoPoint, type JsonValue, type TemplateField } from '@orbit/types';
+
 import { Txt } from '../../components/ui';
 import { useTheme } from '../../theme/ThemeProvider';
+import type { SignatureData } from '../signature/SignaturePad';
 import {
   CheckboxField,
   DropdownChoice,
@@ -31,7 +39,6 @@ import {
   TextField,
 } from './fields/InputFields';
 import { FileListField, LocationField, PhotoField, SignatureField } from './fields/MediaFields';
-import type { SignatureData } from '../signature/SignaturePad';
 import type { FormFieldState } from './useInspectionForm';
 
 export interface FieldActions {
@@ -124,7 +131,9 @@ export function FieldRenderer({
 
       case FieldType.PASS_FAIL:
       case FieldType.YES_NO:
-        return <SegmentedChoice field={field} value={value} disabled={disabled} onChange={change} />;
+        return (
+          <SegmentedChoice field={field} value={value} disabled={disabled} onChange={change} />
+        );
 
       case FieldType.RADIO:
         return <RadioChoice field={field} value={value} disabled={disabled} onChange={change} />;
@@ -133,7 +142,9 @@ export function FieldRenderer({
         return <DropdownChoice field={field} value={value} disabled={disabled} onChange={change} />;
 
       case FieldType.MULTI_SELECT:
-        return <MultiSelectChoice field={field} value={value} disabled={disabled} onChange={change} />;
+        return (
+          <MultiSelectChoice field={field} value={value} disabled={disabled} onChange={change} />
+        );
 
       case FieldType.CHECKBOX:
         return <CheckboxField field={field} value={value} disabled={disabled} onChange={change} />;

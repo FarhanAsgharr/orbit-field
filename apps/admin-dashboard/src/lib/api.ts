@@ -129,7 +129,11 @@ async function refreshSession(): Promise<void> {
       if (!response.ok) {
         clearTokens();
         for (const listener of authListeners) listener();
-        throw new ApiRequestError('AUTH_TOKEN_REVOKED', 'Your session expired. Sign in again.', 401);
+        throw new ApiRequestError(
+          'AUTH_TOKEN_REVOKED',
+          'Your session expired. Sign in again.',
+          401,
+        );
       }
 
       const body = (await response.json()) as { data: { tokens: AuthTokens } };
@@ -159,14 +163,20 @@ export async function request<T>(path: string, options: RequestOptions = {}): Pr
       payload = JSON.parse(text);
     } catch {
       if (!response.ok) {
-        throw new ApiRequestError('INTERNAL_ERROR', 'The server returned an unexpected response.', response.status);
+        throw new ApiRequestError(
+          'INTERNAL_ERROR',
+          'The server returned an unexpected response.',
+          response.status,
+        );
       }
     }
   }
 
   if (response.ok) {
     const wrapped = payload as { data?: T } | null;
-    return (wrapped && typeof wrapped === 'object' && 'data' in wrapped ? wrapped.data : payload) as T;
+    return (
+      wrapped && typeof wrapped === 'object' && 'data' in wrapped ? wrapped.data : payload
+    ) as T;
   }
 
   const apiError = payload as ApiError | null;
