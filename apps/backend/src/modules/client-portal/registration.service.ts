@@ -202,16 +202,45 @@ export async function registerClient(
   const org = (await hostOrganization())!;
   const email = input.email.toLowerCase().trim();
   const companyName = input.companyName.trim();
-  const [firstName, ...restOfName] = input.contactName.trim().split(/\s+/);
+  /*
+   * The contact's name, split into the two columns a user row has.
+   *
+   * `Client.contactName` is varchar(120) and keeps whatever was typed;
+   * `User.firstName` and `User.lastName` are varchar(100) each. A single
+   * 120-character name therefore validated cleanly and then overflowed
+   * `firstName`, which reached the browser as "an unexpected error occurred".
+   *
+   * Truncating the derived halves is the right trade rather than refusing the
+   * name: the full value is preserved on the client record, and no real name
+   * is 100 characters, so this only ever fires on input that was never a name.
+   */
+  const fit = (value: string): string => value.slice(0, 100);
+  const [firstNameRaw, ...restOfName] = input.contactName.trim().split(/\s+/);
+  const firstName = fit(firstNameRaw ?? '');
+  const lastName = fit(restOfName.join(' '));
 
+  /*
+   * A removed account still holds its address.
+   *
+   * The unique index is `(orgId, email)` and knows nothing about `deletedAt`,
+   * so filtering the probe on `deletedAt: null` let a soft-deleted row through
+   * — and the insert then failed on the constraint, surfacing as a raw
+   * "a record with this orgId, email already exists". That names a database
+   * column at somebody trying to sign up.
+   *
+   * Same shape of mistake as the client code above, and worth stating twice:
+   * a uniqueness probe must match the constraint it is standing in for.
+   */
   const existing = await prisma.user.findFirst({
-    where: { email, deletedAt: null },
-    select: { id: true },
+    where: { email },
+    select: { id: true, deletedAt: true },
   });
   if (existing) {
     throw new AppError(
       ErrorCode.DUPLICATE_RESOURCE,
-      'An account already exists for that email address. Sign in instead, or use the password reset if you have forgotten it.',
+      existing.deletedAt
+        ? 'That email address belonged to an account that has since been removed. Contact the company to have it set up again.'
+        : 'An account already exists for that email address. Sign in instead, or use the password reset if you have forgotten it.',
       { fields: { email: 'Already registered.' } },
     );
   }
@@ -221,8 +250,8 @@ export async function registerClient(
       typeof DEFAULT_PASSWORD_POLICY | undefined) ?? DEFAULT_PASSWORD_POLICY;
   const strength = checkPasswordStrength(input.password, policy, {
     email,
-    firstName: firstName ?? '',
-    lastName: restOfName.join(' '),
+    firstName,
+    lastName,
   });
   if (!strength.valid) {
     throw new AppError(ErrorCode.VALIDATION_FAILED, strength.errors[0]!, {
@@ -274,8 +303,8 @@ export async function registerClient(
         orgId: org.id,
         clientId,
         email,
-        firstName: firstName ?? companyName,
-        lastName: restOfName.join(' ') || '',
+        firstName: firstName || fit(companyName),
+        lastName,
         phone: input.contactPhone.trim(),
         passwordHash,
         passwordChangedAt: new Date(),

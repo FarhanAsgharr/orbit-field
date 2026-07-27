@@ -67,7 +67,18 @@ const website = z
   .max(300)
   .trim()
   .transform((value) => (value && !/^https?:\/\//i.test(value) ? `https://${value}` : value))
-  .refine((value) => !value || z.string().url().safeParse(value).success, 'Enter a valid website.');
+  .refine((value) => !value || z.string().url().safeParse(value).success, 'Enter a valid website.')
+  /*
+   * Checked *after* the scheme is added, not before.
+   *
+   * `.max(300)` above measures what was typed; the column stores what we
+   * derive from it, which is up to eight characters longer. An address just
+   * under the limit therefore passed validation and then overflowed
+   * `varchar(300)` — a Prisma P2000 that reaches the browser as "an
+   * unexpected error occurred", with nothing to tell the person which of
+   * eighteen fields to shorten.
+   */
+  .refine((value) => !value || value.length <= 300, 'That website address is too long.');
 
 const registrationSchema = z.object({
   companyName: z.string().min(2).max(200).trim(),
