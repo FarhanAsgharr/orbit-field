@@ -82,6 +82,101 @@ router.get(
  * The first place support looks when someone reports "it isn't syncing" —
  * it answers whether the device has been in contact at all.
  */
+/**
+ * The authentication events an operator may clear.
+ *
+ * Sign-in noise, and nothing else. `RECORD_*`, `INSPECTION_*` and
+ * `SETTINGS_CHANGED` are the compliance trail — the answer to "who changed this
+ * inspection and when" — and an audit log you can quietly edit is not an audit
+ * log. Restricting the set here rather than trusting the caller means a
+ * mistyped request cannot take the trail with it.
+ */
+const PURGEABLE_ACTIONS = ['AUTH_LOGIN', 'AUTH_LOGIN_FAILED', 'AUTH_LOGOUT'] as const;
+
+/**
+ * Clear old sign-in history.
+ *
+ * Every successful login writes an entry, so on an active installation these
+ * outnumber everything else several times over and bury the events somebody is
+ * actually looking for. That is the problem this solves; it is housekeeping,
+ * not redaction.
+ *
+ * Three things keep it from being a way to cover tracks:
+ *
+ *   - only authentication actions can go, never the record trail;
+ *   - `before` is required, so it is always a retention cut and never "delete
+ *     the last hour", which is what somebody hiding a specific sign-in would
+ *     want;
+ *   - the purge writes its own audit entry, naming who did it, how many rows
+ *     went and what the cutoff was. Deleting the evidence therefore leaves
+ *     evidence, which is the property that makes the log worth keeping.
+ */
+router.delete(
+  '/audit-logs',
+  requireAuth,
+  requirePermission(Permission.AUDIT_READ),
+  validate({
+    body: z.object({
+      before: z.string().datetime({ offset: true }),
+      actions: z.array(z.enum(PURGEABLE_ACTIONS)).min(1).optional(),
+    }),
+  }),
+  asyncHandler(async (req, res) => {
+    const subject = auth(req);
+    const body = req.validated!.body as { before: string; actions?: string[] };
+
+    // Reading the audit log is an administrator's job; erasing part of it is
+    // the organisation owner's.
+    if (subject.role !== 'SUPER_ADMIN') {
+      throw new AppError(
+        ErrorCode.PERMISSION_DENIED,
+        'Only the organisation owner can clear sign-in history.',
+      );
+    }
+
+    const before = new Date(body.before);
+    if (before.getTime() > Date.now()) {
+      throw new AppError(ErrorCode.VALIDATION_FAILED, 'The cutoff must be in the past.', {
+        fields: { before: 'Pick a date that has already happened.' },
+      });
+    }
+
+    const actions = body.actions ?? [...PURGEABLE_ACTIONS];
+
+    const where = {
+      orgId: subject.orgId,
+      action: { in: actions },
+      createdAt: { lt: before },
+    };
+
+    const removed = await prisma.auditLog.deleteMany({ where });
+
+    /*
+     * Written after the delete, deliberately: it must not be caught by its own
+     * `createdAt < before` filter, and it is the record that survives.
+     */
+    await prisma.auditLog.create({
+      data: {
+        id: ulid(),
+        orgId: subject.orgId,
+        userId: subject.userId,
+        action: 'SETTINGS_CHANGED',
+        entity: 'AuditLog',
+        entityId: subject.orgId,
+        metadata: {
+          purged: removed.count,
+          actions,
+          before: before.toISOString(),
+        },
+        ipAddress: clientIp(req),
+        requestId: req.requestId,
+      },
+    });
+
+    res.json({ data: { purged: removed.count, actions, before: before.toISOString() } });
+  }),
+);
+
 router.get(
   '/sync-sessions',
   requireAuth,

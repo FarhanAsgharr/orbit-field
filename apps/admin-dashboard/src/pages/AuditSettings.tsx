@@ -38,8 +38,46 @@ function actionTone(action: string): 'neutral' | 'ok' | 'warn' | 'danger' | 'acc
   return 'neutral';
 }
 
+/** `Number` is taken by a component below, so the global is reached this way. */
+const Number_parseInt = (value: string): number => globalThis.Number.parseInt(value, 10);
+
 export function Audit(): React.ReactElement {
+  const { user } = useSession();
+  const queryClient = useQueryClient();
   const [action, setAction] = useState('');
+  const [clearing, setClearing] = useState(false);
+  const [olderThan, setOlderThan] = useState('90');
+  const [notice, setNotice] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  /*
+   * Sign-in history only.
+   *
+   * Every successful login writes an entry, so on a busy installation these
+   * outnumber everything else and bury the events somebody is looking for.
+   * Clearing them is housekeeping. The record trail — who changed which
+   * inspection — is not clearable here and not clearable at all, which is what
+   * makes the log worth keeping. The server enforces the same restriction.
+   */
+  const purge = useMutation({
+    mutationFn: () => {
+      // `Number` is a settings component in this file, so the global is
+      // shadowed — the state is held as a string and parsed here.
+      const days = Number_parseInt(olderThan);
+      const before = new Date(Date.now() - days * 86_400_000).toISOString();
+      return api.delete<{ purged: number }>('/admin/audit-logs', { before });
+    },
+    onSuccess: (result) => {
+      void queryClient.invalidateQueries({ queryKey: ['audit'] });
+      setClearing(false);
+      setError(null);
+      setNotice(
+        `${result.purged} sign-in entr${result.purged === 1 ? 'y' : 'ies'} removed. This clearance is itself recorded below.`,
+      );
+    },
+    onError: (e) =>
+      setError(e instanceof Error ? e.message : 'Could not clear the sign-in history.'),
+  });
 
   const columns: Array<Column<AuditRow>> = [
     {
@@ -133,8 +171,83 @@ export function Audit(): React.ReactElement {
         </div>
       </header>
 
+      {error ? <ErrorBanner message={error} /> : null}
+      {notice ? <p className="small">{notice}</p> : null}
+
+      {clearing ? (
+        <div
+          className="modal__backdrop"
+          role="presentation"
+          onClick={(e) => {
+            if (e.target === e.currentTarget) setClearing(false);
+          }}
+        >
+          <div
+            className="card modal"
+            role="dialog"
+            aria-modal="true"
+            aria-label="Clear sign-in history"
+          >
+            <div className="card__head">
+              <h2 className="card__title">Clear sign-in history</h2>
+              <button
+                className="btn btn--ghost btn--sm"
+                onClick={() => setClearing(false)}
+                disabled={purge.isPending}
+              >
+                Cancel
+              </button>
+            </div>
+            <div className="card__body stack gap-4">
+              <p className="small">
+                Removes <strong>sign-in, failed sign-in and sign-out</strong> entries older than the
+                age you choose.
+              </p>
+              <p className="small muted">
+                Nothing else is touched. Record changes, review decisions, password resets and
+                settings changes stay — those are the compliance trail, and they cannot be deleted
+                from here or anywhere else. This clearance is written to the log itself, naming you
+                and the number of rows removed.
+              </p>
+              <div className="field">
+                <label className="field__label" htmlFor="audit-age">
+                  Older than
+                </label>
+                <select
+                  id="audit-age"
+                  className="select"
+                  value={olderThan}
+                  onChange={(e) => setOlderThan(e.target.value)}
+                >
+                  <option value="365">1 year</option>
+                  <option value="180">6 months</option>
+                  <option value="90">90 days</option>
+                  <option value="30">30 days</option>
+                  <option value="7">7 days</option>
+                  <option value="1">1 day</option>
+                </select>
+              </div>
+              <button
+                className="btn btn--danger"
+                onClick={() => purge.mutate()}
+                disabled={purge.isPending}
+              >
+                {purge.isPending ? 'Clearing…' : 'Clear sign-in history'}
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
       <DataTable<AuditRow>
         endpoint="/admin/audit-logs"
+        toolbarAction={
+          user?.role === 'SUPER_ADMIN' ? (
+            <button className="btn btn--ghost" onClick={() => setClearing(true)}>
+              Clear sign-in history
+            </button>
+          ) : null
+        }
         queryKey={['audit', action]}
         columns={columns}
         rowKey={(row) => row.id}
