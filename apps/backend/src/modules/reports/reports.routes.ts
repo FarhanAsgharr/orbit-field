@@ -498,6 +498,21 @@ router.get(
         responses: { where: { deletedAt: null } },
         signatures: { where: { deletedAt: null } },
         _count: { select: { attachments: true } },
+        // Listed in the report, not just counted: "3 attachments" tells a
+        // reader nothing, and the customer's own drawing is often the reason
+        // the inspection happened.
+        attachments: {
+          where: { deletedAt: null },
+          orderBy: { createdAt: 'asc' },
+          select: {
+            fileName: true,
+            mimeType: true,
+            sizeBytes: true,
+            uploadedAt: true,
+            createdAt: true,
+            requestId: true,
+          },
+        },
       },
     });
 
@@ -537,6 +552,14 @@ router.get(
       comment: response.comment ?? '',
       failed: response.isFailure,
     }));
+
+    interface FileRow {
+      file: string;
+      kind: string;
+      size: string;
+      source: string;
+      captured: string;
+    }
 
     const columns = [
       { header: 'Question', value: (r: AnswerRow) => r.question, width: 40 },
@@ -581,6 +604,30 @@ router.get(
                   { label: 'Attachments', value: String(inspection._count.attachments) },
                 ],
               }),
+              ...(inspection.attachments.length > 0
+                ? [
+                    section<FileRow>({
+                      heading: 'Files',
+                      columns: [
+                        { header: 'File', value: (r: FileRow) => r.file, width: 34 },
+                        { header: 'Type', value: (r: FileRow) => r.kind, width: 12 },
+                        { header: 'Size', value: (r: FileRow) => r.size, width: 10 },
+                        { header: 'Source', value: (r: FileRow) => r.source, width: 20 },
+                        { header: 'Added', value: (r: FileRow) => r.captured, width: 18 },
+                      ],
+                      rows: inspection.attachments.map((a) => ({
+                        file: a.fileName,
+                        kind: a.mimeType.split('/').pop() ?? a.mimeType,
+                        size: `${Math.max(1, Math.round(Number(a.sizeBytes) / 1024))} KB`,
+                        // Where it came from matters to whoever reads this: a
+                        // photograph taken on site carries different weight
+                        // from a drawing the customer supplied.
+                        source: a.requestId ? 'Supplied by client' : 'Captured on site',
+                        captured: (a.uploadedAt ?? a.createdAt).toISOString().slice(0, 16).replace('T', ' '),
+                      })),
+                    }),
+                  ]
+                : []),
             ],
           )
         : await buildWorkbook({ ...context, title: inspection.number }, [

@@ -269,6 +269,11 @@ export const AuditAction = {
   CONFLICT_RESOLVED: 'CONFLICT_RESOLVED',
   REPORT_GENERATED: 'REPORT_GENERATED',
   REPORT_EXPORTED: 'REPORT_EXPORTED',
+  /* Files attached to a request or an inspection. Reading somebody's evidence
+   * is an event worth recording, not just writing it. */
+  FILE_UPLOADED: 'FILE_UPLOADED',
+  FILE_DOWNLOADED: 'FILE_DOWNLOADED',
+  FILE_DELETED: 'FILE_DELETED',
   PERMISSION_DENIED: 'PERMISSION_DENIED',
   SETTINGS_CHANGED: 'SETTINGS_CHANGED',
 } as const;

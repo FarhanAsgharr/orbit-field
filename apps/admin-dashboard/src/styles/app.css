@@ -981,3 +981,35 @@
   overflow-y: auto;
   box-shadow: var(--shadow-lg);
 }
+
+/*
+ * File drop target.
+ *
+ * A dashed outline that changes on drag-over, because a drop zone that gives
+ * no feedback while a file is held over it reads as not being a drop zone.
+ */
+.dropzone {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-1);
+  align-items: center;
+  justify-content: center;
+  padding: var(--s-6) var(--s-4);
+  text-align: center;
+  cursor: pointer;
+  border: 2px dashed var(--border);
+  border-radius: var(--radius);
+  transition:
+    border-color 120ms ease,
+    background 120ms ease;
+}
+
+.dropzone:hover,
+.dropzone:focus-visible {
+  border-color: var(--accent);
+}
+
+.dropzone--over {
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 8%, transparent);
+}

@@ -15,9 +15,10 @@
 
 import { createHash } from 'node:crypto';
 
-import { AppError, ErrorCode, Permission } from '@orbit/shared';
+import { AppError, can, ErrorCode, Permission } from '@orbit/shared';
 import { AttachmentState, type UploadSession } from '@orbit/types';
 import { ulid } from '@orbit/utils';
+import { Prisma } from '@prisma/client';
 import { Router } from 'express';
 import { z } from 'zod';
 
@@ -25,13 +26,58 @@ import { env } from '../../config/env.js';
 import { logger } from '../../config/logger.js';
 import { prisma } from '../../db/prisma.js';
 import { requireAuth, requireDevice, requirePermission } from '../../middleware/auth.js';
-import { auth } from '../../middleware/context.js';
+import { auth, clientIp } from '../../middleware/context.js';
 import { asyncHandler } from '../../middleware/error.js';
 import { uploadLimiter } from '../../middleware/rate-limit.js';
 import { schemas, validate } from '../../middleware/validate.js';
+import { dispositionFor, validateContent } from '../client-portal/attachment-rules.js';
 import { attachmentKey, storage } from './storage.js';
 
 const router: Router = Router();
+
+/**
+ * Who may put bytes against an attachment.
+ *
+ * `INSPECTION_UPDATE` is the right test for staff and for devices: uploading a
+ * photograph is part of editing an inspection. It is the wrong test for a
+ * customer, who must never edit an inspection and yet must be able to send the
+ * drawing that accompanies their request.
+ *
+ * So the gate asks the question the endpoint actually cares about. A client is
+ * admitted here and then narrowed by `attachmentScope` in the handler, which
+ * restricts them to files hanging off their own request or their own
+ * inspection — being let through this door does not decide which files they
+ * reach.
+ */
+const requireUploadAccess = asyncHandler(async (req, _res, next) => {
+  const subject = auth(req);
+  if (subject.clientId || can(subject, Permission.INSPECTION_UPDATE)) return next();
+  throw new AppError(
+    ErrorCode.PERMISSION_DENIED,
+    'You do not have permission to upload against this record.',
+  );
+});
+
+
+/**
+ * Narrow an attachment lookup to what this caller may reach.
+ *
+ * Staff are unaffected. A customer may reach a file only through something of
+ * theirs — a request they raised, or an inspection carried out for their
+ * company. Without this the endpoint scopes by organisation alone, and any
+ * client account could read every file in the installation by guessing ids.
+ */
+function attachmentScope(subject: ReturnType<typeof auth>): Prisma.AttachmentWhereInput {
+  if (!subject.clientId) return {};
+  return {
+    OR: [
+      { request: { clientId: subject.clientId } },
+      { inspection: { clientId: subject.clientId } },
+    ],
+  };
+}
+
+
 
 /** Chunk payloads are base64 in JSON; the ceiling accounts for that inflation. */
 const MAX_CHUNK_BASE64_BYTES = Math.ceil((env.UPLOAD_CHUNK_SIZE_BYTES * 4) / 3) + 1024;
@@ -64,7 +110,7 @@ router.post(
   '/',
   requireAuth,
   requireDevice,
-  requirePermission(Permission.INSPECTION_UPDATE),
+  requireUploadAccess,
   uploadLimiter,
   validate({
     body: z.object({
@@ -84,7 +130,12 @@ router.post(
     };
 
     const attachment = await prisma.attachment.findFirst({
-      where: { id: body.attachmentId, orgId: subject.orgId, deletedAt: null },
+      where: {
+        id: body.attachmentId,
+        orgId: subject.orgId,
+        deletedAt: null,
+        ...attachmentScope(subject),
+      },
       select: {
         id: true,
         fileName: true,
@@ -361,7 +412,7 @@ router.post(
 
     const session = await prisma.uploadSession.findFirst({
       where: { id: uploadId, orgId: subject.orgId },
-      include: { attachment: { select: { id: true, fileName: true, storageKey: true } } },
+      include: { attachment: { select: { id: true, fileName: true, storageKey: true, mimeType: true } } },
     });
     if (!session) throw new AppError(ErrorCode.NOT_FOUND, 'That upload session was not found.');
 
@@ -405,6 +456,32 @@ router.post(
         'The upload could not be assembled. Please retry.',
         { cause: err },
       );
+    }
+
+    /*
+     * Look at the bytes, now that they exist.
+     *
+     * The declaration was the client's claim about the file. This is the only
+     * point where the assembled content itself is examined — a renamed
+     * executable passes every earlier check, because every earlier check reads
+     * only what the client said.
+     *
+     * Request attachments come from outside the organisation, so they are the
+     * ones that matter; a device's own photograph is checked too because the
+     * cost is one buffer read of what is already in memory.
+     */
+    try {
+      const head = (await storage().read(result.key)).subarray(0, 16);
+      validateContent(head, session.attachment.mimeType);
+    } catch (err) {
+      await storage()
+        .delete(result.key)
+        .catch(() => undefined);
+      await prisma.attachment.update({
+        where: { id: session.attachmentId },
+        data: { state: AttachmentState.FAILED, lastUploadError: 'Rejected content' },
+      });
+      throw err;
     }
 
     if (result.checksum !== checksum.toLowerCase()) {
@@ -498,7 +575,12 @@ router.get(
     const { attachmentId } = req.validated!.params as { attachmentId: string };
 
     const attachment = await prisma.attachment.findFirst({
-      where: { id: attachmentId, orgId: subject.orgId, deletedAt: null },
+      where: {
+        id: attachmentId,
+        orgId: subject.orgId,
+        deletedAt: null,
+        ...attachmentScope(subject),
+      },
       select: { storageKey: true, mimeType: true, fileName: true, sizeBytes: true },
     });
     if (!attachment?.storageKey) {
@@ -507,11 +589,38 @@ router.get(
 
     const bytes = await storage().read(attachment.storageKey);
 
-    res.setHeader('Content-Type', attachment.mimeType);
+    /*
+     * Only a handful of types are rendered inline; everything else is sent as
+     * an opaque download. A stored `.txt` that is really HTML is inert that
+     * way — served as its declared type on the API's own origin it would not
+     * be.
+     */
+    const { contentType, inline } = dispositionFor(attachment.mimeType);
+
+    // Reading somebody's evidence is worth recording, and cheap next to the
+    // storage read that just happened.
+    void prisma.auditLog
+      .create({
+        data: {
+          id: ulid(),
+          orgId: subject.orgId,
+          userId: subject.userId,
+          action: 'FILE_DOWNLOADED',
+          entity: 'Attachment',
+          entityId: attachmentId,
+          metadata: { fileName: attachment.fileName },
+          ipAddress: clientIp(req),
+          requestId: req.requestId,
+        },
+      })
+      .catch(() => undefined);
+
+    res.setHeader('Content-Type', contentType);
     res.setHeader('Content-Length', String(bytes.length));
+    res.setHeader('X-Content-Type-Options', 'nosniff');
     res.setHeader(
       'Content-Disposition',
-      `inline; filename="${encodeURIComponent(attachment.fileName)}"`,
+      `${inline ? 'inline' : 'attachment'}; filename="${encodeURIComponent(attachment.fileName)}"`,
     );
     // Attachments are immutable once uploaded, so they cache indefinitely.
     res.setHeader('Cache-Control', 'private, max-age=31536000, immutable');

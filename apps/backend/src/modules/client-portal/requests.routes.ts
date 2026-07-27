@@ -37,6 +37,8 @@ import { asyncHandler } from '../../middleware/error.js';
 import { schemas, validate } from '../../middleware/validate.js';
 import { notifyUsers } from '../notifications/push.service.js';
 import { recordChange } from '../sync/change-log.js';
+import { storage } from '../uploads/storage.js';
+import { MAX_ATTACHMENTS_PER_REQUEST, validateDeclaration } from './attachment-rules.js';
 
 const router: Router = Router();
 
@@ -649,6 +651,44 @@ router.post(
         actorDeviceId: subject.deviceId,
       });
 
+      /*
+       * The customer's files become the inspection's.
+       *
+       * A foreign-key update, not a copy: the rows and the objects in storage
+       * are the ones the customer uploaded, so nothing is transferred twice
+       * and the checksums still describe the bytes they sent. `requestId` is
+       * kept so the provenance survives.
+       */
+      const carried = await tx.attachment.findMany({
+        where: { requestId: id, deletedAt: null },
+        select: { id: true, version: true },
+      });
+      if (carried.length > 0) {
+        await tx.attachment.updateMany({
+          where: { requestId: id, deletedAt: null },
+          data: { inspectionId, version: { increment: 1 } },
+        });
+
+        /*
+         * Devices replay the change log and nothing else, so without this the
+         * inspector arrives on site without the drawing the customer sent.
+         */
+        for (const attachment of carried) {
+          const row = await tx.attachment.findUniqueOrThrow({ where: { id: attachment.id } });
+          await recordChange(tx, {
+            orgId: subject.orgId,
+            entity: SyncEntity.ATTACHMENT,
+            operation: SyncOperation.CREATE,
+            entityId: attachment.id,
+            version: row.version,
+            row,
+            assignedToId: body.assignedToId ?? null,
+            actorUserId: subject.userId,
+            actorDeviceId: subject.deviceId,
+          });
+        }
+      }
+
       const row = await tx.inspectionRequest.update({
         where: { id },
         data: {
@@ -727,6 +767,240 @@ function notifyRequester(
     data: { requestId: message.requestId },
   }).catch(() => undefined);
 }
+
+// ---------------------------------------------------------------------------
+// Attachments
+// ---------------------------------------------------------------------------
+
+/**
+ * Declare a file, then upload it through the existing pipeline.
+ *
+ * Two steps rather than one, and reusing `Attachment` rather than a table of
+ * its own, because everything a request attachment needs already exists for
+ * inspection attachments: chunked transfer with resume, checksum verification,
+ * storage keys, content serving, replication to devices, and the reports
+ * section that lists them. A parallel implementation would be a second copy of
+ * all of it, drifting.
+ *
+ * The payoff shows up at approval: carrying the customer's files into the
+ * inspection is a foreign-key update, not a copy. One row, one object in
+ * storage, two owners over its life — which is what "no duplicate uploads"
+ * actually requires.
+ *
+ * This endpoint validates and reserves. The bytes go to `POST /uploads` and
+ * `/uploads/:id/chunks/:index` exactly as a phone's photographs do.
+ */
+router.post(
+  '/:id/attachments',
+  requireAuth,
+  validate({
+    params: z.object({ id: schemas.ulid }),
+    body: z.object({
+      fileName: z.string().min(1).max(300),
+      mimeType: z.string().min(1).max(120),
+      sizeBytes: z.number().int().positive(),
+      checksum: z.string().regex(/^[a-f0-9]{64}$/i),
+    }),
+  }),
+  asyncHandler(async (req, res) => {
+    const subject = auth(req);
+    const { id } = req.validated!.params as { id: string };
+    const body = req.validated!.body as {
+      fileName: string;
+      mimeType: string;
+      sizeBytes: number;
+      checksum: string;
+    };
+
+    const request = await prisma.inspectionRequest.findFirst({
+      where: { id, orgId: subject.orgId, deletedAt: null, ...clientScope(subject) },
+      select: { id: true, status: true, clientId: true },
+    });
+    if (!request) throw new AppError(ErrorCode.NOT_FOUND, 'That request was not found.');
+
+    /*
+     * Files may be added while the request is still open.
+     *
+     * After a decision the request is either work in progress — where the
+     * inspection is the right place for new evidence — or closed, where adding
+     * to it would change what was decided after the fact.
+     */
+    if (!['PENDING_APPROVAL', 'INFORMATION_REQUESTED'].includes(request.status)) {
+      throw new AppError(
+        ErrorCode.CONFLICT,
+        'This request has been decided and cannot take new files.',
+      );
+    }
+
+    // Type, size, extension and executable rules, before a byte is accepted.
+    const { fileName } = validateDeclaration(body);
+
+    const existing = await prisma.attachment.count({
+      where: { requestId: id, deletedAt: null },
+    });
+    if (existing >= MAX_ATTACHMENTS_PER_REQUEST) {
+      throw new AppError(
+        ErrorCode.CONFLICT,
+        `A request can carry ${MAX_ATTACHMENTS_PER_REQUEST} files. Remove one before adding another.`,
+      );
+    }
+
+    /*
+     * The same bytes attached twice are the same row.
+     *
+     * `checksum` is already the dedupe key for inspection attachments; using
+     * it here means a customer who submits the form twice, or retries after a
+     * timeout, does not end up with two copies of the same drawing.
+     */
+    const duplicate = await prisma.attachment.findFirst({
+      where: { requestId: id, checksum: body.checksum, deletedAt: null },
+      select: { id: true, fileName: true, state: true, storageKey: true },
+    });
+    if (duplicate) {
+      res.status(200).json({ data: { ...duplicate, duplicate: true } });
+      return;
+    }
+
+    const attachment = await prisma.attachment.create({
+      data: {
+        id: ulid(),
+        orgId: subject.orgId,
+        requestId: id,
+        kind: 'DOCUMENT' as never,
+        state: 'QUEUED' as never,
+        fileName,
+        mimeType: body.mimeType,
+        sizeBytes: BigInt(body.sizeBytes),
+        checksum: body.checksum,
+      },
+      select: { id: true, fileName: true, mimeType: true, sizeBytes: true, state: true },
+    });
+
+    await prisma.auditLog.create({
+      data: {
+        id: ulid(),
+        orgId: subject.orgId,
+        userId: subject.userId,
+        action: 'FILE_UPLOADED',
+        entity: 'Attachment',
+        entityId: attachment.id,
+        metadata: { requestId: id, fileName, sizeBytes: body.sizeBytes },
+        ipAddress: clientIp(req),
+        requestId: req.requestId,
+      },
+    });
+
+    res.status(201).json({ data: { ...attachment, sizeBytes: Number(attachment.sizeBytes) } });
+  }),
+);
+
+/** What is attached to a request. */
+router.get(
+  '/:id/attachments',
+  requireAuth,
+  validate({ params: z.object({ id: schemas.ulid }) }),
+  asyncHandler(async (req, res) => {
+    const subject = auth(req);
+    const { id } = req.validated!.params as { id: string };
+
+    const request = await prisma.inspectionRequest.findFirst({
+      where: { id, orgId: subject.orgId, deletedAt: null, ...clientScope(subject) },
+      select: { id: true },
+    });
+    if (!request) throw new AppError(ErrorCode.NOT_FOUND, 'That request was not found.');
+
+    const attachments = await prisma.attachment.findMany({
+      where: { requestId: id, deletedAt: null },
+      orderBy: { createdAt: 'asc' },
+      select: {
+        id: true,
+        fileName: true,
+        mimeType: true,
+        sizeBytes: true,
+        state: true,
+        storageKey: true,
+        uploadedAt: true,
+        createdAt: true,
+      },
+    });
+
+    res.json({
+      data: attachments.map((a) => ({
+        ...a,
+        sizeBytes: Number(a.sizeBytes),
+        // The key itself is never useful to a caller and naming it invites
+        // somebody to try fetching it directly.
+        storageKey: undefined,
+        uploaded: a.storageKey !== null,
+      })),
+    });
+  }),
+);
+
+/**
+ * Remove a file from a request.
+ *
+ * Only while the request is still open. Once it has been approved the file
+ * belongs to an inspection, and deleting evidence from work in progress is not
+ * something a customer does — the inspection's own rules govern it from then
+ * on.
+ */
+router.delete(
+  '/:id/attachments/:attachmentId',
+  requireAuth,
+  validate({ params: z.object({ id: schemas.ulid, attachmentId: schemas.ulid }) }),
+  asyncHandler(async (req, res) => {
+    const subject = auth(req);
+    const { id, attachmentId } = req.validated!.params as { id: string; attachmentId: string };
+
+    const request = await prisma.inspectionRequest.findFirst({
+      where: { id, orgId: subject.orgId, deletedAt: null, ...clientScope(subject) },
+      select: { id: true, status: true },
+    });
+    if (!request) throw new AppError(ErrorCode.NOT_FOUND, 'That request was not found.');
+
+    if (!['PENDING_APPROVAL', 'INFORMATION_REQUESTED'].includes(request.status)) {
+      throw new AppError(
+        ErrorCode.CONFLICT,
+        'This request has been decided. Its files are part of the record.',
+      );
+    }
+
+    const attachment = await prisma.attachment.findFirst({
+      where: { id: attachmentId, requestId: id, deletedAt: null },
+      select: { id: true, fileName: true, storageKey: true },
+    });
+    if (!attachment) throw new AppError(ErrorCode.NOT_FOUND, 'That file was not found.');
+
+    await prisma.attachment.update({
+      where: { id: attachmentId },
+      data: { deletedAt: new Date() },
+    });
+
+    // The object goes too: an unreferenced file is a bill with no purpose.
+    if (attachment.storageKey) {
+      await storage()
+        .delete(attachment.storageKey)
+        .catch(() => undefined);
+    }
+
+    await prisma.auditLog.create({
+      data: {
+        id: ulid(),
+        orgId: subject.orgId,
+        userId: subject.userId,
+        action: 'FILE_DELETED',
+        entity: 'Attachment',
+        entityId: attachmentId,
+        metadata: { requestId: id, fileName: attachment.fileName },
+        ipAddress: clientIp(req),
+        requestId: req.requestId,
+      },
+    });
+
+    res.status(204).end();
+  }),
+);
 
 /** Counts for the customer's dashboard, in one query rather than six. */
 router.get(

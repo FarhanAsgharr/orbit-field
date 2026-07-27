@@ -18,6 +18,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import React, { useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 
+import { AttachmentUpload } from '../components/AttachmentUpload';
 import {
   Badge,
   Card,
@@ -393,6 +394,13 @@ export function ClientNewRequest(): React.ReactElement {
             </p>
           </div>
         </header>
+        <Card title="Attach anything that helps">
+          {/* After creation, not before: a file needs a request to belong to,
+              and asking somebody to upload 20 MB before the form is accepted
+              means losing it if the form is then rejected. */}
+          <AttachmentUpload requestId={created.id} />
+        </Card>
+
         <Card title="What happens next">
           <div className="stack gap-3">
             <p>
@@ -723,6 +731,10 @@ export function ClientRequestDetail(): React.ReactElement {
           )}
         </Card>
       </div>
+
+      <Card title="Files">
+        <AttachmentUpload requestId={r.id} readOnly={!canWithdraw} />
+      </Card>
 
       <Card title={`Conversation (${r.comments?.length ?? 0})`}>
         <div className="stack gap-4">

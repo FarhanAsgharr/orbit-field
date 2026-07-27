@@ -16,6 +16,7 @@ import { Permission } from '@orbit/shared';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import React, { useState } from 'react';
 
+import { AttachmentUpload } from '../components/AttachmentUpload';
 import { type Column, DataTable } from '../components/DataTable';
 import {
   Badge,
@@ -90,6 +91,18 @@ export function InspectionRequests(): React.ReactElement {
       key: 'site',
       header: 'Site',
       render: (row) => row.site?.name ?? <span className="muted">—</span>,
+    },
+    {
+      key: 'files',
+      header: 'Files',
+      numeric: true,
+      width: '70px',
+      render: (row) =>
+        row._count.attachments > 0 ? (
+          <Badge label={String(row._count.attachments)} tone="info" />
+        ) : (
+          <span className="muted">—</span>
+        ),
     },
     {
       key: 'priority',
@@ -316,6 +329,12 @@ function ReviewPanel({
                   <p className="small muted">On site: {r.specialInstructions}</p>
                 ) : null}
               </div>
+
+              {/* Read-only once decided: by then the files belong to the
+                  inspection and are part of the record. */}
+              <Card title={`Files (${r._count?.attachments ?? 0})`}>
+                <AttachmentUpload requestId={r.id} readOnly={decided} />
+              </Card>
 
               {r.comments?.length ? (
                 <Card title={`Conversation (${r.comments.length})`}>

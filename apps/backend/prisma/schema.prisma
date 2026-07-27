@@ -809,6 +809,11 @@ model Attachment {
   orgId        String  @db.VarChar(26)
   inspectionId String? @db.VarChar(26)
   responseId   String? @db.VarChar(26)
+  /// Set when the file arrived with a customer's request rather than from a
+  /// device. On approval the inspection id is filled in and this is kept, so
+  /// the file is never copied — one row, one object in storage, two owners
+  /// over its life.
+  requestId    String? @db.VarChar(26)
 
   kind  AttachmentKind
   state AttachmentState @default(LOCAL_ONLY)
@@ -857,6 +862,7 @@ model Attachment {
   @@index([responseId])
   @@index([orgId, checksum])
   @@index([state])
+  request       InspectionRequest?  @relation(fields: [requestId], references: [id], onDelete: SetNull)
   @@map("attachments")
 }
 
@@ -1027,39 +1033,13 @@ model InspectionRequest {
   reviewedBy   User?        @relation("RequestReviewer", fields: [reviewedById], references: [id], onDelete: SetNull)
   inspection   Inspection?  @relation(fields: [inspectionId], references: [id], onDelete: SetNull)
 
-  attachments RequestAttachment[]
+  attachments Attachment[]
   comments    RequestComment[]
 
   @@unique([orgId, number])
   @@index([orgId, clientId, status, createdAt])
   @@index([orgId, status, createdAt])
   @@map("inspection_requests")
-}
-
-/// A file the customer attached to a request — a drawing, a photograph, a permit.
-///
-/// Separate from `Attachment`, which belongs to an inspection and rides the
-/// sync protocol to devices. These never reach a phone: they are context for
-/// the person deciding whether to approve, so they stay on the server.
-model RequestAttachment {
-  id        String @id @db.VarChar(26)
-  orgId     String @db.VarChar(26)
-  requestId String @db.VarChar(26)
-
-  fileName   String @db.VarChar(300)
-  mimeType   String @db.VarChar(120)
-  sizeBytes  BigInt
-  storageKey String @db.VarChar(500)
-  checksum   String @db.VarChar(64)
-
-  uploadedById String    @db.VarChar(26)
-  createdAt    DateTime  @default(now()) @db.Timestamptz(6)
-  deletedAt    DateTime? @db.Timestamptz(6)
-
-  request InspectionRequest @relation(fields: [requestId], references: [id], onDelete: Cascade)
-
-  @@index([orgId, requestId])
-  @@map("request_attachments")
 }
 
 /// The conversation on a request.
