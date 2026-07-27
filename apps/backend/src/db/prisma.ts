@@ -27,6 +27,32 @@ export const prisma =
           { emit: 'event', level: 'warn' },
         ],
     datasources: { db: { url: env.DATABASE_URL } },
+
+    /*
+     * Transaction budgets sized for a cold serverless function, not a warm server.
+     *
+     * Prisma's defaults are `maxWait: 2s` and `timeout: 5s`. Those are generous
+     * on a long-lived process holding an open pool, and much too tight here:
+     * this runs on Vercel functions against Supabase's transaction pooler with
+     * `connection_limit=1`, so the first write after an idle period has to cold
+     * start the runtime, open a TLS connection through pgbouncer and *then*
+     * begin the transaction — all inside two seconds, or Prisma throws P2028
+     * before the first statement runs.
+     *
+     * That failure is what a person sees as "I filled in the form, pressed
+     * save, and got an unexpected error" — intermittent, unreproducible, and
+     * always on the first attempt after a quiet spell. Raising the budget does
+     * not paper over a slow query: nothing here legitimately takes fifteen
+     * seconds, so a transaction that hits the new ceiling is a genuine defect
+     * rather than a cold start, which is exactly the distinction the old
+     * numbers could not make.
+     */
+    transactionOptions: {
+      /** How long to wait for a free connection before giving up. */
+      maxWait: 15_000,
+      /** How long the transaction body itself may take once started. */
+      timeout: 20_000,
+    },
   });
 
 if (!isProduction) {

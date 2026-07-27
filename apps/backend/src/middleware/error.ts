@@ -58,6 +58,28 @@ function translatePrisma(err: Prisma.PrismaClientKnownRequestError): AppError {
         'The request conflicted with another write. Please retry.',
         { retryAfter: 1 },
       );
+    case 'P2024':
+    case 'P2028':
+      /*
+       * The transaction could not be started, or was closed underneath us.
+       *
+       * On serverless over a connection pooler this means the database was
+       * slow to hand out a connection — a cold start, not a defect in the
+       * request. It fell through to `default` before, which made it an
+       * unexplained 500: the caller was told an unexpected error occurred and
+       * given a request id, when the honest answer is "try that again".
+       *
+       * Kept distinct from P2034 because the cause is capacity rather than
+       * contention, and because seeing which of the two appears in the logs is
+       * the difference between tuning a pool and fixing a query.
+       */
+      return new AppError(
+        ErrorCode.DB_UNAVAILABLE,
+        'The database was busy and the request did not go through. Please try again.',
+        // Operational: a cold pool is an expected condition with a safe,
+        // deliberately-worded message, so it survives the production rewrite.
+        { retryAfter: 2, cause: err, isOperational: true },
+      );
     default:
       return new AppError(ErrorCode.INTERNAL_ERROR, 'A database error occurred.', { cause: err });
   }
@@ -88,6 +110,7 @@ export function errorHandler(
     appError = new AppError(ErrorCode.DB_UNAVAILABLE, 'The service is temporarily unavailable.', {
       retryAfter: 5,
       cause: err,
+      isOperational: true,
     });
   } else if (err instanceof SyntaxError && 'body' in err) {
     appError = new AppError(ErrorCode.MALFORMED_REQUEST, 'The request body is not valid JSON.');
@@ -142,9 +165,19 @@ export function errorHandler(
 
   const body = appError.toJSON(req.requestId);
 
-  // Never surface an internal message in production; the request id is the
-  // bridge between what the user reports and what the logs contain.
-  if (status >= 500 && isProduction) {
+  /*
+   * Never surface an *unanticipated* message in production.
+   *
+   * The rewrite used to key on the status alone, which swept up every 5xx we
+   * raise deliberately — "the database was busy, try again", "the service is
+   * temporarily unavailable" — and replaced each with the same shrug. That is
+   * the difference between a person retrying and a person reporting a bug, so
+   * the condition is now what it always meant: an error nobody anticipated,
+   * whose message may carry a stack, a query or a column name.
+   *
+   * Operational 5xx keep their own wording, which is written for the reader.
+   */
+  if (!appError.isOperational && isProduction) {
     body.error.message = 'An unexpected error occurred. Quote the request id when reporting this.';
   }
 

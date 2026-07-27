@@ -188,6 +188,27 @@ describe('database errors', () => {
     expect(result.headers['retry-after']).toBe('1');
   });
 
+  it('map a transaction that could not start to a retryable failure', async () => {
+    /*
+     * P2028 on serverless means the pool was cold, not that the request was
+     * wrong. It used to fall through to `default`, so the caller was told an
+     * unexpected error had occurred and handed a request id — for a condition
+     * whose correct response is simply to try again. That made every cold
+     * start look like a bug report.
+     */
+    const result = invoke(prismaError('P2028'));
+
+    expect(result.body.error.code).toBe(ErrorCode.DB_UNAVAILABLE);
+    expect(result.headers['retry-after']).toBe('2');
+    expect(result.body.error.message).toMatch(/try again/i);
+    expect(result.body.error.message).not.toContain('raw database text');
+  });
+
+  it('map an exhausted connection pool the same way', async () => {
+    const result = invoke(prismaError('P2024'));
+    expect(result.body.error.code).toBe(ErrorCode.DB_UNAVAILABLE);
+  });
+
   it('never leak the raw database text for an unrecognised code', async () => {
     const result = invoke(prismaError('P9999'));
 
