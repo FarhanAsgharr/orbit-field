@@ -10,6 +10,7 @@
 
 import { AppError, can, ErrorCode, Permission } from '@orbit/shared';
 import { ulid } from '@orbit/utils';
+import type { NextFunction } from 'express';
 import { Router } from 'express';
 import { z } from 'zod';
 
@@ -22,6 +23,33 @@ import { schemas, validate } from '../../middleware/validate.js';
 import { notifyDeviceRevoked } from '../notifications/push.service.js';
 
 const router: Router = Router();
+
+/**
+ * Device management is a staff surface. Customers do not get one.
+ *
+ * The endpoints below already narrow to the caller's own devices unless they
+ * hold `device:read`, so a client reaching them saw only their own browser
+ * sessions and nothing else — not a disclosure, but not something a customer
+ * portal has any use for either. It is closed here rather than left to be
+ * harmless, because "harmless today" is a property of the current scoping
+ * rather than a decision anyone made, and the Client Portal deliberately has
+ * no device screen to reach it from.
+ *
+ * Applied to the whole router rather than per-route so a device endpoint added
+ * later is closed by default.
+ */
+router.use(requireAuth, (req, _res, next: NextFunction): void => {
+  if (auth(req).clientId) {
+    next(
+      new AppError(
+        ErrorCode.PERMISSION_DENIED,
+        'Device management is not part of the client portal.',
+      ),
+    );
+    return;
+  }
+  next();
+});
 
 /** Shape returned to clients. Never exposes the biometric public key. */
 const deviceSelect = {

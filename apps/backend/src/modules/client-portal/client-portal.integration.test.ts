@@ -279,15 +279,16 @@ describe('a client is not staff', () => {
     }
   });
 
-  it('sees only its own sessions on /devices, and nobody else’s', async () => {
-    // Not an admin endpoint: it scopes to the caller unless they hold
-    // DEVICE_READ, so a client gets their own browser sessions — the same list
-    // their profile shows — and is refused anybody else's.
-    const own = await get('/devices');
-    expect(own.status).toBe(200);
-    const items = own.body.data.items ?? own.body.data;
-    for (const d of items) expect(d.userId).toBe(org.users.CLIENT!.id);
-
+  it('is refused /devices entirely, own sessions included', async () => {
+    /*
+     * This used to return 200 with the caller's own browser sessions, because
+     * the endpoint scopes to the caller unless they hold DEVICE_READ. Not a
+     * disclosure — but device management is a staff surface, the Client Portal
+     * has no screen that reaches it, and "safe because of how the scoping
+     * happens to work" is not the same as closed. The whole router now refuses
+     * a client subject.
+     */
+    expect((await get('/devices')).status).toBe(403);
     expect((await get(`/devices?userId=${org.users.ADMIN!.id}`)).status).toBe(403);
   });
 
