@@ -416,6 +416,103 @@ describe('the account it creates is a client account', () => {
   });
 });
 
+describe('an administrator creating a portal login', () => {
+  /*
+   * The other way a customer account comes into existence.
+   *
+   * Self-registration is not enough on its own: an organisation that has
+   * turned it off, or a customer taken on over the phone, needs staff to be
+   * able to create the login. The console had no way to do it — CLIENT was
+   * missing from its role list — while the API had accepted it all along, so
+   * this covers the path the console now takes.
+   */
+  let adminToken: string;
+  let clientId: string;
+
+  beforeAll(async () => {
+    const login = await request(server).post(`${api}/auth/login`).send({
+      email: org.users.ADMIN!.email,
+      password: org.users.ADMIN!.password,
+      device: device(),
+    });
+    adminToken = login.body.data.tokens.accessToken;
+
+    const created_ = await request(server)
+      .post(`${api}/clients`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ name: `Console Client ${unique('cc')}` });
+    expect(created_.status).toBe(201);
+    clientId = created_.body.data.id;
+  });
+
+  it('creates a working portal account bound to the company', async () => {
+    const email = `${unique('console-portal')}@example.test`;
+    const password = 'Console-Issued-2026!';
+
+    const res = await request(server)
+      .post(`${api}/users`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ email, firstName: 'Sam', lastName: 'Okafor', role: 'CLIENT', clientId, password });
+
+    expect(res.status).toBe(201);
+
+    const user = await prisma.user.findFirstOrThrow({ where: { email } });
+    expect(user.role).toBe('CLIENT');
+    expect(user.clientId).toBe(clientId);
+
+    // The password the administrator typed has to be the one that works —
+    // there is no email delivery here, so a created-but-unusable account is
+    // indistinguishable from a broken login to the person holding it.
+    const login = await request(server)
+      .post(`${api}/auth/login`)
+      .send({ email, password, device: device() });
+    expect(login.status).toBe(200);
+
+    const company = await request(server)
+      .get(`${api}/portal/company`)
+      .set('Authorization', `Bearer ${login.body.data.tokens.accessToken}`);
+    expect(company.status).toBe(200);
+    expect(company.body.data.id).toBe(clientId);
+  });
+
+  it('refuses a client account with no company', async () => {
+    const res = await request(server)
+      .post(`${api}/users`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        email: `${unique('orphan')}@example.test`,
+        firstName: 'No',
+        lastName: 'Company',
+        role: 'CLIENT',
+        password: 'Console-Issued-2026!',
+      });
+
+    // A CLIENT without a clientId sees nothing at all — the scope is the only
+    // thing the portal narrows on.
+    expect(res.status).toBe(422);
+    expect(res.body.error.fields?.clientId).toBeTruthy();
+  });
+
+  it('refuses a member of staff bound to a company', async () => {
+    const res = await request(server)
+      .post(`${api}/users`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        email: `${unique('confused')}@example.test`,
+        firstName: 'Staff',
+        lastName: 'Member',
+        role: 'INSPECTOR',
+        clientId,
+        password: 'Console-Issued-2026!',
+      });
+
+    // The reverse mistake, and the more dangerous one: an inspector carrying a
+    // clientId would be silently narrowed to a single customer.
+    expect(res.status).toBe(422);
+    expect(res.body.error.fields?.clientId).toBeTruthy();
+  });
+});
+
 describe('staff and the portal endpoints', () => {
   it('refuses a staff account the company endpoint', async () => {
     const login = await request(server).post(`${api}/auth/login`).send({

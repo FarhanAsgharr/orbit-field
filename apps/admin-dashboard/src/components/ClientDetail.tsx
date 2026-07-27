@@ -16,6 +16,8 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import React, { useState } from 'react';
 
 import { api } from '../lib/api';
+import { PORTAL_URL } from '../lib/config';
+import { PasswordInput } from './PasswordInput';
 import { Badge, ErrorBanner } from './ui';
 
 export interface ClientPortalUser {
@@ -94,6 +96,14 @@ export function ClientDetail({
   const [resetFor, setResetFor] = useState<ClientPortalUser | null>(null);
   const [newPassword, setNewPassword] = useState('');
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const [creatingLogin, setCreatingLogin] = useState(false);
+  const [newLogin, setNewLogin] = useState({
+    firstName: '',
+    lastName: '',
+    email: '',
+    password: '',
+  });
+  const [issued, setIssued] = useState<{ email: string; password: string } | null>(null);
 
   // Re-read on open: the row in the table may be a page or two old, and the
   // portal logins are not carried on the list response the table caches.
@@ -148,8 +158,51 @@ export function ClientDetail({
     onError: (e) => setError(e instanceof Error ? e.message : 'That password could not be reset.'),
   });
 
+  /*
+   * Give somebody at this company a way in.
+   *
+   * A client can register themselves through the portal, but that cannot be
+   * the only route: an organisation that has turned self-registration off, or
+   * a customer an administrator took on over the phone, needs staff to be able
+   * to create the login. It is the ordinary `POST /users` call with role
+   * CLIENT — same rank check, same password policy, same audit entry — with
+   * the company taken from the record already on screen rather than picked
+   * from a list, because there is only one right answer here.
+   */
+  const createLogin = useMutation({
+    mutationFn: () =>
+      api.post('/users', {
+        email: newLogin.email.trim(),
+        firstName: newLogin.firstName.trim(),
+        lastName: newLogin.lastName.trim(),
+        role: 'CLIENT',
+        clientId: client.id,
+        password: newLogin.password,
+      }),
+    onSuccess: () => {
+      // Shown once, and the administrator still has to pass it on, so the
+      // panel stays open rather than closing over the only copy.
+      setIssued({ email: newLogin.email.trim(), password: newLogin.password });
+      setCreatingLogin(false);
+      setNewLogin({ firstName: '', lastName: '', email: '', password: '' });
+      setError(null);
+      refresh();
+    },
+    onError: (e) =>
+      setError(e instanceof Error ? e.message : 'That portal login could not be created.'),
+  });
+
+  const loginReady =
+    newLogin.firstName.trim() !== '' &&
+    newLogin.email.trim() !== '' &&
+    newLogin.password.length >= 12;
   return (
-    <div className="card modal modal--wide" role="dialog" aria-modal="true" aria-label={`${data.name} details`}>
+    <div
+      className="card modal modal--wide"
+      role="dialog"
+      aria-modal="true"
+      aria-label={`${data.name} details`}
+    >
       <header className="card__head">
         <div className="row gap-3">
           {data.logoUrl ? (
@@ -254,12 +307,127 @@ export function ClientDetail({
         ) : null}
 
         <section>
-          <h3 className="card__title">Portal logins</h3>
+          <div className="row gap-3" style={{ justifyContent: 'space-between' }}>
+            <h3 className="card__title">Portal logins</h3>
+            {!creatingLogin && !issued ? (
+              <button
+                className="btn btn--sm"
+                onClick={() => {
+                  setCreatingLogin(true);
+                  setIssued(null);
+                  setError(null);
+                }}
+              >
+                Create a login
+              </button>
+            ) : null}
+          </div>
+
+          {issued ? (
+            <div className="stack gap-2" style={{ marginTop: 12 }}>
+              <p className="small">
+                Give these to <strong>{issued.email}</strong> along with the portal address:{' '}
+                <code>{PORTAL_URL}</code>
+              </p>
+              <div className="field">
+                <span className="field__label">Password</span>
+                <code className="input" style={{ display: 'block' }}>
+                  {issued.password}
+                </code>
+                <span className="field__hint">
+                  This is the only time it is shown. If it is lost, use Reset password below.
+                </span>
+              </div>
+              <div className="row gap-2">
+                <button className="btn btn--sm" onClick={() => setIssued(null)}>
+                  Done
+                </button>
+              </div>
+            </div>
+          ) : null}
+
+          {creatingLogin ? (
+            <form
+              className="stack gap-3"
+              style={{ marginTop: 12 }}
+              onSubmit={(e) => {
+                e.preventDefault();
+                createLogin.mutate();
+              }}
+            >
+              <div className="row gap-3">
+                <div className="field grow">
+                  <label className="field__label" htmlFor="cl-first">
+                    First name
+                  </label>
+                  <input
+                    id="cl-first"
+                    className="input"
+                    value={newLogin.firstName}
+                    onChange={(e) => setNewLogin({ ...newLogin, firstName: e.target.value })}
+                    required
+                  />
+                </div>
+                <div className="field grow">
+                  <label className="field__label" htmlFor="cl-last">
+                    Last name
+                  </label>
+                  <input
+                    id="cl-last"
+                    className="input"
+                    value={newLogin.lastName}
+                    onChange={(e) => setNewLogin({ ...newLogin, lastName: e.target.value })}
+                  />
+                </div>
+              </div>
+              <div className="field">
+                <label className="field__label" htmlFor="cl-email">
+                  Email
+                </label>
+                <input
+                  id="cl-email"
+                  className="input"
+                  type="email"
+                  autoComplete="off"
+                  value={newLogin.email}
+                  onChange={(e) => setNewLogin({ ...newLogin, email: e.target.value })}
+                  required
+                />
+                <span className="field__hint">This is the username they sign in with.</span>
+              </div>
+              <PasswordInput
+                label="Password"
+                value={newLogin.password}
+                autoComplete="new-password"
+                onChange={(e) => setNewLogin({ ...newLogin, password: e.target.value })}
+                hint="At least 12 characters, with an uppercase letter, a lowercase letter and a number. It must not contain their name or email."
+              />
+              <div className="row gap-2">
+                <button
+                  className="btn btn--primary btn--sm"
+                  type="submit"
+                  disabled={createLogin.isPending || !loginReady}
+                >
+                  {createLogin.isPending ? 'Creating…' : 'Create login'}
+                </button>
+                <button
+                  className="btn btn--ghost btn--sm"
+                  type="button"
+                  onClick={() => setCreatingLogin(false)}
+                >
+                  Cancel
+                </button>
+              </div>
+            </form>
+          ) : null}
+
           {(data.portalUsers?.length ?? 0) === 0 ? (
-            <p className="muted small">
-              Nobody from this company can sign in to the portal yet. Add a person on the People
-              page with the Client role to give them access.
-            </p>
+            creatingLogin || issued ? null : (
+              <p className="muted small">
+                Nobody from this company can sign in to the portal yet. Create a login to give them
+                access, or they can register themselves at the portal.
+              </p>
+            )
           ) : (
             <table className="table">
               <thead>

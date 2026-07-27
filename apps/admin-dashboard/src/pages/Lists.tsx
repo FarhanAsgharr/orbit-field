@@ -34,6 +34,7 @@ import {
   statusBadge,
 } from '../components/ui';
 import { api } from '../lib/api';
+import { PORTAL_URL } from '../lib/config';
 import { useSession } from '../lib/auth';
 
 // ---------------------------------------------------------------------------
@@ -554,6 +555,8 @@ const EMPTY_INVITE = {
   password: '',
   department: '',
   jobTitle: '',
+  /** Which customer a portal login belongs to. Only used when role is CLIENT. */
+  clientId: '',
 };
 
 /**
@@ -970,12 +973,43 @@ function InviteUserButton(): React.ReactElement {
   const [open, setOpen] = useState(false);
   const [form, setForm] = useState(EMPTY_INVITE);
   const [error, setError] = useState<string | null>(null);
-  const [created, setCreated] = useState<{ email: string; password: string } | null>(null);
+  const [created, setCreated] = useState<{
+    email: string;
+    password: string;
+    isClient: boolean;
+  } | null>(null);
 
   const actorRank = ROLE_RANK[(user?.role ?? 'VIEWER') as Role] ?? 0;
+  /*
+   * CLIENT belongs on this list.
+   *
+   * It was missing, so the only way a customer could get a portal login was to
+   * register one themselves — and an organisation that has turned self
+   * registration off had no way at all. The API has always accepted it; this
+   * was a gap in the console, and it made the Clients panel's own advice
+   * ("add a person on the People page with the Client role") impossible to
+   * follow.
+   *
+   * It sits last because it is the odd one out: every other role here is a
+   * colleague, and this one is somebody outside the company.
+   */
   const assignable = (
-    ['ADMIN', 'MANAGER', 'SUPERVISOR', 'INSPECTOR', 'TECHNICIAN', 'VIEWER'] as Role[]
+    ['ADMIN', 'MANAGER', 'SUPERVISOR', 'INSPECTOR', 'TECHNICIAN', 'VIEWER', 'CLIENT'] as Role[]
   ).filter((r) => actorRank > ROLE_RANK[r]);
+
+  const isClientAccount = form.role === 'CLIENT';
+
+  // Only fetched once the role calls for it — most accounts created here are
+  // staff, and the list is useless to them.
+  const clients = useQuery({
+    queryKey: ['clients', 'pickable'],
+    queryFn: () =>
+      api.get<{ items: Array<{ id: string; name: string; isActive: boolean }> }>('/clients', {
+        pageSize: 200,
+        sort: 'name',
+      }),
+    enabled: isClientAccount,
+  });
 
   const close = (): void => {
     setOpen(false);
@@ -988,7 +1022,10 @@ function InviteUserButton(): React.ReactElement {
     form.email.trim() !== '' &&
     form.firstName.trim() !== '' &&
     form.lastName.trim() !== '' &&
-    form.password !== '';
+    form.password !== '' &&
+    // A CLIENT without a company sees nothing at all, so the server refuses
+    // one. Refusing here too means finding out before typing a password.
+    (!isClientAccount || form.clientId !== '');
 
   const invite = useMutation({
     mutationFn: () =>
@@ -1000,12 +1037,21 @@ function InviteUserButton(): React.ReactElement {
         password: form.password,
         department: form.department.trim() || null,
         jobTitle: form.jobTitle.trim() || null,
+        // Refused by the server for anybody else, so it is sent only when it
+        // applies rather than as an empty string.
+        ...(isClientAccount ? { clientId: form.clientId } : {}),
       }),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ['users'] });
       // The panel stays open: the administrator still has to pass the password
       // on, and closing takes the only copy of it off the screen.
-      setCreated({ email: form.email.trim(), password: form.password });
+      setCreated({
+        email: form.email.trim(),
+        password: form.password,
+        // Captured now: the form is reset for "Add another" while this panel
+        // is still on screen, so reading form.role here later would be wrong.
+        isClient: isClientAccount,
+      });
       setError(null);
     },
     onError: (err) =>
@@ -1030,10 +1076,20 @@ function InviteUserButton(): React.ReactElement {
           </button>
         </div>
         <div className="card__body stack gap-4">
-          <p>
-            Give these to <strong>{created.email}</strong>. They sign in to the Orbit Field app on
-            their phone with exactly this email and password.
-          </p>
+          {/* Where they sign in depends on what they are. Sending a customer to
+              the phone app, or an inspector to the portal, wastes a support call
+              at exactly the moment somebody is trying to get started. */}
+          {created.isClient ? (
+            <p>
+              Give these to <strong>{created.email}</strong>, along with the client portal address:{' '}
+              <code>{PORTAL_URL}</code>. They sign in there with exactly this email and password.
+            </p>
+          ) : (
+            <p>
+              Give these to <strong>{created.email}</strong>. They sign in to the Orbit Field app on
+              their phone with exactly this email and password.
+            </p>
+          )}
           <div className="field">
             <span className="field__label">Email</span>
             <code className="input" style={{ display: 'block' }}>
@@ -1130,9 +1186,46 @@ function InviteUserButton(): React.ReactElement {
               </option>
             ))}
           </select>
+          {isClientAccount ? (
+            <span className="field__hint">
+              A client signs in to the client portal, not the console or the phone app, and sees
+              only their own company&rsquo;s requests and reports.
+            </span>
+          ) : null}
         </div>
 
-        <div className="row gap-3">
+        {isClientAccount ? (
+          <div className="field">
+            <label className="field__label" htmlFor="inv-client">
+              Client company
+            </label>
+            <select
+              id="inv-client"
+              className="select"
+              value={form.clientId}
+              onChange={(e) => setForm({ ...form, clientId: e.target.value })}
+            >
+              <option value="">Select a company</option>
+              {(clients.data?.items ?? []).map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.name}
+                  {c.isActive ? '' : ' (deactivated)'}
+                </option>
+              ))}
+            </select>
+            <span className="field__hint">
+              {clients.isLoading
+                ? 'Loading companies…'
+                : (clients.data?.items.length ?? 0) === 0
+                  ? 'No clients yet — add one on the Clients page first.'
+                  : 'Everything this account can see is scoped to this company.'}
+            </span>
+          </div>
+        ) : null}
+
+        {/* Staff fields. A customer has no department here and no job title we
+            record — their designation lives on the client record instead. */}
+        <div className="row gap-3" hidden={isClientAccount}>
           <div className="field grow">
             <label className="field__label" htmlFor="inv-dept">
               Department

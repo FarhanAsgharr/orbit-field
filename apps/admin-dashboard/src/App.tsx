@@ -5,6 +5,7 @@ import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom';
 import { Shell } from './components/Shell';
 import { Empty } from './components/ui';
 import { ApiRequestError } from './lib/api';
+import { PORTAL_URL } from './lib/config';
 import { SessionProvider, useSession } from './lib/auth';
 import { Analytics } from './pages/Analytics';
 import { Audit, Settings } from './pages/AuditSettings';
@@ -57,7 +58,6 @@ const queryClient = new QueryClient({
  */
 function WrongDoor(): React.ReactElement {
   const { signOut } = useSession();
-  const portal = (import.meta.env.VITE_PORTAL_URL as string | undefined) ?? '/';
 
   return (
     <div style={{ display: 'grid', placeItems: 'center', minHeight: '100vh', padding: 24 }}>
@@ -66,7 +66,7 @@ function WrongDoor(): React.ReactElement {
         body="Your account is a client account. Requests, reports and messages live in the client portal."
         action={
           <div className="row gap-2">
-            <a className="btn btn--primary" href={portal}>
+            <a className="btn btn--primary" href={PORTAL_URL}>
               Go to the client portal
             </a>
             <button type="button" className="btn" onClick={() => void signOut()}>
