@@ -95,10 +95,7 @@ const listInclude = {
  * label they asked for, so the portal never shows a stale "Approved" against
  * work that was finished last week.
  */
-function displayStatus(request: {
-  status: string;
-  inspection: { status: string } | null;
-}): string {
+function displayStatus(request: { status: string; inspection: { status: string } | null }): string {
   if (request.status !== 'APPROVED' || !request.inspection) return request.status;
   return request.inspection.status;
 }

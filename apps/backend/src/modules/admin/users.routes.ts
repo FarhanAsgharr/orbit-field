@@ -117,6 +117,7 @@ const userSelect = {
   jobTitle: true,
   registrationNumber: true,
   employeeId: true,
+  clientId: true,
   extraPermissions: true,
   revokedPermissions: true,
   timezone: true,
@@ -273,11 +274,21 @@ router.post(
         'INSPECTOR',
         'TECHNICIAN',
         'VIEWER',
+        'CLIENT',
       ]),
       department: z.string().max(120).nullable().optional(),
       jobTitle: z.string().max(120).nullable().optional(),
       registrationNumber: z.string().max(80).nullable().optional(),
       employeeId: z.string().max(60).nullable().optional(),
+      /**
+       * The customer a portal account belongs to.
+       *
+       * Required for a CLIENT and refused for anybody else: it is the only
+       * thing scoping the client portal, so a CLIENT without one would see
+       * nothing, and a member of staff with one would be narrowed to a single
+       * customer without anybody intending it.
+       */
+      clientId: schemas.ulid.nullable().optional(),
       projectIds: z.array(schemas.ulid).max(100).optional(),
       password: z.string().min(1).max(200).optional(),
     }),
@@ -293,6 +304,7 @@ router.post(
       jobTitle?: string | null;
       registrationNumber?: string | null;
       employeeId?: string | null;
+      clientId?: string | null;
       projectIds?: string[];
       password?: string;
     };
@@ -301,6 +313,38 @@ router.post(
       throw new AppError(
         ErrorCode.PERMISSION_DENIED,
         `You cannot grant the ${body.role} role — it is at or above your own level.`,
+      );
+    }
+
+    /*
+     * A CLIENT is defined by the customer it belongs to.
+     *
+     * Without one the account can see nothing at all, which looks like a
+     * broken portal rather than a misconfigured user; with one on a member of
+     * staff, that person is silently narrowed to a single customer.
+     */
+    if (body.role === 'CLIENT') {
+      if (!body.clientId) {
+        throw new AppError(ErrorCode.VALIDATION_FAILED, 'Say which client this account is for.', {
+          fields: { clientId: 'Required for a client portal account.' },
+        });
+      }
+      const client = await prisma.client.findFirst({
+        where: { id: body.clientId, orgId: subject.orgId, deletedAt: null },
+        select: { id: true },
+      });
+      if (!client) {
+        throw new AppError(ErrorCode.VALIDATION_FAILED, 'That client was not found.', {
+          fields: { clientId: 'Not found in this organisation.' },
+        });
+      }
+    } else if (body.clientId) {
+      throw new AppError(
+        ErrorCode.VALIDATION_FAILED,
+        'Only a client account belongs to a client.',
+        {
+          fields: { clientId: 'Leave this empty for a member of staff.' },
+        },
       );
     }
 
@@ -355,6 +399,7 @@ router.post(
           jobTitle: body.jobTitle ?? null,
           registrationNumber: body.registrationNumber ?? null,
           employeeId: body.employeeId ?? null,
+          clientId: body.clientId ?? null,
         },
         select: userSelect,
       });
@@ -452,12 +497,14 @@ router.patch(
           'INSPECTOR',
           'TECHNICIAN',
           'VIEWER',
+          'CLIENT',
         ])
         .optional(),
       department: z.string().max(120).nullable().optional(),
       jobTitle: z.string().max(120).nullable().optional(),
       registrationNumber: z.string().max(80).nullable().optional(),
       employeeId: z.string().max(60).nullable().optional(),
+      clientId: schemas.ulid.nullable().optional(),
       status: z.enum(['ACTIVE', 'SUSPENDED', 'DEACTIVATED']).optional(),
       extraPermissions: z.array(z.string().max(60)).max(80).optional(),
       revokedPermissions: z.array(z.string().max(60)).max(80).optional(),

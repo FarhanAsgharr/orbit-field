@@ -81,6 +81,52 @@ async function raise(role = 'CLIENT', over: Record<string, unknown> = {}) {
   return res.body.data as { id: string; number: string; status: string; clientId: string };
 }
 
+describe('creating a portal account', () => {
+  it('requires the customer it belongs to', async () => {
+    const res = await post('/users', 'ADMIN').send({
+      email: `${unique('portal')}@test.invalid`,
+      firstName: 'Portal',
+      lastName: 'User',
+      role: 'CLIENT',
+      password: 'Zq9aBc7dEf1G',
+    });
+
+    // A CLIENT with no clientId sees nothing at all, which reads as a broken
+    // portal rather than a misconfigured account.
+    expect(res.status).toBe(422);
+    expect(res.body.error.fields?.clientId).toBeTruthy();
+  });
+
+  it('refuses a customer on a member of staff', async () => {
+    const res = await post('/users', 'ADMIN').send({
+      email: `${unique('staff')}@test.invalid`,
+      firstName: 'Staff',
+      lastName: 'Member',
+      role: 'INSPECTOR',
+      password: 'Zq9aBc7dEf1G',
+      clientId: org.clientId,
+    });
+
+    // Otherwise that person is silently narrowed to one customer.
+    expect(res.status).toBe(422);
+  });
+
+  it('creates one bound to its customer', async () => {
+    const res = await post('/users', 'ADMIN').send({
+      email: `${unique('portal')}@test.invalid`,
+      firstName: 'Portal',
+      lastName: 'User',
+      role: 'CLIENT',
+      password: 'Zq9aBc7dEf1G',
+      clientId: org.clientId,
+    });
+
+    expect(res.status).toBe(201);
+    expect(res.body.data.role).toBe('CLIENT');
+    expect(res.body.data.clientId).toBe(org.clientId);
+  });
+});
+
 describe('raising a request', () => {
   it('records it against the customer’s own company, never the body', async () => {
     const created = await raise('CLIENT', { clientId: org.secondClientId });
@@ -102,7 +148,11 @@ describe('raising a request', () => {
   it('refuses a site belonging to another customer', async () => {
     const theirSite = await prisma.site.create({
       data: {
-        id: unique('S').toUpperCase().replace(/[^0-9A-Z]/g, '0').slice(0, 26).padEnd(26, '0'),
+        id: unique('S')
+          .toUpperCase()
+          .replace(/[^0-9A-Z]/g, '0')
+          .slice(0, 26)
+          .padEnd(26, '0'),
         orgId: org.orgId,
         clientId: org.secondClientId,
         name: 'Their site',
@@ -303,13 +353,11 @@ describe('the decision, and the work it creates', () => {
 
   it('puts the new inspection on the assigned inspector’s device', async () => {
     const mine = await raise();
-    const login = await request(server)
-      .post(`${api}/auth/login`)
-      .send({
-        email: org.users.INSPECTOR!.email,
-        password: org.users.INSPECTOR!.password,
-        device: device(),
-      });
+    const login = await request(server).post(`${api}/auth/login`).send({
+      email: org.users.INSPECTOR!.email,
+      password: org.users.INSPECTOR!.password,
+      device: device(),
+    });
     const before = await request(server)
       .get(`${api}/sync/pull?protocolVersion=1&since=0&limit=500`)
       .set('Authorization', `Bearer ${login.body.data.tokens.accessToken}`);
@@ -432,9 +480,9 @@ describe('the decision, and the work it creates', () => {
     const asClient = await get(`/inspection-requests/${mine.id}`);
     const asStaff = await get(`/inspection-requests/${mine.id}`, 'ADMIN');
 
-    expect(asClient.body.data.comments.some((c: { body: string }) => c.body.includes('Chase'))).toBe(
-      false,
-    );
+    expect(
+      asClient.body.data.comments.some((c: { body: string }) => c.body.includes('Chase')),
+    ).toBe(false);
     expect(asStaff.body.data.comments.some((c: { body: string }) => c.body.includes('Chase'))).toBe(
       true,
     );
@@ -448,9 +496,9 @@ describe('the decision, and the work it creates', () => {
 
     const asClient = await get(`/inspection-requests/${mine.id}`);
     // The flag would hide their own words from them.
-    expect(
-      asClient.body.data.comments.some((c: { body: string }) => c.body === 'Visible'),
-    ).toBe(true);
+    expect(asClient.body.data.comments.some((c: { body: string }) => c.body === 'Visible')).toBe(
+      true,
+    );
   });
 });
 
@@ -471,7 +519,11 @@ describe('what the customer can see of the work', () => {
 
     const theirs = await prisma.inspection.create({
       data: {
-        id: unique('I').toUpperCase().replace(/[^0-9A-Z]/g, '0').slice(0, 26).padEnd(26, '0'),
+        id: unique('I')
+          .toUpperCase()
+          .replace(/[^0-9A-Z]/g, '0')
+          .slice(0, 26)
+          .padEnd(26, '0'),
         orgId: org.orgId,
         number: unique('OTH').toUpperCase().slice(0, 30),
         templateId: org.templateId,
@@ -514,7 +566,11 @@ describe('what the customer can see of the work', () => {
 
     const theirs = await prisma.inspection.create({
       data: {
-        id: unique('R').toUpperCase().replace(/[^0-9A-Z]/g, '0').slice(0, 26).padEnd(26, '0'),
+        id: unique('R')
+          .toUpperCase()
+          .replace(/[^0-9A-Z]/g, '0')
+          .slice(0, 26)
+          .padEnd(26, '0'),
         orgId: org.orgId,
         number: unique('RPT').toUpperCase().slice(0, 30),
         templateId: org.templateId,
@@ -533,7 +589,11 @@ describe('what the customer can see of the work', () => {
     await approved();
     await prisma.inspection.create({
       data: {
-        id: unique('E').toUpperCase().replace(/[^0-9A-Z]/g, '0').slice(0, 26).padEnd(26, '0'),
+        id: unique('E')
+          .toUpperCase()
+          .replace(/[^0-9A-Z]/g, '0')
+          .slice(0, 26)
+          .padEnd(26, '0'),
         orgId: org.orgId,
         number: 'OTHERCUSTOMER0001',
         templateId: org.templateId,
@@ -567,7 +627,11 @@ describe('tenant isolation still holds above the client boundary', () => {
     try {
       const theirRequest = await prisma.inspectionRequest.create({
         data: {
-          id: unique('X').toUpperCase().replace(/[^0-9A-Z]/g, '0').slice(0, 26).padEnd(26, '0'),
+          id: unique('X')
+            .toUpperCase()
+            .replace(/[^0-9A-Z]/g, '0')
+            .slice(0, 26)
+            .padEnd(26, '0'),
           orgId: other.orgId,
           clientId: other.clientId,
           number: 'REQ-9999-000001',
