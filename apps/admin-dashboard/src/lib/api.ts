@@ -188,7 +188,38 @@ export async function request<T>(path: string, options: RequestOptions = {}): Pr
   );
 }
 
+/**
+ * Fetch a binary body — a report, a spreadsheet, an image.
+ *
+ * `request` parses JSON, so it cannot be used for these. This shares the same
+ * token handling and the same one-shot refresh: an export that 401s halfway
+ * through a session and gives up would look like a broken button.
+ */
+export async function blob(path: string): Promise<Blob> {
+  let response = await rawFetch(path, { method: 'GET' });
+
+  if (response.status === 401) {
+    await refreshSession();
+    response = await rawFetch(path, { method: 'GET' });
+  }
+
+  if (!response.ok) {
+    // The error body is JSON even when the success body would not be.
+    const detail = (await response.json().catch(() => null)) as {
+      error?: { code?: string; message?: string };
+    } | null;
+    throw new ApiRequestError(
+      detail?.error?.code ?? 'EXPORT_FAILED',
+      detail?.error?.message ?? 'The export could not be produced.',
+      response.status,
+    );
+  }
+
+  return response.blob();
+}
+
 export const api = {
+  blob,
   get: <T>(path: string, query?: RequestOptions['query'], signal?: AbortSignal) =>
     request<T>(path, { method: 'GET', query, signal }),
   post: <T>(path: string, body?: unknown) => request<T>(path, { method: 'POST', body }),

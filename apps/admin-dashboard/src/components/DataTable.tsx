@@ -41,6 +41,23 @@ export interface DataTableProps<T> {
   toolbarAction?: React.ReactNode;
   onRowClick?: (row: T) => void;
   pageSize?: number;
+  /**
+   * Turn on row selection.
+   *
+   * Optional and off by default, so the seven tables that do not want it are
+   * unchanged. When set, the table renders a checkbox column and reports the
+   * current selection; the page above owns what to do with it.
+   */
+  selection?: {
+    selected: Set<string>;
+    onChange: (next: Set<string>) => void;
+    /** Rendered above the table while anything is selected. */
+    actions?: (selected: Set<string>, clear: () => void) => React.ReactNode;
+  };
+  /** Rendered in the toolbar; receives the query in force, so exports match the view. */
+  exportAction?: (
+    query: Record<string, string | number | boolean | undefined | null>,
+  ) => React.ReactNode;
 }
 
 interface PagedResponse<T> {
@@ -74,6 +91,8 @@ export function DataTable<T>({
   toolbarAction,
   onRowClick,
   pageSize = 25,
+  selection,
+  exportAction,
 }: DataTableProps<T>): React.ReactElement {
   const [search, setSearch] = useState('');
   const [page, setPage] = useState(1);
@@ -133,8 +152,24 @@ export function DataTable<T>({
           />
         </div>
         {filters}
-        {toolbarAction ? <div className="right">{toolbarAction}</div> : null}
+        <div className="right row gap-2">
+          {/* The export gets the query in force, so what downloads is what is
+              on screen — an export that quietly ignores the filters is worse
+              than none, because nobody checks the row count. */}
+          {exportAction ? exportAction(query) : null}
+          {toolbarAction}
+        </div>
       </div>
+
+      {selection && selection.selected.size > 0 ? (
+        <div className="toolbar" role="region" aria-label="Selected rows">
+          <strong>{selection.selected.size} selected</strong>
+          {selection.actions?.(selection.selected, () => selection.onChange(new Set()))}
+          <button className="btn btn--ghost btn--sm" onClick={() => selection.onChange(new Set())}>
+            Clear selection
+          </button>
+        </div>
+      ) : null}
 
       {isError ? (
         <ErrorBanner
@@ -167,6 +202,29 @@ export function DataTable<T>({
               <table className="table">
                 <thead>
                   <tr>
+                    {selection ? (
+                      <th style={{ width: '36px' }}>
+                        <input
+                          type="checkbox"
+                          aria-label="Select every row on this page"
+                          checked={
+                            data.items.length > 0 &&
+                            data.items.every((r) => selection.selected.has(rowKey(r)))
+                          }
+                          onChange={(e) => {
+                            // Scoped to the page in view. Selecting rows a
+                            // person cannot see is how a bulk action ends up
+                            // touching records nobody looked at.
+                            const next = new Set(selection.selected);
+                            for (const r of data.items) {
+                              if (e.target.checked) next.add(rowKey(r));
+                              else next.delete(rowKey(r));
+                            }
+                            selection.onChange(next);
+                          }}
+                        />
+                      </th>
+                    ) : null}
                     {columns.map((column) => (
                       <th
                         key={column.key}
@@ -210,6 +268,21 @@ export function DataTable<T>({
                       onClick={onRowClick ? () => onRowClick(row) : undefined}
                       style={onRowClick ? { cursor: 'pointer' } : undefined}
                     >
+                      {selection ? (
+                        <td onClick={(e) => e.stopPropagation()}>
+                          <input
+                            type="checkbox"
+                            aria-label={`Select ${rowKey(row)}`}
+                            checked={selection.selected.has(rowKey(row))}
+                            onChange={(e) => {
+                              const next = new Set(selection.selected);
+                              if (e.target.checked) next.add(rowKey(row));
+                              else next.delete(rowKey(row));
+                              selection.onChange(next);
+                            }}
+                          />
+                        </td>
+                      ) : null}
                       {columns.map((column) => (
                         <td
                           key={column.key}

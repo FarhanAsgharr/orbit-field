@@ -200,7 +200,9 @@ export function Shell(): React.ReactElement {
             label="Administer"
             items={[
               { to: '/users', label: 'People', permission: Permission.USER_READ },
+              { to: '/roles', label: 'Roles', permission: Permission.USER_READ },
               { to: '/devices', label: 'Devices', permission: Permission.DEVICE_READ },
+              { to: '/notifications', label: 'Notifications' },
               { to: '/audit', label: 'Audit log', permission: Permission.AUDIT_READ },
               { to: '/settings', label: 'Settings', permission: Permission.ORG_READ },
             ]}
@@ -208,7 +210,10 @@ export function Shell(): React.ReactElement {
         </div>
 
         <div className="rail__footer">
-          <div className="rail__user">
+          {/* The whole block is the way into your own account — a separate nav
+              entry for "Profile" alongside Clients and Sites reads as another
+              module rather than as yourself. */}
+          <NavLink className="rail__user" to="/profile">
             <span className="avatar" aria-hidden="true">
               {initials(user?.firstName, user?.lastName)}
             </span>
@@ -220,7 +225,7 @@ export function Shell(): React.ReactElement {
                 {user?.role.replace(/_/g, ' ').toLowerCase()}
               </div>
             </div>
-          </div>
+          </NavLink>
           <button
             className="btn btn--secondary btn--sm mt-4"
             style={{ width: '100%' }}

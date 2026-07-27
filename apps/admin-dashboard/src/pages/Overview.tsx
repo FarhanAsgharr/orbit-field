@@ -187,6 +187,70 @@ export function Overview(): React.ReactElement {
             />
           </div>
 
+          {/*
+           * The operational row: what somebody opening this at 8am needs.
+           * Each figure is derived from data already on the page — no extra
+           * request — because a dashboard that fires six queries to render is
+           * a dashboard that is slow on the morning everybody opens it.
+           */}
+          <div className="grid grid--4 mt-6">
+            <Metric
+              value={(summary.dueToday ?? 0).toLocaleString()}
+              label="Due today"
+              tone={summary.dueToday > 0 ? 'warn' : 'ok'}
+            />
+            <Metric
+              value={(
+                (summary.statusCounts.SUBMITTED ?? 0) + (summary.statusCounts.UNDER_REVIEW ?? 0)
+              ).toLocaleString()}
+              label="Waiting on review"
+              tone={
+                (summary.statusCounts.SUBMITTED ?? 0) + (summary.statusCounts.UNDER_REVIEW ?? 0) > 0
+                  ? 'warn'
+                  : 'ok'
+              }
+            />
+            <Metric
+              value={(summary.statusCounts.IN_PROGRESS ?? 0).toLocaleString()}
+              label="In progress"
+            />
+            <Metric
+              value={(health?.devices?.filter((d) => d.stale).length ?? 0).toLocaleString()}
+              label="Devices silent 24h+"
+              tone={(health?.devices?.filter((d) => d.stale).length ?? 0) > 0 ? 'danger' : 'ok'}
+              delta={
+                health?.pendingUploads
+                  ? `${health.pendingUploads} photo(s) not uploaded`
+                  : undefined
+              }
+            />
+          </div>
+
+          {/* Quick actions: the three things this screen most often leads to. */}
+          <div className="row gap-2 mt-6">
+            {can(Permission.INSPECTION_ASSIGN) ? (
+              <Link className="btn" to="/inspections">
+                Schedule an inspection
+              </Link>
+            ) : null}
+            {can(Permission.INSPECTION_REVIEW) &&
+            (summary.statusCounts.SUBMITTED ?? 0) + (summary.statusCounts.UNDER_REVIEW ?? 0) > 0 ? (
+              <Link className="btn btn--ghost" to="/inspections?status=SUBMITTED">
+                Review submitted work
+              </Link>
+            ) : null}
+            {can(Permission.USER_INVITE) ? (
+              <Link className="btn btn--ghost" to="/users">
+                Add someone
+              </Link>
+            ) : null}
+            {can(Permission.REPORT_EXPORT) ? (
+              <Link className="btn btn--ghost" to="/analytics">
+                Open analytics
+              </Link>
+            ) : null}
+          </div>
+
           <div className="grid grid--2 mt-6">
             <Card title="Work in progress">
               <div className="stack gap-4">

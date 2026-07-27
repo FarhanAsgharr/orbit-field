@@ -335,6 +335,73 @@ describe('notification inbox', () => {
   });
 });
 
+describe('inbox filtering and removal', () => {
+  it('filters by read state in both directions', async () => {
+    await notifyUsers(org.orgId, [org.users.ADMIN!.id], {
+      topic: 'INSPECTION_ASSIGNED' as never,
+      title: 'Filterable',
+      body: 'Body',
+    });
+
+    const unread = await get('/notifications?read=false&pageSize=100');
+    expect(unread.status).toBe(200);
+    for (const n of unread.body.data.items) expect(n.readAt).toBeNull();
+
+    await post('/notifications/read-all').expect((r) => expect(r.status).toBeLessThan(300));
+
+    const read = await get('/notifications?read=true&pageSize=100');
+    for (const n of read.body.data.items) expect(n.readAt).not.toBeNull();
+  });
+
+  it('searches the title and body', async () => {
+    await notifyUsers(org.orgId, [org.users.ADMIN!.id], {
+      topic: 'INSPECTION_ASSIGNED' as never,
+      title: 'Distinctive scaffolding notice',
+      body: 'Body',
+    });
+
+    const res = await get('/notifications?search=scaffolding&pageSize=100');
+    expect(res.status).toBe(200);
+    expect(res.body.data.items.length).toBeGreaterThan(0);
+    for (const n of res.body.data.items)
+      expect(`${n.title} ${n.body}`.toLowerCase()).toContain('scaffolding');
+  });
+
+  it('deletes one from your own inbox', async () => {
+    await notifyUsers(org.orgId, [org.users.ADMIN!.id], {
+      topic: 'INSPECTION_ASSIGNED' as never,
+      title: 'To be dismissed',
+      body: 'Body',
+    });
+    const list = await get('/notifications?pageSize=100');
+    const target = list.body.data.items[0];
+
+    expect((await del(`/notifications/${target.id}`)).status).toBe(204);
+
+    const after = await get('/notifications?pageSize=100');
+    expect(after.body.data.items.map((n: { id: string }) => n.id)).not.toContain(target.id);
+  });
+
+  it('cannot delete somebody else’s notification', async () => {
+    const result = await notifyUsers(org.orgId, [org.users.MANAGER!.id], {
+      topic: 'INSPECTION_ASSIGNED' as never,
+      title: 'Not yours',
+      body: 'Body',
+    });
+    expect(result.created).toBe(1);
+
+    const theirs = await prisma.notification.findFirstOrThrow({
+      where: { userId: org.users.MANAGER!.id },
+      orderBy: { createdAt: 'desc' },
+    });
+
+    // Scoped by userId, so one person cannot clear another's inbox.
+    expect((await del(`/notifications/${theirs.id}`, 'INSPECTOR')).status).toBe(404);
+    const still = await prisma.notification.findUnique({ where: { id: theirs.id } });
+    expect(still?.deletedAt).toBeNull();
+  });
+});
+
 describe('notification preferences', () => {
   it('returns the defaults for a user who has never set any', async () => {
     const res = await get('/notifications/preferences', 'VIEWER');

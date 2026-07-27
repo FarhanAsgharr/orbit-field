@@ -13,6 +13,7 @@ import React, { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 
 import { type Column, DataTable } from '../components/DataTable';
+import { ExportMenu } from '../components/ExportMenu';
 import { InspectionForm } from '../components/InspectionForm';
 import { PasswordInput } from '../components/PasswordInput';
 import { useResourceEditor } from '../components/ResourceForm';
@@ -59,9 +60,40 @@ interface InspectionRow {
 
 export function Inspections(): React.ReactElement {
   const { can } = useSession();
+  const queryClient = useQueryClient();
   const [status, setStatus] = useState<string>('');
   const [outcome, setOutcome] = useState<string>('');
   const [scheduling, setScheduling] = useState(false);
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [bulkError, setBulkError] = useState<string | null>(null);
+
+  /*
+   * One mutation for every bulk action, because the server takes one endpoint.
+   * It reports per-id outcomes, so a batch where some ids were not permitted
+   * partly succeeds — the count that comes back is what actually changed, not
+   * what was asked for, and that is what gets shown.
+   */
+  const bulk = useMutation({
+    mutationFn: (body: Record<string, unknown>) =>
+      api.post<{ updated?: number; results?: unknown[] }>('/inspections/bulk', {
+        ids: [...selected],
+        ...body,
+      }),
+    onSuccess: (result) => {
+      void queryClient.invalidateQueries({ queryKey: ['inspections'] });
+      setSelected(new Set());
+      setBulkError(
+        typeof result?.updated === 'number' && result.updated < selected.size
+          ? `${result.updated} of ${selected.size} changed — the rest were not permitted or not eligible.`
+          : null,
+      );
+    },
+    onError: (e) => setBulkError(e instanceof Error ? e.message : 'The bulk action failed.'),
+  });
+
+  const confirmThen = (message: string, body: Record<string, unknown>): void => {
+    if (globalThis.confirm(`${message} (${selected.size} selected)`)) bulk.mutate(body);
+  };
 
   const columns: Array<Column<InspectionRow>> = [
     {
@@ -202,8 +234,99 @@ export function Inspections(): React.ReactElement {
         </div>
       ) : null}
 
+      {bulkError ? <ErrorBanner message={bulkError} /> : null}
+
       <DataTable<InspectionRow>
         endpoint="/inspections"
+        exportAction={(q) => <ExportMenu dataset="inspections" query={q} />}
+        selection={
+          can(Permission.INSPECTION_UPDATE_ANY)
+            ? {
+                selected,
+                onChange: setSelected,
+                actions: () => (
+                  <div className="row gap-2">
+                    {bulk.isPending ? <span className="small muted">Working…</span> : null}
+                    <select
+                      className="select"
+                      style={{ width: 'auto' }}
+                      aria-label="Set priority for the selected inspections"
+                      defaultValue=""
+                      disabled={bulk.isPending}
+                      onChange={(e) => {
+                        if (!e.target.value) return;
+                        confirmThen(`Set priority to ${e.target.value.toLowerCase()}?`, {
+                          action: 'SET_PRIORITY',
+                          priority: e.target.value,
+                        });
+                        e.target.value = '';
+                      }}
+                    >
+                      <option value="">Set priority…</option>
+                      {['LOW', 'NORMAL', 'HIGH', 'CRITICAL'].map((p) => (
+                        <option key={p} value={p}>
+                          {p.charAt(0) + p.slice(1).toLowerCase()}
+                        </option>
+                      ))}
+                    </select>
+                    <select
+                      className="select"
+                      style={{ width: 'auto' }}
+                      aria-label="Set status for the selected inspections"
+                      defaultValue=""
+                      disabled={bulk.isPending}
+                      onChange={(e) => {
+                        if (!e.target.value) return;
+                        confirmThen(`Set status to ${e.target.value.toLowerCase()}?`, {
+                          action: 'SET_STATUS',
+                          status: e.target.value,
+                        });
+                        e.target.value = '';
+                      }}
+                    >
+                      <option value="">Set status…</option>
+                      <option value="SCHEDULED">Scheduled</option>
+                      <option value="DRAFT">Draft</option>
+                    </select>
+                    <button
+                      className="btn btn--ghost btn--sm"
+                      disabled={bulk.isPending}
+                      onClick={() =>
+                        confirmThen('Archive these inspections?', { action: 'ARCHIVE' })
+                      }
+                    >
+                      Archive
+                    </button>
+                    <button
+                      className="btn btn--ghost btn--sm"
+                      disabled={bulk.isPending}
+                      onClick={() =>
+                        confirmThen('Cancel these visits? They stay on record as cancelled.', {
+                          action: 'CANCEL',
+                        })
+                      }
+                    >
+                      Cancel visit
+                    </button>
+                    {can(Permission.INSPECTION_DELETE) ? (
+                      <button
+                        className="btn btn--ghost btn--sm"
+                        disabled={bulk.isPending}
+                        onClick={() =>
+                          confirmThen(
+                            'Delete these inspections? They are removed from every device.',
+                            { action: 'DELETE' },
+                          )
+                        }
+                      >
+                        Delete
+                      </button>
+                    ) : null}
+                  </div>
+                ),
+              }
+            : undefined
+        }
         queryKey={['inspections', status, outcome]}
         columns={columns}
         rowKey={(row) => row.id}
@@ -384,6 +507,7 @@ export function People(): React.ReactElement {
 
       <DataTable<UserRow>
         endpoint="/users"
+        exportAction={(q) => <ExportMenu dataset="users" query={q} />}
         queryKey={['users', role]}
         columns={columns}
         rowKey={(row) => row.id}
@@ -1306,6 +1430,7 @@ interface ClientRow {
 
 export function Clients(): React.ReactElement {
   const editor = useResourceEditor('clients');
+  const [active, setActive] = useState<string>('');
   const columns: Array<Column<ClientRow>> = [
     {
       key: 'name',
@@ -1386,6 +1511,21 @@ export function Clients(): React.ReactElement {
 
       <DataTable<ClientRow>
         endpoint="/clients"
+        extraQuery={{ isActive: active === '' ? undefined : active === 'true' }}
+        filters={
+          <select
+            className="select"
+            style={{ width: 'auto' }}
+            aria-label="Filter by status"
+            value={active}
+            onChange={(e) => setActive(e.target.value)}
+          >
+            <option value="">Any status</option>
+            <option value="true">Active</option>
+            <option value="false">Inactive</option>
+          </select>
+        }
+        exportAction={(q) => <ExportMenu dataset="clients" query={q} />}
         toolbarAction={editor.toolbarAction}
         queryKey={['clients']}
         columns={columns}
@@ -1410,6 +1550,7 @@ interface ProjectRow {
 
 export function Projects(): React.ReactElement {
   const editor = useResourceEditor('projects');
+  const [active, setActive] = useState<string>('');
   const columns: Array<Column<ProjectRow>> = [
     {
       key: 'name',
@@ -1483,6 +1624,21 @@ export function Projects(): React.ReactElement {
 
       <DataTable<ProjectRow>
         endpoint="/projects"
+        extraQuery={{ isActive: active === '' ? undefined : active === 'true' }}
+        filters={
+          <select
+            className="select"
+            style={{ width: 'auto' }}
+            aria-label="Filter by status"
+            value={active}
+            onChange={(e) => setActive(e.target.value)}
+          >
+            <option value="">Any status</option>
+            <option value="true">Active</option>
+            <option value="false">Inactive</option>
+          </select>
+        }
+        exportAction={(q) => <ExportMenu dataset="projects" query={q} />}
         toolbarAction={editor.toolbarAction}
         queryKey={['projects']}
         columns={columns}
@@ -1510,6 +1666,7 @@ interface SiteRow {
 
 export function Sites(): React.ReactElement {
   const editor = useResourceEditor('sites');
+  const [active, setActive] = useState<string>('');
   const columns: Array<Column<SiteRow>> = [
     {
       key: 'name',
@@ -1593,6 +1750,21 @@ export function Sites(): React.ReactElement {
 
       <DataTable<SiteRow>
         endpoint="/sites"
+        extraQuery={{ isActive: active === '' ? undefined : active === 'true' }}
+        filters={
+          <select
+            className="select"
+            style={{ width: 'auto' }}
+            aria-label="Filter by status"
+            value={active}
+            onChange={(e) => setActive(e.target.value)}
+          >
+            <option value="">Any status</option>
+            <option value="true">Active</option>
+            <option value="false">Inactive</option>
+          </select>
+        }
+        exportAction={(q) => <ExportMenu dataset="sites" query={q} />}
         toolbarAction={editor.toolbarAction}
         queryKey={['sites']}
         columns={columns}
@@ -1632,6 +1804,7 @@ interface AssetRow {
  */
 export function Assets(): React.ReactElement {
   const editor = useResourceEditor('assets');
+  const [active, setActive] = useState<string>('');
 
   const columns: Array<Column<AssetRow>> = [
     {
@@ -1723,6 +1896,20 @@ export function Assets(): React.ReactElement {
 
       <DataTable<AssetRow>
         endpoint="/assets"
+        extraQuery={{ isActive: active === '' ? undefined : active === 'true' }}
+        filters={
+          <select
+            className="select"
+            style={{ width: 'auto' }}
+            aria-label="Filter by status"
+            value={active}
+            onChange={(e) => setActive(e.target.value)}
+          >
+            <option value="">Any status</option>
+            <option value="true">Active</option>
+            <option value="false">Inactive</option>
+          </select>
+        }
         toolbarAction={editor.toolbarAction}
         queryKey={['assets']}
         columns={columns}
@@ -1758,10 +1945,35 @@ export function Devices(): React.ReactElement {
   const { can } = useSession();
   const queryClient = useQueryClient();
   const [error, setError] = useState<string | null>(null);
+  const [search, setSearch] = useState('');
+  const [platform, setPlatform] = useState('');
+  const [state, setState] = useState('');
 
   const { data, isLoading } = useQuery<DeviceRecord[]>({
     queryKey: ['devices-all'],
     queryFn: () => api.get<DeviceRecord[]>('/devices', { includeRevoked: true }),
+  });
+
+  /*
+   * Filtered here rather than on the server: the endpoint returns the whole
+   * fleet in one response and has no query parameters for this. A fleet large
+   * enough for that to matter needs server-side paging on `/devices` first,
+   * and inventing filter parameters the API does not have would be worse than
+   * filtering what it already sent.
+   */
+  const term = search.trim().toLowerCase();
+  const rows = (data ?? []).filter((d) => {
+    if (platform && d.platform !== platform) return false;
+    if (state === 'active' && d.revokedAt) return false;
+    if (state === 'revoked' && !d.revokedAt) return false;
+    if (state === 'stale') {
+      const seen = d.lastSeenAt ? Date.parse(d.lastSeenAt) : 0;
+      if (Date.now() - seen < 24 * 3600 * 1000) return false;
+    }
+    if (!term) return true;
+    return [d.name, d.platform, d.appVersion]
+      .filter(Boolean)
+      .some((v) => String(v).toLowerCase().includes(term));
   });
 
   const revoke = useMutation({
@@ -1786,13 +1998,66 @@ export function Devices(): React.ReactElement {
 
       {error ? <ErrorBanner message={error} /> : null}
 
+      <div className="toolbar">
+        <input
+          className="input toolbar__search"
+          placeholder="Search device, platform, or version"
+          aria-label="Search devices"
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+        />
+        <select
+          className="select"
+          style={{ width: 'auto' }}
+          aria-label="Filter by platform"
+          value={platform}
+          onChange={(e) => setPlatform(e.target.value)}
+        >
+          <option value="">Any platform</option>
+          <option value="android">Android</option>
+          <option value="ios">iOS</option>
+          <option value="web">Web</option>
+        </select>
+        <select
+          className="select"
+          style={{ width: 'auto' }}
+          aria-label="Filter by state"
+          value={state}
+          onChange={(e) => setState(e.target.value)}
+        >
+          <option value="">Any state</option>
+          <option value="active">Active</option>
+          <option value="revoked">Revoked</option>
+          <option value="stale">Silent 24h+</option>
+        </select>
+        {search || platform || state ? (
+          <button
+            className="btn btn--ghost btn--sm"
+            onClick={() => {
+              setSearch('');
+              setPlatform('');
+              setState('');
+            }}
+          >
+            Reset
+          </button>
+        ) : null}
+        <div className="right">
+          <ExportMenu dataset="devices" query={{}} />
+        </div>
+      </div>
+
       <Card flush>
         {isLoading ? (
           <Loading rows={5} />
-        ) : !data || data.length === 0 ? (
+        ) : rows.length === 0 ? (
           <Empty
-            title="No devices enrolled"
-            body="A device appears here the first time somebody signs in on it."
+            title={search || platform || state ? 'Nothing matches' : 'No devices enrolled'}
+            body={
+              search || platform || state
+                ? 'Try a wider filter.'
+                : 'A device appears here the first time somebody signs in on it.'
+            }
           />
         ) : (
           <div className="table-wrap">
@@ -1809,7 +2074,7 @@ export function Devices(): React.ReactElement {
                 </tr>
               </thead>
               <tbody>
-                {data.map((device) => (
+                {rows.map((device) => (
                   <tr key={device.id}>
                     <td>
                       <div className="table__primary">{device.name}</div>

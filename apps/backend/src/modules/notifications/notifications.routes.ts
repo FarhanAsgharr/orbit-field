@@ -34,7 +34,11 @@ router.get(
   validate({
     query: paginationSchema.extend({
       unreadOnly: z.coerce.boolean().default(false),
+      // `unreadOnly` is kept as-is so existing clients are unaffected; `read`
+      // is the fuller filter the console needs (unread / read / either).
+      read: z.enum(['true', 'false']).optional(),
       topic: z.string().max(60).optional(),
+      search: z.string().max(200).optional(),
     }),
   }),
   asyncHandler(async (req, res) => {
@@ -43,15 +47,26 @@ router.get(
       page: number;
       pageSize: number;
       unreadOnly: boolean;
+      read?: 'true' | 'false';
       topic?: string;
+      search?: string;
     };
 
     const where = {
       userId: subject.userId,
       orgId: subject.orgId,
       deletedAt: null,
-      ...(q.unreadOnly ? { readAt: null } : {}),
+      ...(q.unreadOnly || q.read === 'false' ? { readAt: null } : {}),
+      ...(q.read === 'true' ? { readAt: { not: null } } : {}),
       ...(q.topic ? { topic: q.topic } : {}),
+      ...(q.search
+        ? {
+            OR: [
+              { title: { contains: q.search, mode: 'insensitive' as const } },
+              { body: { contains: q.search, mode: 'insensitive' as const } },
+            ],
+          }
+        : {}),
     };
 
     const [items, total, unread] = await Promise.all([
@@ -105,6 +120,34 @@ router.post(
 );
 
 /** Preferences: categories, quiet hours, sound. */
+/**
+ * Remove a notification from your own inbox.
+ *
+ * Soft, and scoped to the caller: an inbox entry belongs to one person, and a
+ * notification somebody has dismissed is not evidence of anything — the
+ * underlying inspection, audit entry and change log all remain. Without this
+ * the inbox only ever grows, which is why people stop reading it.
+ */
+router.delete(
+  '/:id',
+  requireAuth,
+  validate({ params: z.object({ id: schemas.ulid }) }),
+  asyncHandler(async (req, res) => {
+    const subject = auth(req);
+    const { id } = req.validated!.params as { id: string };
+
+    const existing = await prisma.notification.findFirst({
+      where: { id, userId: subject.userId, orgId: subject.orgId, deletedAt: null },
+      select: { id: true },
+    });
+    // Scoped to `userId`, so one person cannot clear another's inbox.
+    if (!existing) throw new AppError(ErrorCode.NOT_FOUND, 'That notification was not found.');
+
+    await prisma.notification.update({ where: { id }, data: { deletedAt: new Date() } });
+    res.status(204).end();
+  }),
+);
+
 router.get(
   '/preferences',
   requireAuth,

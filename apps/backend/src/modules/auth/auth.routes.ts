@@ -1,10 +1,13 @@
 /** Authentication routes. */
 
 import { OtpPurpose } from '@orbit/types';
+import { ulid } from '@orbit/utils';
 import type { Request } from 'express';
 import { Router } from 'express';
 import { z } from 'zod';
 
+import { prisma } from '../../db/prisma.js';
+import { revokeUserTokens } from '../../lib/tokens.js';
 import { requireAuth } from '../../middleware/auth.js';
 import { auth, clientIp } from '../../middleware/context.js';
 import { asyncHandler } from '../../middleware/error.js';
@@ -240,6 +243,171 @@ router.get(
         projectIds: subject.projectIds,
       },
     });
+  }),
+);
+
+/**
+ * Your own record, in full.
+ *
+ * `/me` is deliberately minimal — the mobile app calls it on every cold start
+ * and only needs identity and scope. A person looking at their own profile
+ * wants the rest, and asking them to be an administrator to see their own
+ * department is absurd, so this is a separate, self-scoped endpoint rather
+ * than a widening of `/me`.
+ */
+router.get(
+  '/profile',
+  requireAuth,
+  asyncHandler(async (req, res) => {
+    const subject = auth(req);
+
+    const user = await prisma.user.findUniqueOrThrow({
+      where: { id: subject.userId },
+      select: {
+        id: true,
+        email: true,
+        firstName: true,
+        lastName: true,
+        phone: true,
+        avatarUrl: true,
+        employeeId: true,
+        department: true,
+        jobTitle: true,
+        registrationNumber: true,
+        role: true,
+        status: true,
+        timezone: true,
+        locale: true,
+        lastLoginAt: true,
+        lastLoginIp: true,
+        mustChangePassword: true,
+        passwordChangedAt: true,
+        createdAt: true,
+        organization: { select: { id: true, name: true } },
+        devices: {
+          where: { deletedAt: null },
+          orderBy: { lastSeenAt: 'desc' },
+          select: {
+            id: true,
+            name: true,
+            platform: true,
+            appVersion: true,
+            osVersion: true,
+            lastSeenAt: true,
+            lastSyncAt: true,
+            revokedAt: true,
+          },
+        },
+      },
+    });
+
+    res.json({ data: user });
+  }),
+);
+
+/**
+ * Edit your own details.
+ *
+ * Deliberately excludes role, status and email. Those decide what you may do
+ * and how you sign in, and letting somebody change their own role here would
+ * make every RBAC check in the system advisory. They remain an administrator's
+ * to change, through `/users/:id`.
+ */
+router.patch(
+  '/profile',
+  requireAuth,
+  validate({
+    body: z.object({
+      firstName: z.string().min(1).max(100).trim().optional(),
+      lastName: z.string().min(1).max(100).trim().optional(),
+      phone: z.string().max(32).nullable().optional(),
+      avatarUrl: z.string().url().max(500).nullable().optional(),
+      jobTitle: z.string().max(120).nullable().optional(),
+      department: z.string().max(120).nullable().optional(),
+      employeeId: z.string().max(60).nullable().optional(),
+      timezone: z.string().max(64).nullable().optional(),
+      locale: z.string().max(16).nullable().optional(),
+    }),
+  }),
+  asyncHandler(async (req, res) => {
+    const subject = auth(req);
+    const body = req.validated!.body as Record<string, unknown>;
+
+    const updated = await prisma.user.update({
+      where: { id: subject.userId },
+      data: body as never,
+      select: {
+        id: true,
+        email: true,
+        firstName: true,
+        lastName: true,
+        phone: true,
+        avatarUrl: true,
+        employeeId: true,
+        department: true,
+        jobTitle: true,
+      },
+    });
+
+    await prisma.auditLog.create({
+      data: {
+        id: ulid(),
+        orgId: subject.orgId,
+        userId: subject.userId,
+        action: 'RECORD_UPDATED',
+        entity: 'User',
+        entityId: subject.userId,
+        metadata: { self: true, fields: Object.keys(body) },
+        ipAddress: clientIp(req),
+        requestId: req.requestId,
+      },
+    });
+
+    res.json({ data: updated });
+  }),
+);
+
+/**
+ * Sign out everywhere.
+ *
+ * What somebody reaches for when they think an account is compromised, or when
+ * a phone is lost. Revokes every refresh token and every device, so the next
+ * request from any of them fails — the access tokens they already hold expire
+ * on their own within fifteen minutes, and `passwordChangedAt` is untouched
+ * because no credential has changed.
+ */
+router.post(
+  '/logout-all',
+  requireAuth,
+  asyncHandler(async (req, res) => {
+    const subject = auth(req);
+
+    const devices = await prisma.device.updateMany({
+      where: { userId: subject.userId, revokedAt: null },
+      data: {
+        revokedAt: new Date(),
+        revokedReason: 'signed out of all devices by the account owner',
+        pushToken: null,
+      },
+    });
+
+    await revokeUserTokens(subject.userId, 'signed out of all devices');
+
+    await prisma.auditLog.create({
+      data: {
+        id: ulid(),
+        orgId: subject.orgId,
+        userId: subject.userId,
+        action: 'AUTH_LOGOUT',
+        entity: 'User',
+        entityId: subject.userId,
+        metadata: { allDevices: true, devicesRevoked: devices.count },
+        ipAddress: clientIp(req),
+        requestId: req.requestId,
+      },
+    });
+
+    res.json({ data: { devicesRevoked: devices.count } });
   }),
 );
 

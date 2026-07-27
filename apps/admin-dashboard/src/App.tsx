@@ -20,7 +20,10 @@ import {
   Templates,
 } from './pages/Lists';
 import { Login } from './pages/Login';
+import { Notifications } from './pages/Notifications';
 import { Overview } from './pages/Overview';
+import { Profile } from './pages/Profile';
+import { Roles } from './pages/Roles';
 import { Sync } from './pages/Sync';
 import { TemplateDetail } from './pages/TemplateDetail';
 
@@ -95,6 +98,9 @@ export function App(): React.ReactElement {
               <Route path="/sites" element={<Sites />} />
               <Route path="/assets" element={<Assets />} />
               <Route path="/users" element={<People />} />
+              <Route path="/roles" element={<Roles />} />
+              <Route path="/notifications" element={<Notifications />} />
+              <Route path="/profile" element={<Profile />} />
               <Route path="/devices" element={<Devices />} />
               <Route path="/audit" element={<Audit />} />
               <Route path="/settings" element={<Settings />} />

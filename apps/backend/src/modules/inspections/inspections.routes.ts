@@ -1255,9 +1255,17 @@ router.post(
         'SET_DUE_DATE',
         'ADD_TAGS',
         'DELETE',
+        'CANCEL',
+        'SET_STATUS',
       ]),
       assignedToId: schemas.ulid.nullable().optional(),
       priority: z.enum(['LOW', 'NORMAL', 'HIGH', 'CRITICAL']).optional(),
+      /*
+       * Only the statuses an administrator legitimately sets in bulk. Anything
+       * further along asserts that work happened — a batch that marked fifty
+       * inspections APPROVED would be fifty sign-offs nobody performed.
+       */
+      status: z.enum(['DRAFT', 'SCHEDULED']).optional(),
       dueAt: z.string().datetime({ offset: true }).nullable().optional(),
       tags: z.array(z.string().max(40)).max(20).optional(),
     }),
@@ -1267,6 +1275,7 @@ router.post(
     const body = req.validated!.body as {
       ids: string[];
       action: string;
+      status?: string;
       assignedToId?: string | null;
       priority?: Priority;
       dueAt?: string | null;
@@ -1322,6 +1331,14 @@ router.post(
             case 'ADD_TAGS':
               // Union rather than replace — bulk tagging is additive by intent.
               data.tags = Array.from(new Set([...target.tags, ...(body.tags ?? [])]));
+              break;
+            case 'CANCEL':
+              // Distinct from delete: the visit was scheduled and called off,
+              // which is a fact the record should keep.
+              data.status = InspectionStatus.CANCELLED as never;
+              break;
+            case 'SET_STATUS':
+              data.status = body.status as never;
               break;
             case 'DELETE':
               data.deletedAt = new Date();
