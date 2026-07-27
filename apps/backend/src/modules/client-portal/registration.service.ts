@@ -160,10 +160,23 @@ async function uniqueClientCode(orgId: string, companyName: string): Promise<str
       .replace(/[^A-Z0-9]+/g, '')
       .slice(0, 8) || 'CLIENT';
 
+  /*
+   * Deleted clients still count.
+   *
+   * `@@unique([orgId, code])` is a database constraint and knows nothing about
+   * `deletedAt`, so a soft-deleted client keeps its code reserved forever.
+   * Probing with `deletedAt: null` therefore hands back a code that is already
+   * taken, and the insert fails with a duplicate-key error naming an internal
+   * column — which reaches the customer as "A record with this orgId, code
+   * already exists", about a field they never saw and cannot change.
+   *
+   * Found by the production verification run: the second registration of a
+   * company whose earlier record had been deleted was refused outright.
+   */
   for (let attempt = 0; attempt < 50; attempt++) {
     const candidate = attempt === 0 ? base : `${base}${attempt + 1}`;
     const taken = await prisma.client.findFirst({
-      where: { orgId, code: candidate, deletedAt: null },
+      where: { orgId, code: candidate },
       select: { id: true },
     });
     if (!taken) return candidate;

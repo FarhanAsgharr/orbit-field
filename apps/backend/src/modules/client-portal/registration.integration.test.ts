@@ -229,6 +229,47 @@ describe('what a stranger cannot do with it', () => {
     expect(second.body.error.code).toBe('DUPLICATE_RESOURCE');
   });
 
+  it('gives a fresh code when a deleted client already holds the obvious one', async () => {
+    /*
+     * Found on production, not here.
+     *
+     * `@@unique([orgId, code])` is a database constraint that knows nothing
+     * about `deletedAt`, so a deleted client keeps its derived code reserved.
+     * The uniqueness probe used to skip deleted rows, hand back a code that was
+     * already taken, and fail the insert — surfacing to the customer as a
+     * duplicate-key error about a column they never saw.
+     */
+    const name = `Collision Test ${unique('x')}`;
+
+    const first = await request(server)
+      .post(`${api}/portal/register`)
+      .send(submission({ companyName: name }));
+    expect(first.status).toBe(201);
+    created.push(first.body.data.clientId);
+
+    const code = (
+      await prisma.client.findUniqueOrThrow({ where: { id: first.body.data.clientId } })
+    ).code;
+
+    // Soft delete, exactly as `DELETE /clients/:id` does.
+    await prisma.client.update({
+      where: { id: first.body.data.clientId },
+      data: { deletedAt: new Date() },
+    });
+
+    const second = await request(server)
+      .post(`${api}/portal/register`)
+      .send(submission({ companyName: name }));
+
+    expect(second.status).toBe(201);
+    created.push(second.body.data.clientId);
+
+    const secondCode = (
+      await prisma.client.findUniqueOrThrow({ where: { id: second.body.data.clientId } })
+    ).code;
+    expect(secondCode).not.toBe(code);
+  });
+
   it('refuses a weak password', async () => {
     const res = await request(server)
       .post(`${api}/portal/register`)
