@@ -10,6 +10,7 @@ import { useQuery } from '@tanstack/react-query';
 import React, { useState } from 'react';
 import { Link, Navigate, useLocation } from 'react-router-dom';
 
+import { PasswordField } from '../components/PasswordField';
 import { Field, Notice } from '../components/ui';
 import { api } from '../lib/api';
 import { useSession } from '../lib/session';
@@ -104,19 +105,16 @@ export function Login(): React.ReactElement {
             />
           </Field>
 
-          <Field label="Password" required>
-            <input
-              className="input"
-              type="password"
-              autoComplete="current-password"
-              value={password}
-              required
-              onChange={(e) => {
-                setPassword(e.target.value);
-                if (error) setError(null);
-              }}
-            />
-          </Field>
+          <PasswordField
+            label="Password"
+            required
+            autoComplete="current-password"
+            value={password}
+            onChange={(e) => {
+              setPassword(e.target.value);
+              if (error) setError(null);
+            }}
+          />
 
           <button className="btn btn--primary btn--block" type="submit" disabled={busy}>
             {busy ? 'Signing in…' : 'Sign in'}

@@ -15,6 +15,7 @@ import { useQuery } from '@tanstack/react-query';
 import React, { useState } from 'react';
 import { Link, Navigate, useNavigate } from 'react-router-dom';
 
+import { PasswordField } from '../components/PasswordField';
 import { Field, Notice } from '../components/ui';
 import { api, ApiRequestError, registerClient } from '../lib/api';
 import { useSession } from '../lib/session';
@@ -322,31 +323,23 @@ export function Register(): React.ReactElement {
           <fieldset className="fieldset">
             <legend className="fieldset__legend">Account</legend>
             <div className="form-grid">
-              <Field
+              <PasswordField
                 label="Password"
                 required
                 hint="At least 12 characters, with upper and lower case, a number and a symbol"
                 error={fieldErrors.password}
-              >
-                <input
-                  className="input"
-                  type="password"
-                  value={form.password}
-                  onChange={set('password')}
-                  required
-                  autoComplete="new-password"
-                />
-              </Field>
-              <Field label="Confirm password" required error={fieldErrors.confirmPassword}>
-                <input
-                  className="input"
-                  type="password"
-                  value={form.confirmPassword}
-                  onChange={set('confirmPassword')}
-                  required
-                  autoComplete="new-password"
-                />
-              </Field>
+                value={form.password}
+                onChange={set('password')}
+                autoComplete="new-password"
+              />
+              <PasswordField
+                label="Confirm password"
+                required
+                error={fieldErrors.confirmPassword}
+                value={form.confirmPassword}
+                onChange={set('confirmPassword')}
+                autoComplete="new-password"
+              />
               <Field label="Anything we should know" hint="Optional" full>
                 <textarea
                   className="textarea"

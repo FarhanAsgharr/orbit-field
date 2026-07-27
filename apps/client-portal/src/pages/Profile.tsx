@@ -17,6 +17,7 @@ import { useMutation } from '@tanstack/react-query';
 import React, { useState } from 'react';
 
 import { Shell } from '../components/Shell';
+import { PasswordField } from '../components/PasswordField';
 import { Card, Field, Notice } from '../components/ui';
 import { api, ApiRequestError } from '../lib/api';
 import { useSession } from '../lib/session';
@@ -326,40 +327,28 @@ export function Profile(): React.ReactElement {
         >
           {passwordError && <Notice>{passwordError}</Notice>}
           <div className="form-grid" style={{ marginTop: passwordError ? 16 : 0 }}>
-            <Field label="Current password" required>
-              <input
-                className="input"
-                type="password"
-                autoComplete="current-password"
-                value={passwords.currentPassword}
-                onChange={(e) => setPasswords({ ...passwords, currentPassword: e.target.value })}
-                required
-              />
-            </Field>
-            <Field
+            <PasswordField
+              label="Current password"
+              required
+              autoComplete="current-password"
+              value={passwords.currentPassword}
+              onChange={(e) => setPasswords({ ...passwords, currentPassword: e.target.value })}
+            />
+            <PasswordField
               label="New password"
               required
               hint="At least 12 characters, mixed case, a number and a symbol"
-            >
-              <input
-                className="input"
-                type="password"
-                autoComplete="new-password"
-                value={passwords.newPassword}
-                onChange={(e) => setPasswords({ ...passwords, newPassword: e.target.value })}
-                required
-              />
-            </Field>
-            <Field label="Confirm new password" required>
-              <input
-                className="input"
-                type="password"
-                autoComplete="new-password"
-                value={passwords.confirmPassword}
-                onChange={(e) => setPasswords({ ...passwords, confirmPassword: e.target.value })}
-                required
-              />
-            </Field>
+              autoComplete="new-password"
+              value={passwords.newPassword}
+              onChange={(e) => setPasswords({ ...passwords, newPassword: e.target.value })}
+            />
+            <PasswordField
+              label="Confirm new password"
+              required
+              autoComplete="new-password"
+              value={passwords.confirmPassword}
+              onChange={(e) => setPasswords({ ...passwords, confirmPassword: e.target.value })}
+            />
           </div>
           <div className="form-actions" style={{ marginTop: 20 }}>
             <button className="btn btn--primary" type="submit" disabled={changePassword.isPending}>

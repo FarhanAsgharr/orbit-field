@@ -693,6 +693,60 @@ p {
   flex-wrap: wrap;
 }
 
+/* --- password reveal ------------------------------------------------------ */
+
+.password {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+/* Room for the toggle, so a long password never runs underneath it. */
+.password__input {
+  padding-right: 44px;
+}
+
+.password__toggle {
+  position: absolute;
+  right: 4px;
+  width: 32px;
+  height: 32px;
+  display: grid;
+  place-items: center;
+  border: 0;
+  border-radius: var(--r-1);
+  background: transparent;
+  color: var(--ink-faint);
+  cursor: pointer;
+  transition:
+    color 0.12s ease,
+    background 0.12s ease;
+}
+
+.password__toggle:hover:not(:disabled) {
+  color: var(--ink);
+  background: var(--surface-sunken);
+}
+
+.password__toggle:focus-visible {
+  outline: 2px solid var(--brand);
+  outline-offset: -2px;
+}
+
+/* Revealed is a state worth seeing without reading the icon closely. */
+.password__toggle[aria-pressed='true'] {
+  color: var(--brand);
+}
+
+.password__toggle:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.password--error .password__input {
+  border-color: var(--danger);
+}
+
 /* --- tables --------------------------------------------------------------- */
 
 .table-wrap {
