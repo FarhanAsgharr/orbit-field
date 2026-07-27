@@ -164,6 +164,22 @@ describe('single-dataset export', () => {
     expect((res.body as Buffer).toString('utf8').length).toBeGreaterThan(0);
   });
 
+  it('honours a search filter, so a filtered view exports filtered', async () => {
+    const all = await binary('/reports/export/inspections?format=csv&limit=20000');
+    const allRows = (all.body as Buffer).toString('utf8').trim().split('\n').length - 1;
+    expect(allRows).toBeGreaterThan(0);
+
+    const none = await binary(
+      '/reports/export/inspections?format=csv&limit=20000&search=NOTHINGMATCHESTHISSTRING',
+    );
+    const noneRows = (none.body as Buffer).toString('utf8').trim().split('\n').length - 1;
+
+    // The failure this exists for: an export that ignores the filter downloads
+    // everything, looks correct, and nobody counts the rows before sending it
+    // to a client.
+    expect(noneRows).toBe(0);
+  });
+
   it('caps the row limit', async () => {
     expect((await get('/reports/export/inspections?format=csv&limit=999999')).status).toBe(422);
   });

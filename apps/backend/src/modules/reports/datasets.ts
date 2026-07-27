@@ -22,6 +22,14 @@ export interface DatasetContext {
   projectIds?: string[];
   siteIds?: string[];
   templateIds?: string[];
+  /**
+   * Free-text narrowing, matching what the list screen was showing.
+   *
+   * Without this an export from a filtered view silently returns the whole
+   * dataset — the file downloads, it looks right, and nobody counts the rows
+   * before sending it on.
+   */
+  search?: string;
   limit?: number;
 }
 
@@ -155,6 +163,14 @@ export const inspectionsDataset: Dataset<InspectionRow> = {
         ...(ctx.projectIds?.length ? { projectId: { in: ctx.projectIds } } : {}),
         ...(ctx.siteIds?.length ? { siteId: { in: ctx.siteIds } } : {}),
         ...(ctx.templateIds?.length ? { templateId: { in: ctx.templateIds } } : {}),
+        ...(ctx.search
+          ? {
+              OR: [
+                { number: { contains: ctx.search, mode: 'insensitive' as const } },
+                { title: { contains: ctx.search, mode: 'insensitive' as const } },
+              ],
+            }
+          : {}),
       },
       include: {
         template: { select: { name: true } },

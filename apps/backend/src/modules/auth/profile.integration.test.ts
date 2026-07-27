@@ -94,15 +94,12 @@ describe('editing your own profile', () => {
   });
 
   it('ignores a role or status somebody adds to the body', async () => {
-    const res = await request(server)
-      .patch(`${api}/auth/profile`)
-      .set(auth())
-      .send({
-        firstName: 'Still Me',
-        role: 'SUPER_ADMIN',
-        status: 'ACTIVE',
-        email: 'new@x.invalid',
-      });
+    const res = await request(server).patch(`${api}/auth/profile`).set(auth()).send({
+      firstName: 'Still Me',
+      role: 'SUPER_ADMIN',
+      status: 'ACTIVE',
+      email: 'new@x.invalid',
+    });
 
     expect(res.status).toBe(200);
 

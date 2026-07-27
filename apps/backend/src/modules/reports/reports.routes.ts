@@ -53,6 +53,7 @@ const exportQuery = z.object({
   projectId: z.string().optional(),
   siteId: z.string().optional(),
   templateId: z.string().optional(),
+  search: z.string().max(200).optional(),
   limit: z.coerce.number().int().positive().max(20_000).optional(),
 });
 
@@ -198,6 +199,7 @@ router.get(
       projectIds: q.projectId ? [q.projectId] : undefined,
       siteIds: q.siteId ? [q.siteId] : undefined,
       templateIds: q.templateId ? [q.templateId] : undefined,
+      search: q.search,
       limit: q.limit,
     };
 
