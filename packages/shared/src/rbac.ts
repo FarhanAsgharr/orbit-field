@@ -166,12 +166,34 @@ const ADMIN: Permission[] = [
   Permission.SYSTEM_HEALTH,
 ];
 
+/**
+ * A customer, not a member of staff.
+ *
+ * Deliberately tiny, and deliberately not a subset of VIEWER: a client reads
+ * inspections *for their own company* and generates reports from them, and can
+ * see nothing else in the installation. The scoping that makes that safe is
+ * `clientId` on the subject, applied in every query — the permissions here only
+ * decide which endpoints they may reach at all.
+ *
+ * There is no INSPECTION_READ_ALL, no ANALYTICS_READ, no USER_READ and no
+ * AUDIT_READ, so the analytics, people and audit endpoints refuse them outright
+ * rather than relying on a filter being remembered.
+ */
+const CLIENT: Permission[] = [
+  Permission.INSPECTION_READ,
+  Permission.REPORT_READ,
+  Permission.REPORT_GENERATE,
+  Permission.SITE_READ,
+  Permission.ASSET_READ,
+];
+
 /** SUPER_ADMIN is defined as "everything" so new permissions are never missed. */
 const SUPER_ADMIN: Permission[] = [...ALL_PERMISSIONS];
 
 export const ROLE_PERMISSIONS: Record<Role, readonly Permission[]> = {
   SUPER_ADMIN,
   ADMIN,
+  CLIENT,
   MANAGER,
   SUPERVISOR,
   INSPECTOR,
@@ -188,6 +210,15 @@ export interface AccessSubject {
   revokedPermissions?: string[];
   /** Empty means org-wide within the role's reach. */
   projectIds?: string[];
+  /**
+   * The customer this user belongs to, when they are one.
+   *
+   * Set only for CLIENT users. Every query that can reach inspection data
+   * narrows on it, so a client sees their own company's work and no other
+   * customer's — a second isolation boundary inside the organisation, below the
+   * tenant boundary.
+   */
+  clientId?: string | null;
 }
 
 /** Resolve the effective permission set: role ∪ extras − revocations. */
@@ -233,6 +264,27 @@ export function canAssignRole(actor: AccessSubject, role: Role): boolean {
   return ROLE_RANK[actor.role] > ROLE_RANK[role];
 }
 
+/**
+ * Whether a record belonging to a customer is visible to this subject.
+ *
+ * Staff are unaffected — they have no `clientId` and see whatever their role
+ * and project scope allow. A client sees only their own company's records, and
+ * a record with no customer at all is invisible to them: internal work is not
+ * theirs to read.
+ */
+export function canAccessClientRecord(
+  subject: AccessSubject,
+  record: { clientId: string | null },
+): boolean {
+  if (!subject.clientId) return true;
+  return record.clientId !== null && record.clientId === subject.clientId;
+}
+
+/** True when this subject is a customer rather than a member of staff. */
+export function isClientUser(subject: AccessSubject): boolean {
+  return subject.role === 'CLIENT' || Boolean(subject.clientId);
+}
+
 /** Scope check for project-restricted users. */
 export function canAccessProject(subject: AccessSubject, projectId: string | null): boolean {
   const scoped = subject.projectIds ?? [];
@@ -249,9 +301,25 @@ export function canAccessInspection(
     assignedToId: string | null;
     projectId: string | null;
     createdById?: string | null;
+    /** Whose work it is. Required for a client subject; ignored for staff. */
+    clientId?: string | null;
   },
 ): boolean {
   if (subject.orgId !== inspection.orgId) return false;
+
+  /*
+   * A customer is scoped by whose work it is.
+   *
+   * Returns early rather than falling through to the staff rules: a client is
+   * neither the assignee nor the creator, so the checks below would refuse
+   * them their own inspection, and `clientId === undefined` on a record must
+   * refuse rather than pass — a caller that forgot to select the column would
+   * otherwise hand over the organisation.
+   */
+  if (subject.clientId) {
+    return inspection.clientId != null && inspection.clientId === subject.clientId;
+  }
+
   if (!canAccessProject(subject, inspection.projectId)) return false;
   if (can(subject, Permission.INSPECTION_READ_ALL)) return true;
   return inspection.assignedToId === subject.userId || inspection.createdById === subject.userId;

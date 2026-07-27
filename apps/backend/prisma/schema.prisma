@@ -47,6 +47,9 @@ enum Role {
   INSPECTOR
   TECHNICIAN
   VIEWER
+  /// A customer of the organisation, not a member of staff. Scoped by
+  /// `User.clientId` rather than by project or assignment.
+  CLIENT
 }
 
 enum UserStatus {
@@ -207,22 +210,23 @@ model Organization {
   updatedAt  DateTime  @updatedAt @db.Timestamptz(6)
   deletedAt  DateTime? @db.Timestamptz(6)
 
-  users         User[]
-  devices       Device[]
-  projects      Project[]
-  clients       Client[]
-  sites         Site[]
-  assets        Asset[]
-  templates     Template[]
-  inspections   Inspection[]
-  responses     InspectionResponse[]
-  attachments   Attachment[]
-  signatures    Signature[]
-  auditLogs     AuditLog[]
-  changeLog     ChangeLogEntry[]
-  notifications Notification[]
-  reports       Report[]
-  syncSessions  SyncSession[]
+  users              User[]
+  devices            Device[]
+  projects           Project[]
+  clients            Client[]
+  sites              Site[]
+  assets             Asset[]
+  templates          Template[]
+  inspections        Inspection[]
+  responses          InspectionResponse[]
+  attachments        Attachment[]
+  signatures         Signature[]
+  auditLogs          AuditLog[]
+  changeLog          ChangeLogEntry[]
+  notifications      Notification[]
+  reports            Report[]
+  syncSessions       SyncSession[]
+  inspectionRequests InspectionRequest[]
 
   @@index([slug])
   @@map("organizations")
@@ -265,6 +269,9 @@ model User {
    * Payroll or badge number, as the company already knows this person.
    */
   employeeId         String? @db.VarChar(60)
+  /// The customer this user belongs to. Set only for CLIENT accounts, and the
+  /// axis every client-facing query narrows on.
+  clientId           String? @db.VarChar(26)
   timezone           String? @db.VarChar(64)
   locale             String? @db.VarChar(16)
 
@@ -299,6 +306,10 @@ model User {
   reviewedInspections   Inspection[]         @relation("InspectionReviewer")
   supervisedInspections Inspection[]         @relation("InspectionSupervisor")
   inspectionComments    InspectionComment[]
+  authoredRequests      InspectionRequest[]  @relation("RequestAuthor")
+  reviewedRequests      InspectionRequest[]  @relation("RequestReviewer")
+  requestComments       RequestComment[]
+  portalClient          Client?              @relation("ClientPortalUser", fields: [clientId], references: [id], onDelete: SetNull)
   auditLogs             AuditLog[]
   notifications         Notification[]
   createdTemplates      Template[]
@@ -414,6 +425,19 @@ model OtpCode {
 // Reference data
 // ---------------------------------------------------------------------------
 
+/// Status of a customer's request for work, from submission to completion.
+///
+/// Distinct from InspectionStatus on purpose: a request has a life before an
+/// inspection exists (waiting on a decision) and the two must not be conflated
+/// — a rejected request never becomes an inspection at all.
+enum InspectionRequestStatus {
+  PENDING_APPROVAL
+  INFORMATION_REQUESTED
+  APPROVED
+  REJECTED
+  CANCELLED
+}
+
 model Client {
   id           String  @id @db.VarChar(26)
   orgId        String  @db.VarChar(26)
@@ -434,10 +458,12 @@ model Client {
   lastWriterDeviceId String?   @db.VarChar(26)
   lastWriterUserId   String?   @db.VarChar(26)
 
-  organization Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  organization Organization        @relation(fields: [orgId], references: [id], onDelete: Cascade)
   projects     Project[]
   sites        Site[]
   inspections  Inspection[]
+  portalUsers  User[]              @relation("ClientPortalUser")
+  requests     InspectionRequest[]
 
   @@unique([orgId, code])
   @@index([orgId, isActive])
@@ -517,11 +543,12 @@ model Site {
   lastWriterDeviceId String?   @db.VarChar(26)
   lastWriterUserId   String?   @db.VarChar(26)
 
-  organization Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
-  project      Project?     @relation(fields: [projectId], references: [id], onDelete: SetNull)
-  client       Client?      @relation(fields: [clientId], references: [id], onDelete: SetNull)
-  assets       Asset[]
-  inspections  Inspection[]
+  organization       Organization        @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  project            Project?            @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  client             Client?             @relation(fields: [clientId], references: [id], onDelete: SetNull)
+  assets             Asset[]
+  inspections        Inspection[]
+  inspectionRequests InspectionRequest[]
 
   @@index([orgId, isActive])
   @@index([orgId, syncCursor])
@@ -558,11 +585,12 @@ model Asset {
   lastWriterDeviceId String?   @db.VarChar(26)
   lastWriterUserId   String?   @db.VarChar(26)
 
-  organization Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
-  site         Site?        @relation(fields: [siteId], references: [id], onDelete: SetNull)
-  parent       Asset?       @relation("AssetHierarchy", fields: [parentAssetId], references: [id], onDelete: SetNull)
-  children     Asset[]      @relation("AssetHierarchy")
-  inspections  Inspection[]
+  organization       Organization        @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  site               Site?               @relation(fields: [siteId], references: [id], onDelete: SetNull)
+  parent             Asset?              @relation("AssetHierarchy", fields: [parentAssetId], references: [id], onDelete: SetNull)
+  children           Asset[]             @relation("AssetHierarchy")
+  inspections        Inspection[]
+  inspectionRequests InspectionRequest[]
 
   @@unique([orgId, tag])
   @@index([orgId, siteId])
@@ -724,6 +752,7 @@ model Inspection {
   attachments Attachment[]
   signatures  Signature[]
   reports     Report[]
+  requests    InspectionRequest[]
 
   @@unique([orgId, number])
   // The dominant query is "my open inspections, newest first".
@@ -943,6 +972,118 @@ model InspectionComment {
 
   @@index([orgId, inspectionId, createdAt])
   @@map("inspection_comments")
+}
+
+/// A customer asking for work to be done.
+///
+/// The entry point of the client portal, and deliberately a separate record
+/// from the Inspection it may become. A request carries what the customer
+/// wants and when; an inspection carries what was actually done. Keeping them
+/// apart means a rejected request leaves an auditable trail without ever
+/// creating work that nobody performed, and an approved one records who
+/// approved it and when.
+model InspectionRequest {
+  id       String @id @db.VarChar(26)
+  orgId    String @db.VarChar(26)
+  /// Whose request this is. The isolation boundary for the whole portal.
+  clientId String @db.VarChar(26)
+
+  /// Sequential per organisation, so a customer can quote it on the phone.
+  number String @db.VarChar(40)
+
+  title               String  @db.VarChar(300)
+  description         String? @db.Text
+  inspectionType      String? @db.VarChar(120)
+  specialInstructions String? @db.Text
+
+  siteId  String? @db.VarChar(26)
+  assetId String? @db.VarChar(26)
+
+  priority Priority                @default(NORMAL)
+  status   InspectionRequestStatus @default(PENDING_APPROVAL)
+
+  /// What the customer asked for, which is a wish rather than a commitment.
+  preferredDate DateTime? @db.Timestamptz(6)
+  preferredTime String?   @db.VarChar(20)
+
+  requestedById String    @db.VarChar(26)
+  reviewedById  String?   @db.VarChar(26)
+  reviewedAt    DateTime? @db.Timestamptz(6)
+  /// Why it was rejected, or what further information was asked for.
+  decisionNote  String?   @db.Text
+
+  /// Set when approval created work. The customer follows progress through it.
+  inspectionId String? @db.VarChar(26)
+
+  createdAt DateTime  @default(now()) @db.Timestamptz(6)
+  updatedAt DateTime  @updatedAt @db.Timestamptz(6)
+  deletedAt DateTime? @db.Timestamptz(6)
+
+  organization Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  client       Client       @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  site         Site?        @relation(fields: [siteId], references: [id], onDelete: SetNull)
+  asset        Asset?       @relation(fields: [assetId], references: [id], onDelete: SetNull)
+  requestedBy  User         @relation("RequestAuthor", fields: [requestedById], references: [id])
+  reviewedBy   User?        @relation("RequestReviewer", fields: [reviewedById], references: [id], onDelete: SetNull)
+  inspection   Inspection?  @relation(fields: [inspectionId], references: [id], onDelete: SetNull)
+
+  attachments RequestAttachment[]
+  comments    RequestComment[]
+
+  @@unique([orgId, number])
+  @@index([orgId, clientId, status, createdAt])
+  @@index([orgId, status, createdAt])
+  @@map("inspection_requests")
+}
+
+/// A file the customer attached to a request — a drawing, a photograph, a permit.
+///
+/// Separate from `Attachment`, which belongs to an inspection and rides the
+/// sync protocol to devices. These never reach a phone: they are context for
+/// the person deciding whether to approve, so they stay on the server.
+model RequestAttachment {
+  id        String @id @db.VarChar(26)
+  orgId     String @db.VarChar(26)
+  requestId String @db.VarChar(26)
+
+  fileName   String @db.VarChar(300)
+  mimeType   String @db.VarChar(120)
+  sizeBytes  BigInt
+  storageKey String @db.VarChar(500)
+  checksum   String @db.VarChar(64)
+
+  uploadedById String    @db.VarChar(26)
+  createdAt    DateTime  @default(now()) @db.Timestamptz(6)
+  deletedAt    DateTime? @db.Timestamptz(6)
+
+  request InspectionRequest @relation(fields: [requestId], references: [id], onDelete: Cascade)
+
+  @@index([orgId, requestId])
+  @@map("request_attachments")
+}
+
+/// The conversation on a request.
+///
+/// How "request more information" actually works: the reviewer asks, the
+/// customer answers, and both are on the record. `internal` keeps a note
+/// between staff off the customer's screen without needing a second table.
+model RequestComment {
+  id        String  @id @db.VarChar(26)
+  orgId     String  @db.VarChar(26)
+  requestId String  @db.VarChar(26)
+  authorId  String? @db.VarChar(26)
+
+  body     String  @db.Text
+  /// True when only staff may read it. Client queries filter these out.
+  internal Boolean @default(false)
+
+  createdAt DateTime @default(now()) @db.Timestamptz(6)
+
+  request InspectionRequest @relation(fields: [requestId], references: [id], onDelete: Cascade)
+  author  User?             @relation(fields: [authorId], references: [id], onDelete: SetNull)
+
+  @@index([orgId, requestId, createdAt])
+  @@map("request_comments")
 }
 
 model ChangeLogEntry {

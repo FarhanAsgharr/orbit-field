@@ -69,6 +69,20 @@ const SORTABLE = ['createdAt', 'updatedAt', 'dueAt', 'number', 'score', 'priorit
 function scopeFilter(subject: ReturnType<typeof auth>): Prisma.InspectionWhereInput {
   const base: Prisma.InspectionWhereInput = { orgId: subject.orgId, deletedAt: null };
 
+  /*
+   * A customer is scoped by whose work it is, not by who is doing it.
+   *
+   * This returns early on purpose. The staff rules below narrow by assignment
+   * and project membership, and a client has neither — falling through would
+   * produce `assignedToId = <client user>`, which matches nothing, and the next
+   * person to "fix" that by loosening the OR would hand them the organisation.
+   * Scoping on `clientId` and stopping is the only correct answer here.
+   */
+  if (subject.clientId) {
+    base.clientId = subject.clientId;
+    return base;
+  }
+
   if (!can(subject, Permission.INSPECTION_READ_ALL)) {
     // Own work only: assigned to me, or created by me.
     base.OR = [{ assignedToId: subject.userId }, { createdById: subject.userId }];
@@ -205,7 +219,14 @@ router.get(
 
     const inspection = await prisma.inspection.findFirst({
       where: { id, orgId: subject.orgId },
-      select: { orgId: true, assignedToId: true, projectId: true, createdById: true },
+      // clientId is required by canAccessInspection for a client subject.
+      select: {
+        orgId: true,
+        assignedToId: true,
+        projectId: true,
+        createdById: true,
+        clientId: true,
+      },
     });
     if (!inspection || !canAccessInspection(subject, inspection)) {
       throw new AppError(ErrorCode.NOT_FOUND, 'That inspection was not found.');
@@ -874,7 +895,16 @@ router.get(
 
     const inspection = await prisma.inspection.findFirst({
       where: { id, orgId: subject.orgId, deletedAt: null },
-      select: { id: true, assignedToId: true, projectId: true, createdById: true, orgId: true },
+      select: {
+        id: true,
+        assignedToId: true,
+        projectId: true,
+        createdById: true,
+        orgId: true,
+        // Required by canAccessInspection for a client subject; without it the
+        // check refuses them their own record.
+        clientId: true,
+      },
     });
     if (!inspection) throw new AppError(ErrorCode.NOT_FOUND, 'That inspection was not found.');
     // An inspector may read the thread on their own work and nobody else's.
@@ -914,7 +944,16 @@ router.post(
 
     const inspection = await prisma.inspection.findFirst({
       where: { id, orgId: subject.orgId, deletedAt: null },
-      select: { id: true, assignedToId: true, projectId: true, createdById: true, orgId: true },
+      select: {
+        id: true,
+        assignedToId: true,
+        projectId: true,
+        createdById: true,
+        orgId: true,
+        // Required by canAccessInspection for a client subject; without it the
+        // check refuses them their own record.
+        clientId: true,
+      },
     });
     if (!inspection) throw new AppError(ErrorCode.NOT_FOUND, 'That inspection was not found.');
     if (!canAccessInspection(subject, inspection)) {
@@ -1298,6 +1337,7 @@ router.post(
         assignedToId: true,
         projectId: true,
         createdById: true,
+        clientId: true,
         tags: true,
       },
     });

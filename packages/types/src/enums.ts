@@ -8,6 +8,15 @@ export const Role = {
   INSPECTOR: 'INSPECTOR',
   TECHNICIAN: 'TECHNICIAN',
   VIEWER: 'VIEWER',
+  /**
+   * A customer of the organisation, not a member of it.
+   *
+   * Everyone above is staff and is scoped by project or by assignment. A CLIENT
+   * is scoped by `clientId` instead: they see the work done for their own
+   * company and nothing else, which is a different axis entirely and is why
+   * this cannot be expressed as a weaker VIEWER.
+   */
+  CLIENT: 'CLIENT',
 } as const;
 export type Role = (typeof Role)[keyof typeof Role];
 
@@ -23,6 +32,9 @@ export const ROLE_RANK: Record<Role, number> = {
   INSPECTOR: 30,
   TECHNICIAN: 20,
   VIEWER: 10,
+  // Below every staff role: a client must never outrank anybody, so no
+  // `canManageUser` or `canAssignRole` check can ever resolve in their favour.
+  CLIENT: 5,
 };
 
 export const UserStatus = {

@@ -21,6 +21,8 @@ export interface AuthContext extends AccessSubject {
   extraPermissions: string[];
   revokedPermissions: string[];
   projectIds: string[];
+  /** Set only for CLIENT accounts; the customer whose data they may see. */
+  clientId: string | null;
 }
 
 declare global {

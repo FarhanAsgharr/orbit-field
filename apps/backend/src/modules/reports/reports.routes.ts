@@ -192,8 +192,13 @@ router.get(
       from: range.from,
       to: range.to,
       // Without org-wide analytics a user exports only their own work.
+      // A customer is scoped by whose work it is; `scopeToUserId` would narrow
+      // by assignee and return nothing.
+      scopeToClientId: subject.clientId ?? undefined,
       scopeToUserId:
-        dataset === 'inspections' && !can(subject, Permission.INSPECTION_READ_ALL)
+        !subject.clientId &&
+        dataset === 'inspections' &&
+        !can(subject, Permission.INSPECTION_READ_ALL)
           ? subject.userId
           : undefined,
       projectIds: q.projectId ? [q.projectId] : undefined,
@@ -296,6 +301,7 @@ router.get(
           orgId: subject.orgId,
           from: range.from,
           to: range.to,
+          scopeToClientId: subject.clientId ?? undefined,
           scopeToUserId:
             key === 'inspections' && !can(subject, Permission.INSPECTION_READ_ALL)
               ? subject.userId
@@ -476,7 +482,13 @@ router.get(
     const { format } = req.validated!.query as { format: 'pdf' | 'xlsx' };
 
     const inspection = await prisma.inspection.findFirst({
-      where: { id, orgId: subject.orgId, deletedAt: null },
+      // A customer may only produce a report from their own company's work.
+      where: {
+        id,
+        orgId: subject.orgId,
+        deletedAt: null,
+        ...(subject.clientId ? { clientId: subject.clientId } : {}),
+      },
       include: {
         template: { select: { name: true } },
         templateVersion: { select: { version: true, definition: true } },

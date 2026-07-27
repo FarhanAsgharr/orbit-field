@@ -152,6 +152,14 @@ function StatusBar({ health }: { health: SyncHealth | undefined }): React.ReactE
 
 export function Shell(): React.ReactElement {
   const { user, organization, signOut, can } = useSession();
+  /*
+   * A customer gets a different rail.
+   *
+   * Not a filtered version of the staff one: almost nothing on it applies, and
+   * a menu of items that all refuse you is a worse experience than a short menu
+   * that works. What they may actually read is decided by the API regardless.
+   */
+  const isClient = user?.role === 'CLIENT';
   const { data: health } = useSyncHealth();
 
   return (
@@ -170,43 +178,71 @@ export function Shell(): React.ReactElement {
         </div>
 
         <div className="rail__nav">
-          <NavGroup
-            label="Operations"
-            items={[
-              { to: '/', label: 'Overview' },
-              { to: '/inspections', label: 'Inspections', permission: Permission.INSPECTION_READ },
-              {
-                to: '/sync',
-                label: 'Sync monitoring',
-                permission: Permission.AUDIT_READ,
-                badge: health?.unresolvedConflicts ?? 0,
-              },
-              { to: '/analytics', label: 'Analytics', permission: Permission.ANALYTICS_READ },
-            ]}
-          />
+          {isClient ? (
+            <NavGroup
+              label="Your account"
+              items={[
+                { to: '/portal', label: 'Dashboard' },
+                { to: '/portal/requests', label: 'Inspection requests' },
+                { to: '/portal/inspections', label: 'My inspections' },
+                { to: '/portal/reports', label: 'Reports' },
+                { to: '/portal/invoices', label: 'Invoices' },
+                { to: '/notifications', label: 'Notifications' },
+                { to: '/profile', label: 'Profile' },
+              ]}
+            />
+          ) : null}
 
-          <NavGroup
-            label="Configure"
-            items={[
-              { to: '/templates', label: 'Checklists', permission: Permission.TEMPLATE_READ },
-              { to: '/clients', label: 'Clients', permission: Permission.CLIENT_READ },
-              { to: '/projects', label: 'Projects', permission: Permission.PROJECT_READ },
-              { to: '/sites', label: 'Sites', permission: Permission.SITE_READ },
-              { to: '/assets', label: 'Assets', permission: Permission.ASSET_READ },
-            ]}
-          />
+          {isClient ? null : (
+            <>
+              <NavGroup
+                label="Operations"
+                items={[
+                  { to: '/', label: 'Overview' },
+                  {
+                    to: '/inspections',
+                    label: 'Inspections',
+                    permission: Permission.INSPECTION_READ,
+                  },
+                  {
+                    to: '/requests',
+                    label: 'Inspection requests',
+                    permission: Permission.INSPECTION_ASSIGN,
+                  },
+                  {
+                    to: '/sync',
+                    label: 'Sync monitoring',
+                    permission: Permission.AUDIT_READ,
+                    badge: health?.unresolvedConflicts ?? 0,
+                  },
+                  { to: '/analytics', label: 'Analytics', permission: Permission.ANALYTICS_READ },
+                ]}
+              />
 
-          <NavGroup
-            label="Administer"
-            items={[
-              { to: '/users', label: 'People', permission: Permission.USER_READ },
-              { to: '/roles', label: 'Roles', permission: Permission.USER_READ },
-              { to: '/devices', label: 'Devices', permission: Permission.DEVICE_READ },
-              { to: '/notifications', label: 'Notifications' },
-              { to: '/audit', label: 'Audit log', permission: Permission.AUDIT_READ },
-              { to: '/settings', label: 'Settings', permission: Permission.ORG_READ },
-            ]}
-          />
+              <NavGroup
+                label="Configure"
+                items={[
+                  { to: '/templates', label: 'Checklists', permission: Permission.TEMPLATE_READ },
+                  { to: '/clients', label: 'Clients', permission: Permission.CLIENT_READ },
+                  { to: '/projects', label: 'Projects', permission: Permission.PROJECT_READ },
+                  { to: '/sites', label: 'Sites', permission: Permission.SITE_READ },
+                  { to: '/assets', label: 'Assets', permission: Permission.ASSET_READ },
+                ]}
+              />
+
+              <NavGroup
+                label="Administer"
+                items={[
+                  { to: '/users', label: 'People', permission: Permission.USER_READ },
+                  { to: '/roles', label: 'Roles', permission: Permission.USER_READ },
+                  { to: '/devices', label: 'Devices', permission: Permission.DEVICE_READ },
+                  { to: '/notifications', label: 'Notifications' },
+                  { to: '/audit', label: 'Audit log', permission: Permission.AUDIT_READ },
+                  { to: '/settings', label: 'Settings', permission: Permission.ORG_READ },
+                ]}
+              />
+            </>
+          )}
         </div>
 
         <div className="rail__footer">

@@ -27,6 +27,8 @@ export interface TestUser {
 export interface TestOrg {
   orgId: string;
   clientId: string;
+  /** A second customer in the same organisation, for isolation tests. */
+  secondClientId: string;
   projectId: string;
   siteId: string;
   assetId: string;
@@ -265,11 +267,50 @@ export async function createTestOrg(): Promise<TestOrg> {
     },
   });
 
+  /*
+   * A second customer, and a portal user for each.
+   *
+   * Client-to-client isolation is the boundary this product did not have
+   * before, and a fixture with one customer cannot test it — every query would
+   * pass by accident. `CLIENT` accounts are created here so any suite can
+   * assert that one customer cannot see the other's work.
+   */
+  const secondClientId = ulid();
+  await prisma.client.create({
+    data: { id: secondClientId, orgId, name: 'Second Client', code: unique('C2').slice(0, 20) },
+  });
+
+  for (const [key, forClient] of [
+    ['CLIENT', clientId],
+    ['CLIENT_OTHER', secondClientId],
+  ] as const) {
+    const password = strongPassword();
+    const email = `${unique(key.toLowerCase())}@test.invalid`;
+    const id = ulid();
+    await prisma.user.create({
+      data: {
+        id,
+        orgId,
+        email,
+        emailVerifiedAt: new Date(),
+        firstName: 'Portal',
+        lastName: key,
+        passwordHash: await hashPassword(password),
+        passwordChangedAt: new Date(),
+        role: 'CLIENT',
+        status: 'ACTIVE',
+        clientId: forClient,
+      },
+    });
+    users[key] = { id, email, password, role: 'CLIENT' as Role };
+  }
+
   await publishToChangeLog(orgId, templateId);
 
   return {
     orgId,
     clientId,
+    secondClientId,
     projectId,
     siteId,
     assetId,

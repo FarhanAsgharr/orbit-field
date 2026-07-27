@@ -19,6 +19,14 @@ export interface DatasetContext {
   to: Date;
   /** Restricts to one inspector when the caller lacks org-wide analytics. */
   scopeToUserId?: string;
+  /**
+   * Restricts to one customer's work.
+   *
+   * Set for CLIENT accounts. Distinct from `scopeToUserId` because a customer
+   * is not an inspector — narrowing by assignee would return nothing and
+   * silently look like "you have no inspections" rather than a scoping error.
+   */
+  scopeToClientId?: string;
   projectIds?: string[];
   siteIds?: string[];
   templateIds?: string[];
@@ -160,6 +168,7 @@ export const inspectionsDataset: Dataset<InspectionRow> = {
         deletedAt: null,
         createdAt: { gte: ctx.from, lte: ctx.to },
         ...(ctx.scopeToUserId ? { assignedToId: ctx.scopeToUserId } : {}),
+        ...(ctx.scopeToClientId ? { clientId: ctx.scopeToClientId } : {}),
         ...(ctx.projectIds?.length ? { projectId: { in: ctx.projectIds } } : {}),
         ...(ctx.siteIds?.length ? { siteId: { in: ctx.siteIds } } : {}),
         ...(ctx.templateIds?.length ? { templateId: { in: ctx.templateIds } } : {}),

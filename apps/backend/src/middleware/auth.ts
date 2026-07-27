@@ -51,6 +51,10 @@ export const requireAuth = asyncHandler(
         extraPermissions: true,
         revokedPermissions: true,
         passwordChangedAt: true,
+        // Carried on every request: it is the axis a client portal user is
+        // scoped by, and a query that forgot to load it would silently widen
+        // to the whole organisation.
+        clientId: true,
         projectMemberships: { select: { projectId: true } },
         organization: { select: { isActive: true, deletedAt: true } },
       },
@@ -126,6 +130,7 @@ export const requireAuth = asyncHandler(
       extraPermissions: user.extraPermissions,
       revokedPermissions: user.revokedPermissions,
       projectIds: user.projectMemberships.map((m) => m.projectId),
+      clientId: user.clientId,
     };
 
     req.log = req.log.child({ userId: user.id, orgId: user.orgId });

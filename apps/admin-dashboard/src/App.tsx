@@ -8,6 +8,15 @@ import { ApiRequestError } from './lib/api';
 import { SessionProvider, useSession } from './lib/auth';
 import { Analytics } from './pages/Analytics';
 import { Audit, Settings } from './pages/AuditSettings';
+import {
+  ClientDashboard,
+  ClientInspections,
+  ClientInvoices,
+  ClientNewRequest,
+  ClientReports,
+  ClientRequestDetail,
+  ClientRequests,
+} from './pages/ClientPortal';
 import { InspectionDetail } from './pages/InspectionDetail';
 import {
   Assets,
@@ -23,6 +32,7 @@ import { Login } from './pages/Login';
 import { Notifications } from './pages/Notifications';
 import { Overview } from './pages/Overview';
 import { Profile } from './pages/Profile';
+import { InspectionRequests } from './pages/RequestReview';
 import { Roles } from './pages/Roles';
 import { Sync } from './pages/Sync';
 import { TemplateDetail } from './pages/TemplateDetail';
@@ -88,6 +98,7 @@ export function App(): React.ReactElement {
             <Route element={<Protected />}>
               <Route path="/" element={<Overview />} />
               <Route path="/inspections" element={<Inspections />} />
+              <Route path="/requests" element={<InspectionRequests />} />
               <Route path="/inspections/:id" element={<InspectionDetail />} />
               <Route path="/sync" element={<Sync />} />
               <Route path="/analytics" element={<Analytics />} />
@@ -101,6 +112,15 @@ export function App(): React.ReactElement {
               <Route path="/roles" element={<Roles />} />
               <Route path="/notifications" element={<Notifications />} />
               <Route path="/profile" element={<Profile />} />
+              {/* The customer portal. Server-side scoping is what makes these
+                  safe; the routes only decide what is offered. */}
+              <Route path="/portal" element={<ClientDashboard />} />
+              <Route path="/portal/requests" element={<ClientRequests />} />
+              <Route path="/portal/requests/new" element={<ClientNewRequest />} />
+              <Route path="/portal/requests/:id" element={<ClientRequestDetail />} />
+              <Route path="/portal/inspections" element={<ClientInspections />} />
+              <Route path="/portal/reports" element={<ClientReports />} />
+              <Route path="/portal/invoices" element={<ClientInvoices />} />
               <Route path="/devices" element={<Devices />} />
               <Route path="/audit" element={<Audit />} />
               <Route path="/settings" element={<Settings />} />
