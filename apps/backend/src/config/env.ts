@@ -132,6 +132,16 @@ const schema = z.object({
    */
   ALLOW_SELF_SERVICE_SIGNUP: boolish(true),
 
+  /**
+   * Which organisation the Client Portal registers customers into.
+   *
+   * Unset is the normal case: bootstrap signup runs once, so there is one
+   * organisation and nothing to choose between. Set it when the install
+   * acquired a second — a seeded demo tenant beside the real company — and the
+   * oldest-wins fallback would send customers to the wrong one.
+   */
+  PORTAL_ORG_SLUG: z.string().optional(),
+
   CORS_ORIGINS: z.string().default('*'),
   TRUST_PROXY: boolish(false),
 

@@ -13,7 +13,8 @@
     "packages/shared",
     "apps/backend",
     "apps/mobile",
-    "apps/admin-dashboard"
+    "apps/admin-dashboard",
+    "apps/client-portal"
   ],
   "scripts": {
     "build": "npm run build --workspaces --if-present",
@@ -38,7 +39,8 @@
     "backup": "node scripts/backup.mjs",
     "backup:verify": "node scripts/backup.mjs --verify-only",
     "backup:storage": "node scripts/backup-storage.mjs --check",
-    "security:audit": "node scripts/security-audit.mjs"
+    "security:audit": "node scripts/security-audit.mjs",
+    "build:portal": "npm run build:packages && npm run build -w @orbit/client-portal"
   },
   "devDependencies": {
     "@eslint/js": "^9.39.5",

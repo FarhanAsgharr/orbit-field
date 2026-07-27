@@ -430,13 +430,11 @@ describe('isolation', () => {
       const { declared, bytes } = await attach(mine, 'pdf');
       await upload(declared.body.data.id, bytes);
 
-      const theirLogin = await request(server)
-        .post(`${api}/auth/login`)
-        .send({
-          email: other.users.ADMIN!.email,
-          password: other.users.ADMIN!.password,
-          device: device(),
-        });
+      const theirLogin = await request(server).post(`${api}/auth/login`).send({
+        email: other.users.ADMIN!.email,
+        password: other.users.ADMIN!.password,
+        device: device(),
+      });
 
       const res = await request(server)
         .get(`${api}/uploads/attachments/${declared.body.data.id}/content`)
@@ -485,13 +483,11 @@ describe('the lifecycle', () => {
     const { declared, bytes } = await attach(id, 'pdf');
     await upload(declared.body.data.id, bytes);
 
-    const login = await request(server)
-      .post(`${api}/auth/login`)
-      .send({
-        email: org.users.INSPECTOR!.email,
-        password: org.users.INSPECTOR!.password,
-        device: device(),
-      });
+    const login = await request(server).post(`${api}/auth/login`).send({
+      email: org.users.INSPECTOR!.email,
+      password: org.users.INSPECTOR!.password,
+      device: device(),
+    });
     const token = login.body.data.tokens.accessToken as string;
     const before = await request(server)
       .get(`${api}/sync/pull?protocolVersion=1&since=0&limit=500`)

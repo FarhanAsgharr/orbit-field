@@ -8,15 +8,6 @@ import { ApiRequestError } from './lib/api';
 import { SessionProvider, useSession } from './lib/auth';
 import { Analytics } from './pages/Analytics';
 import { Audit, Settings } from './pages/AuditSettings';
-import {
-  ClientDashboard,
-  ClientInspections,
-  ClientInvoices,
-  ClientNewRequest,
-  ClientReports,
-  ClientRequestDetail,
-  ClientRequests,
-} from './pages/ClientPortal';
 import { InspectionDetail } from './pages/InspectionDetail';
 import {
   Assets,
@@ -52,8 +43,44 @@ const queryClient = new QueryClient({
   },
 });
 
+/**
+ * Where a customer is sent if they reach the console.
+ *
+ * The Client Portal is its own application at its own address, and a customer
+ * has no business on any screen in here. Their credentials are valid, though —
+ * so this is a signpost rather than an error, and it signs them out so nothing
+ * is left holding a console session.
+ *
+ * The rail, the routes and this guard were all removed or added together on
+ * purpose: hiding the navigation alone would leave every URL reachable by
+ * typing it.
+ */
+function WrongDoor(): React.ReactElement {
+  const { signOut } = useSession();
+  const portal = (import.meta.env.VITE_PORTAL_URL as string | undefined) ?? '/';
+
+  return (
+    <div style={{ display: 'grid', placeItems: 'center', minHeight: '100vh', padding: 24 }}>
+      <Empty
+        title="This is the operations console"
+        body="Your account is a client account. Requests, reports and messages live in the client portal."
+        action={
+          <div className="row gap-2">
+            <a className="btn btn--primary" href={portal}>
+              Go to the client portal
+            </a>
+            <button type="button" className="btn" onClick={() => void signOut()}>
+              Sign out
+            </button>
+          </div>
+        }
+      />
+    </div>
+  );
+}
+
 function Protected(): React.ReactElement {
-  const { status } = useSession();
+  const { status, user } = useSession();
 
   if (status === 'checking') {
     return (
@@ -64,6 +91,7 @@ function Protected(): React.ReactElement {
   }
 
   if (status === 'anonymous') return <Navigate to="/sign-in" replace />;
+  if (user?.role === 'CLIENT') return <WrongDoor />;
 
   return <Shell />;
 }
@@ -112,15 +140,6 @@ export function App(): React.ReactElement {
               <Route path="/roles" element={<Roles />} />
               <Route path="/notifications" element={<Notifications />} />
               <Route path="/profile" element={<Profile />} />
-              {/* The customer portal. Server-side scoping is what makes these
-                  safe; the routes only decide what is offered. */}
-              <Route path="/portal" element={<ClientDashboard />} />
-              <Route path="/portal/requests" element={<ClientRequests />} />
-              <Route path="/portal/requests/new" element={<ClientNewRequest />} />
-              <Route path="/portal/requests/:id" element={<ClientRequestDetail />} />
-              <Route path="/portal/inspections" element={<ClientInspections />} />
-              <Route path="/portal/reports" element={<ClientReports />} />
-              <Route path="/portal/invoices" element={<ClientInvoices />} />
               <Route path="/devices" element={<Devices />} />
               <Route path="/audit" element={<Audit />} />
               <Route path="/settings" element={<Settings />} />

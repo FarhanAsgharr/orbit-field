@@ -290,6 +290,26 @@ const clientFields = {
   address: z.string().max(2000).nullable().optional(),
   logoUrl: z.string().url().max(500).nullable().optional(),
   isActive: z.boolean().optional(),
+
+  /*
+   * The rest of the company record, as the portal collects it.
+   *
+   * All optional: a client an administrator types in by hand has a name and
+   * little else, and that has to stay a valid record. Editable here because a
+   * customer's details change and the person who hears about it is usually
+   * staff, not the customer.
+   */
+  contactDesignation: z.string().max(120).nullable().optional(),
+  whatsapp: z.string().max(32).nullable().optional(),
+  industry: z.string().max(120).nullable().optional(),
+  registrationNumber: z.string().max(80).nullable().optional(),
+  taxNumber: z.string().max(80).nullable().optional(),
+  website: z.string().max(300).nullable().optional(),
+  country: z.string().max(120).nullable().optional(),
+  state: z.string().max(120).nullable().optional(),
+  city: z.string().max(120).nullable().optional(),
+  postalCode: z.string().max(20).nullable().optional(),
+  notes: z.string().max(2000).nullable().optional(),
 };
 
 export const clientsRouter = buildResourceRouter({
@@ -298,9 +318,31 @@ export const clientsRouter = buildResourceRouter({
   delegate: () => prisma.client as unknown as Delegate,
   createSchema: z.object(clientFields),
   updateSchema: z.object(clientFields).partial(),
-  searchFields: ['name', 'code', 'contactName'],
+  searchFields: ['name', 'code', 'contactName', 'contactEmail', 'city', 'country'],
   sortable: ['name', 'createdAt', 'updatedAt'],
-  include: { _count: { select: { projects: true, sites: true, inspections: true } } },
+  include: {
+    _count: { select: { projects: true, sites: true, inspections: true, requests: true } },
+    /*
+     * The portal logins belonging to this company.
+     *
+     * Staff need to see whether a client has ever signed in — a company that
+     * registered and never came back is a different conversation from one
+     * using the portal weekly — and they need a user to point the password
+     * reset at. One query with the list beats a second round trip per row.
+     */
+    portalUsers: {
+      where: { deletedAt: null, role: 'CLIENT' },
+      select: {
+        id: true,
+        email: true,
+        firstName: true,
+        lastName: true,
+        status: true,
+        lastLoginAt: true,
+      },
+      orderBy: { createdAt: 'asc' },
+    },
+  },
   permissions: { read: P.CLIENT_READ, write: P.CLIENT_WRITE, delete: P.CLIENT_DELETE },
 });
 

@@ -972,6 +972,15 @@
   background: rgb(0 0 0 / 45%);
 }
 
+/*
+ * The client record is a read view, not a form: four columns of company
+ * details plus a table of portal logins. At the form's width it would be a
+ * column of one-word rows.
+ */
+.modal--wide {
+  width: 820px;
+}
+
 .modal {
   width: 460px;
   max-width: 100%;

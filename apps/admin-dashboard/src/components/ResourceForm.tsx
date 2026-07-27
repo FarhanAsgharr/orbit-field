@@ -48,16 +48,42 @@ export interface ResourceSpec {
 }
 
 export const RESOURCES: Record<string, ResourceSpec> = {
+  /*
+   * The whole company record, because the portal collects the whole thing.
+   *
+   * A client that registered online arrives with an industry, a tax number and
+   * an address; an edit form showing six of those fields silently discards the
+   * rest the moment somebody corrects a phone number. Long, but every field
+   * here exists in the database and is shown on the client's detail panel.
+   */
   clients: {
     endpoint: 'clients',
     singular: 'client',
     fields: [
-      { key: 'name', label: 'Name', kind: 'text', required: true },
+      { key: 'name', label: 'Company name', kind: 'text', required: true },
       { key: 'code', label: 'Reference code', kind: 'text' },
-      { key: 'contactName', label: 'Contact', kind: 'text' },
+      { key: 'industry', label: 'Industry', kind: 'text' },
+      { key: 'registrationNumber', label: 'Registration number', kind: 'text' },
+      { key: 'taxNumber', label: 'Tax number', kind: 'text' },
+      { key: 'website', label: 'Website', kind: 'text' },
+      { key: 'logoUrl', label: 'Logo URL', kind: 'text' },
+      { key: 'contactName', label: 'Contact person', kind: 'text' },
+      { key: 'contactDesignation', label: 'Designation', kind: 'text' },
       { key: 'contactEmail', label: 'Contact email', kind: 'text' },
-      { key: 'contactPhone', label: 'Contact phone', kind: 'text' },
-      { key: 'address', label: 'Address', kind: 'textarea' },
+      { key: 'contactPhone', label: 'Phone', kind: 'text' },
+      { key: 'whatsapp', label: 'WhatsApp', kind: 'text' },
+      { key: 'country', label: 'Country', kind: 'text' },
+      { key: 'state', label: 'State or province', kind: 'text' },
+      { key: 'city', label: 'City', kind: 'text' },
+      { key: 'postalCode', label: 'Postal code', kind: 'text' },
+      { key: 'address', label: 'Complete address', kind: 'textarea' },
+      { key: 'notes', label: 'Notes', kind: 'textarea' },
+      {
+        key: 'isActive',
+        label: 'Active',
+        kind: 'checkbox',
+        hint: 'Clear this to deactivate the client without deleting its history.',
+      },
     ],
   },
   projects: {
@@ -362,6 +388,8 @@ export function ResourceForm({
 export function useResourceEditor(key: keyof typeof RESOURCES): {
   toolbarAction: React.ReactNode;
   editAction: (row: Record<string, FieldValue> & { id: string }) => React.ReactNode;
+  /** Open the editor from somewhere that is not a table row — a detail panel. */
+  open: (row: Record<string, FieldValue> & { id: string }) => void;
   modal: React.ReactNode;
 } {
   const spec = RESOURCES[key]!;
@@ -388,6 +416,7 @@ export function useResourceEditor(key: keyof typeof RESOURCES): {
         Edit
       </button>
     ),
+    open: (row) => setEditing(row),
     modal: open ? (
       <div
         className="modal__backdrop"

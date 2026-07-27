@@ -29,6 +29,7 @@ import {
 import { usersRouter } from './modules/admin/users.routes.js';
 import { analyticsRouter } from './modules/analytics/analytics.routes.js';
 import { authRouter } from './modules/auth/auth.routes.js';
+import { portalRouter } from './modules/client-portal/portal.routes.js';
 import { inspectionRequestsRouter } from './modules/client-portal/requests.routes.js';
 import { devicesRouter } from './modules/devices/devices.routes.js';
 import { inspectionsRouter } from './modules/inspections/inspections.routes.js';
@@ -174,6 +175,7 @@ export function createApp(): Express {
   api.use('/reports', reportsRouter);
   api.use('/notifications', notificationsRouter);
   api.use('/inspection-requests', inspectionRequestsRouter);
+  api.use('/portal', portalRouter);
   api.use('/admin', adminRouter);
 
   app.use(env.API_PREFIX, globalLimiter, api);

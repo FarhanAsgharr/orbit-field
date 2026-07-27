@@ -153,13 +153,13 @@ function StatusBar({ health }: { health: SyncHealth | undefined }): React.ReactE
 export function Shell(): React.ReactElement {
   const { user, organization, signOut, can } = useSession();
   /*
-   * A customer gets a different rail.
+   * There is no customer rail here any more.
    *
-   * Not a filtered version of the staff one: almost nothing on it applies, and
-   * a menu of items that all refuse you is a worse experience than a short menu
-   * that works. What they may actually read is decided by the API regardless.
+   * Customers have their own application at their own address, with its own
+   * navigation, its own session and its own bundle. A client account never
+   * reaches this component — `Protected` turns it away before the shell renders
+   * — so a branch for one would be dead code pretending to be a policy.
    */
-  const isClient = user?.role === 'CLIENT';
   const { data: health } = useSyncHealth();
 
   return (
@@ -178,71 +178,52 @@ export function Shell(): React.ReactElement {
         </div>
 
         <div className="rail__nav">
-          {isClient ? (
-            <NavGroup
-              label="Your account"
-              items={[
-                { to: '/portal', label: 'Dashboard' },
-                { to: '/portal/requests', label: 'Inspection requests' },
-                { to: '/portal/inspections', label: 'My inspections' },
-                { to: '/portal/reports', label: 'Reports' },
-                { to: '/portal/invoices', label: 'Invoices' },
-                { to: '/notifications', label: 'Notifications' },
-                { to: '/profile', label: 'Profile' },
-              ]}
-            />
-          ) : null}
+          <NavGroup
+            label="Operations"
+            items={[
+              { to: '/', label: 'Overview' },
+              {
+                to: '/inspections',
+                label: 'Inspections',
+                permission: Permission.INSPECTION_READ,
+              },
+              {
+                to: '/requests',
+                label: 'Inspection requests',
+                permission: Permission.INSPECTION_ASSIGN,
+              },
+              {
+                to: '/sync',
+                label: 'Sync monitoring',
+                permission: Permission.AUDIT_READ,
+                badge: health?.unresolvedConflicts ?? 0,
+              },
+              { to: '/analytics', label: 'Analytics', permission: Permission.ANALYTICS_READ },
+            ]}
+          />
 
-          {isClient ? null : (
-            <>
-              <NavGroup
-                label="Operations"
-                items={[
-                  { to: '/', label: 'Overview' },
-                  {
-                    to: '/inspections',
-                    label: 'Inspections',
-                    permission: Permission.INSPECTION_READ,
-                  },
-                  {
-                    to: '/requests',
-                    label: 'Inspection requests',
-                    permission: Permission.INSPECTION_ASSIGN,
-                  },
-                  {
-                    to: '/sync',
-                    label: 'Sync monitoring',
-                    permission: Permission.AUDIT_READ,
-                    badge: health?.unresolvedConflicts ?? 0,
-                  },
-                  { to: '/analytics', label: 'Analytics', permission: Permission.ANALYTICS_READ },
-                ]}
-              />
+          <NavGroup
+            label="Configure"
+            items={[
+              { to: '/templates', label: 'Checklists', permission: Permission.TEMPLATE_READ },
+              { to: '/clients', label: 'Clients', permission: Permission.CLIENT_READ },
+              { to: '/projects', label: 'Projects', permission: Permission.PROJECT_READ },
+              { to: '/sites', label: 'Sites', permission: Permission.SITE_READ },
+              { to: '/assets', label: 'Assets', permission: Permission.ASSET_READ },
+            ]}
+          />
 
-              <NavGroup
-                label="Configure"
-                items={[
-                  { to: '/templates', label: 'Checklists', permission: Permission.TEMPLATE_READ },
-                  { to: '/clients', label: 'Clients', permission: Permission.CLIENT_READ },
-                  { to: '/projects', label: 'Projects', permission: Permission.PROJECT_READ },
-                  { to: '/sites', label: 'Sites', permission: Permission.SITE_READ },
-                  { to: '/assets', label: 'Assets', permission: Permission.ASSET_READ },
-                ]}
-              />
-
-              <NavGroup
-                label="Administer"
-                items={[
-                  { to: '/users', label: 'People', permission: Permission.USER_READ },
-                  { to: '/roles', label: 'Roles', permission: Permission.USER_READ },
-                  { to: '/devices', label: 'Devices', permission: Permission.DEVICE_READ },
-                  { to: '/notifications', label: 'Notifications' },
-                  { to: '/audit', label: 'Audit log', permission: Permission.AUDIT_READ },
-                  { to: '/settings', label: 'Settings', permission: Permission.ORG_READ },
-                ]}
-              />
-            </>
-          )}
+          <NavGroup
+            label="Administer"
+            items={[
+              { to: '/users', label: 'People', permission: Permission.USER_READ },
+              { to: '/roles', label: 'Roles', permission: Permission.USER_READ },
+              { to: '/devices', label: 'Devices', permission: Permission.DEVICE_READ },
+              { to: '/notifications', label: 'Notifications' },
+              { to: '/audit', label: 'Audit log', permission: Permission.AUDIT_READ },
+              { to: '/settings', label: 'Settings', permission: Permission.ORG_READ },
+            ]}
+          />
         </div>
 
         <div className="rail__footer">

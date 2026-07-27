@@ -212,6 +212,9 @@ router.post(
       description: z.string().max(5000).nullable().optional(),
       inspectionType: z.string().max(120).nullable().optional(),
       specialInstructions: z.string().max(5000).nullable().optional(),
+      projectName: z.string().max(200).nullable().optional(),
+      siteName: z.string().max(200).nullable().optional(),
+      siteAddress: z.string().max(2000).nullable().optional(),
       siteId: schemas.ulid.nullable().optional(),
       assetId: schemas.ulid.nullable().optional(),
       priority: z.enum(['LOW', 'NORMAL', 'HIGH', 'CRITICAL']).default('NORMAL'),
@@ -227,6 +230,9 @@ router.post(
       description?: string | null;
       inspectionType?: string | null;
       specialInstructions?: string | null;
+      projectName?: string | null;
+      siteName?: string | null;
+      siteAddress?: string | null;
       siteId?: string | null;
       assetId?: string | null;
       priority: string;
@@ -297,6 +303,9 @@ router.post(
           description: body.description ?? null,
           inspectionType: body.inspectionType ?? null,
           specialInstructions: body.specialInstructions ?? null,
+          projectName: body.projectName ?? null,
+          siteName: body.siteName ?? null,
+          siteAddress: body.siteAddress ?? null,
           siteId: body.siteId ?? null,
           assetId: body.assetId ?? null,
           priority: body.priority as Priority,
@@ -1042,6 +1051,76 @@ router.get(
         inspections: Object.fromEntries(inspections.map((g) => [g.status, g._count])),
       },
     });
+  }),
+);
+
+/**
+ * Every request that has a conversation on it, newest reply first.
+ *
+ * The portal's Messages page is an inbox across requests, and building it from
+ * the request list would mean one round trip per request to find the last
+ * reply. This does it in two queries: the visible comments, then the requests
+ * they belong to.
+ *
+ * Internal notes are excluded for a customer by the same rule as the detail
+ * view — a note staff wrote to each other is not part of the conversation the
+ * customer is in.
+ */
+router.get(
+  '/meta/conversations',
+  requireAuth,
+  asyncHandler(async (req, res) => {
+    const subject = auth(req);
+
+    const requests = await prisma.inspectionRequest.findMany({
+      where: {
+        orgId: subject.orgId,
+        deletedAt: null,
+        ...clientScope(subject),
+        comments: { some: isCustomer(subject) ? { internal: false } : {} },
+      },
+      select: {
+        id: true,
+        number: true,
+        title: true,
+        status: true,
+        inspection: { select: { status: true } },
+        comments: {
+          where: isCustomer(subject) ? { internal: false } : {},
+          orderBy: { createdAt: 'desc' },
+          take: 1,
+          select: {
+            id: true,
+            body: true,
+            createdAt: true,
+            author: { select: { id: true, firstName: true, lastName: true } },
+          },
+        },
+        _count: { select: { comments: true } },
+      },
+      // Ordered in JS below: Prisma cannot sort a parent by a field of a
+      // one-row nested take, and the customer's request count is small enough
+      // that sorting in memory is honest rather than a shortcut.
+      take: 200,
+    });
+
+    const threads = requests
+      .filter((r) => r.comments.length > 0)
+      .map((r) => ({
+        id: r.id,
+        number: r.number,
+        title: r.title,
+        status: r.status,
+        displayStatus: displayStatus(r as never),
+        messageCount: r._count.comments,
+        lastMessage: r.comments[0]!,
+      }))
+      .sort(
+        (a, b) =>
+          new Date(b.lastMessage.createdAt).getTime() - new Date(a.lastMessage.createdAt).getTime(),
+      );
+
+    res.json({ data: threads });
   }),
 );
 

@@ -12,6 +12,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import React, { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 
+import { ClientDetail, type ClientRecord } from '../components/ClientDetail';
 import { type Column, DataTable } from '../components/DataTable';
 import { ExportMenu } from '../components/ExportMenu';
 import { InspectionForm } from '../components/InspectionForm';
@@ -1418,19 +1419,12 @@ function NewTemplateForm({
 // Reference data
 // ---------------------------------------------------------------------------
 
-interface ClientRow {
-  id: string;
-  name: string;
-  code: string | null;
-  contactName: string | null;
-  contactEmail: string | null;
-  isActive: boolean;
-  _count: { projects: number; sites: number; inspections: number };
-}
+type ClientRow = ClientRecord;
 
 export function Clients(): React.ReactElement {
   const editor = useResourceEditor('clients');
   const [active, setActive] = useState<string>('');
+  const [viewing, setViewing] = useState<ClientRecord | null>(null);
   const columns: Array<Column<ClientRow>> = [
     {
       key: 'name',
@@ -1491,11 +1485,12 @@ export function Clients(): React.ReactElement {
     {
       key: 'actions',
       header: '',
-      width: '70px',
-      render: (row) =>
-        editor.editAction(
-          row as unknown as Record<string, string | number | boolean | null> & { id: string },
-        ),
+      width: '80px',
+      render: (row) => (
+        <button className="btn btn--ghost btn--sm" onClick={() => setViewing(row)}>
+          View
+        </button>
+      ),
     },
   ];
 
@@ -1504,10 +1499,41 @@ export function Clients(): React.ReactElement {
       <header className="page__head">
         <div>
           <h1 className="page__title">Clients</h1>
-          <p className="page__subtitle">Organisations you carry out inspections for.</p>
+          <p className="page__subtitle">
+            Companies you carry out inspections for. Anyone who registers through the client portal
+            appears here automatically.
+          </p>
         </div>
       </header>
       {editor.modal}
+
+      {/*
+        The record opens over the table rather than on its own route. A client
+        is looked at in passing — to check a phone number, to reset a login —
+        and a full page navigation loses the filter and scroll position that got
+        you there.
+      */}
+      {viewing ? (
+        <div
+          className="modal__backdrop"
+          role="presentation"
+          onClick={(e) => {
+            if (e.target === e.currentTarget) setViewing(null);
+          }}
+        >
+          <ClientDetail
+            client={viewing}
+            onClose={() => setViewing(null)}
+            onEdit={() => {
+              const row = viewing;
+              setViewing(null);
+              editor.open(
+                row as unknown as Record<string, string | number | boolean | null> & { id: string },
+              );
+            }}
+          />
+        </div>
+      ) : null}
 
       <DataTable<ClientRow>
         endpoint="/clients"
@@ -1530,7 +1556,7 @@ export function Clients(): React.ReactElement {
         queryKey={['clients']}
         columns={columns}
         rowKey={(r) => r.id}
-        searchPlaceholder="Search clients"
+        searchPlaceholder="Search clients, contacts or cities"
         emptyTitle="No clients yet"
         emptyBody="Add a client to group projects, sites, and reports."
       />

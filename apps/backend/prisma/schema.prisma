@@ -450,6 +450,26 @@ model Client {
   logoUrl      String? @db.VarChar(500)
   isActive     Boolean @default(true)
 
+  /*
+   * What a customer tells us about themselves when they register.
+   *
+   * All optional except through the portal's own form, which requires the ones
+   * a real company always has. Optional at the column level because a client
+   * an administrator types in by hand — the common case before the portal
+   * existed — has a name and nothing else, and those records must stay valid.
+   */
+  contactDesignation String? @db.VarChar(120)
+  whatsapp           String? @db.VarChar(32)
+  industry           String? @db.VarChar(120)
+  registrationNumber String? @db.VarChar(80)
+  taxNumber          String? @db.VarChar(80)
+  website            String? @db.VarChar(300)
+  country            String? @db.VarChar(120)
+  state              String? @db.VarChar(120)
+  city               String? @db.VarChar(120)
+  postalCode         String? @db.VarChar(20)
+  notes              String? @db.Text
+
   version            Int       @default(1)
   syncCursor         BigInt    @default(0)
   createdAt          DateTime  @default(now()) @db.Timestamptz(6)
@@ -1004,6 +1024,20 @@ model InspectionRequest {
 
   siteId  String? @db.VarChar(26)
   assetId String? @db.VarChar(26)
+
+  /*
+   * Where the work is, as the customer describes it.
+   *
+   * A new customer has no Site rows to pick from — they are created by staff
+   * once the work is real — so the portal asks for the place in words. When
+   * approval turns the request into an inspection, whoever reviews it either
+   * links an existing site or creates one from these. Keeping both means the
+   * customer's own wording survives alongside the record staff later make of
+   * it, which matters when the two disagree.
+   */
+  projectName String? @db.VarChar(200)
+  siteName    String? @db.VarChar(200)
+  siteAddress String? @db.Text
 
   priority Priority                @default(NORMAL)
   status   InspectionRequestStatus @default(PENDING_APPROVAL)
