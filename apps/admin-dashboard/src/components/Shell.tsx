@@ -216,7 +216,7 @@ export function Shell(): React.ReactElement {
           <NavGroup
             label="Administer"
             items={[
-              { to: '/users', label: 'People', permission: Permission.USER_READ },
+              { to: '/users', label: 'People & accounts', permission: Permission.USER_READ },
               { to: '/roles', label: 'Roles', permission: Permission.USER_READ },
               { to: '/devices', label: 'Devices', permission: Permission.DEVICE_READ },
               { to: '/notifications', label: 'Notifications' },

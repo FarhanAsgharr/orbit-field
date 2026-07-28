@@ -1060,8 +1060,8 @@ function InviteUserButton(): React.ReactElement {
 
   if (!open) {
     return (
-      <button className="btn" onClick={() => setOpen(true)}>
-        Add someone
+      <button className="btn btn--primary" onClick={() => setOpen(true)}>
+        Create account
       </button>
     );
   }
@@ -1112,7 +1112,7 @@ function InviteUserButton(): React.ReactElement {
               setForm(EMPTY_INVITE);
             }}
           >
-            Add another
+            Create another
           </button>
         </div>
       </div>
@@ -1120,9 +1120,9 @@ function InviteUserButton(): React.ReactElement {
   }
 
   return (
-    <div className="card popover" role="dialog" aria-label="Add someone">
+    <div className="card popover" role="dialog" aria-label="Create account">
       <div className="card__head">
-        <h2 className="card__title">Add someone</h2>
+        <h2 className="card__title">Create account</h2>
         <button className="btn btn--ghost btn--sm" onClick={close}>
           Cancel
         </button>

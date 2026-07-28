@@ -318,7 +318,7 @@ export function ClientDetail({
                   setError(null);
                 }}
               >
-                Create a login
+                Create account
               </button>
             ) : null}
           </div>
@@ -408,7 +408,7 @@ export function ClientDetail({
                   type="submit"
                   disabled={createLogin.isPending || !loginReady}
                 >
-                  {createLogin.isPending ? 'Creating…' : 'Create login'}
+                  {createLogin.isPending ? 'Creating…' : 'Create account'}
                 </button>
                 <button
                   className="btn btn--ghost btn--sm"
@@ -424,8 +424,8 @@ export function ClientDetail({
           {(data.portalUsers?.length ?? 0) === 0 ? (
             creatingLogin || issued ? null : (
               <p className="muted small">
-                Nobody from this company can sign in to the portal yet. Create a login to give them
-                access, or they can register themselves at the portal.
+                Nobody from this company can sign in to the portal yet. Create an account to give
+                them access, or they can register themselves at the portal.
               </p>
             )
           ) : (
