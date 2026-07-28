@@ -52,6 +52,43 @@ interface ResourceConfig {
   permissions: { read: Permission; write: Permission; delete: Permission };
   /** Extra referential checks before a write is accepted. */
   verifyReferences?: (orgId: string, body: Record<string, unknown>) => Promise<string | null>;
+
+  /**
+   * How to narrow this resource to a single customer.
+   *
+   * These routers scoped by organisation and nothing else, which is right for
+   * staff and wrong for a customer: inside one organisation, two clients may
+   * be competitors, and a client account holding `site:read` could list every
+   * site in the company — names, addresses, everything — and fetch any one of
+   * them by id. Found by the production audit, confirmed by having one client
+   * read another's site by name.
+   *
+   * Absence is not permission. A resource with no scope here refuses a client
+   * subject outright rather than falling back to the organisation, so the next
+   * resource somebody adds is closed until its scope is written down.
+   */
+  clientScope?: (clientId: string) => Record<string, unknown>;
+}
+
+/**
+ * The extra `where` narrowing a request to the caller's own company.
+ *
+ * Returns nothing for staff, who are scoped by organisation and role. Throws
+ * for a customer reaching a resource nobody has scoped — failing closed is the
+ * only safe default when the alternative is showing them everyone's data.
+ */
+function clientNarrowing(
+  config: ResourceConfig,
+  subject: ReturnType<typeof auth>,
+): Record<string, unknown> {
+  if (!subject.clientId) return {};
+  if (!config.clientScope) {
+    throw new AppError(
+      ErrorCode.PERMISSION_DENIED,
+      `Client accounts cannot read ${config.name} records.`,
+    );
+  }
+  return config.clientScope(subject.clientId);
 }
 
 function buildResourceRouter(config: ResourceConfig): ExpressRouter {
@@ -81,6 +118,7 @@ function buildResourceRouter(config: ResourceConfig): ExpressRouter {
       };
 
       const where: Record<string, unknown> = {
+        ...clientNarrowing(config, subject),
         orgId: subject.orgId,
         deletedAt: null,
         ...(q.isActive !== undefined ? { isActive: q.isActive } : {}),
@@ -113,7 +151,10 @@ function buildResourceRouter(config: ResourceConfig): ExpressRouter {
       const { id } = req.validated!.params as { id: string };
 
       const record = await config.delegate().findFirst({
-        where: { id, orgId: subject.orgId, deletedAt: null },
+        // Narrowed in the query, not checked afterwards: a customer asking for
+        // another company's record gets "not found", which is the right answer
+        // — confirming it exists is itself a disclosure.
+        where: { ...clientNarrowing(config, subject), id, orgId: subject.orgId, deletedAt: null },
         ...(config.include ? { include: config.include } : {}),
       });
       if (!record) throw new AppError(ErrorCode.NOT_FOUND, `That ${config.name} was not found.`);
@@ -319,6 +360,10 @@ export const clientsRouter = buildResourceRouter({
   createSchema: z.object(clientFields),
   updateSchema: z.object(clientFields).partial(),
   searchFields: ['name', 'code', 'contactName', 'contactEmail', 'city', 'country'],
+  // Exactly one client record is a customer's own: itself. In practice
+  // `client:read` is not in the CLIENT permission set, so this is the second
+  // lock rather than the first.
+  clientScope: (clientId) => ({ id: clientId }),
   sortable: ['name', 'createdAt', 'updatedAt'],
   include: {
     _count: { select: { projects: true, sites: true, inspections: true, requests: true } },
@@ -368,6 +413,13 @@ export const projectsRouter = buildResourceRouter({
   createSchema: z.object(projectFields),
   updateSchema: z.object(projectFields).partial(),
   searchFields: ['name', 'code', 'description'],
+  /*
+   * No `clientScope`, deliberately.
+   *
+   * A project is how the company organises its own work — margins, managers,
+   * internal codes — and the brief is explicit that a client never sees one.
+   * Leaving it absent means a client subject is refused rather than narrowed.
+   */
   sortable: ['name', 'code', 'createdAt', 'updatedAt'],
   include: {
     client: { select: { id: true, name: true } },
@@ -428,6 +480,8 @@ export const sitesRouter = buildResourceRouter({
   createSchema: z.object(siteFields),
   updateSchema: z.object(siteFields).partial(),
   searchFields: ['name', 'code', 'address'],
+  // A site names its customer directly.
+  clientScope: (clientId) => ({ clientId }),
   sortable: ['name', 'createdAt', 'updatedAt'],
   include: {
     client: { select: { id: true, name: true } },
@@ -498,6 +552,8 @@ export const assetsRouter = buildResourceRouter({
   createSchema: z.object(assetFields),
   updateSchema: z.object(assetFields).partial(),
   searchFields: ['name', 'tag', 'serialNumber', 'model'],
+  // An asset has no customer of its own; it belongs to whoever owns its site.
+  clientScope: (clientId) => ({ site: { clientId } }),
   sortable: ['name', 'tag', 'createdAt', 'updatedAt'],
   include: { site: { select: { id: true, name: true } } },
   permissions: { read: P.ASSET_READ, write: P.ASSET_WRITE, delete: P.ASSET_WRITE },
