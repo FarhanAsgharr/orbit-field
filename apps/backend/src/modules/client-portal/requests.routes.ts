@@ -417,6 +417,140 @@ router.post(
   }),
 );
 
+/**
+ * Correct a request that has not been decided yet.
+ *
+ * Customers get details wrong — the wrong date, the wrong building, a
+ * description that made sense in their head. Without this the only remedies
+ * were to add a comment nobody may re-read, or to withdraw and start again,
+ * losing the reference number and the attachments already uploaded.
+ *
+ * Only while the request is still open. Once it has been approved the
+ * inspection is the record, and editing what was asked for after somebody
+ * agreed to it rewrites the basis of a decision that has already been made.
+ *
+ * Deliberately not editable: which customer it belongs to, its number, its
+ * status. Those are identity and workflow, not detail.
+ */
+router.patch(
+  '/:id',
+  requireAuth,
+  validate({
+    params: z.object({ id: schemas.ulid }),
+    body: z.object({
+      title: z.string().min(1).max(300).trim().optional(),
+      description: z.string().max(5000).nullable().optional(),
+      inspectionType: z.string().max(120).nullable().optional(),
+      specialInstructions: z.string().max(5000).nullable().optional(),
+      projectName: z.string().max(200).nullable().optional(),
+      siteName: z.string().max(200).nullable().optional(),
+      siteAddress: z.string().max(2000).nullable().optional(),
+      priority: z.enum(['LOW', 'NORMAL', 'HIGH', 'CRITICAL']).optional(),
+      preferredDate: z.string().datetime({ offset: true }).nullable().optional(),
+      preferredTime: z.string().max(20).nullable().optional(),
+      siteId: schemas.ulid.nullable().optional(),
+      assetId: schemas.ulid.nullable().optional(),
+    }),
+  }),
+  asyncHandler(async (req, res) => {
+    const subject = auth(req);
+    const { id } = req.validated!.params as { id: string };
+    const body = req.validated!.body as Record<string, unknown>;
+
+    const existing = await prisma.inspectionRequest.findFirst({
+      where: { id, orgId: subject.orgId, deletedAt: null, ...clientScope(subject) },
+      select: { id: true, status: true, clientId: true, number: true },
+    });
+    if (!existing) throw new AppError(ErrorCode.NOT_FOUND, 'That request was not found.');
+
+    if (!['PENDING_APPROVAL', 'INFORMATION_REQUESTED'].includes(existing.status)) {
+      throw new AppError(
+        ErrorCode.CONFLICT,
+        'This request has been decided and can no longer be changed. Raise a new one, or message the team.',
+      );
+    }
+
+    /*
+     * A site or asset must belong to this customer.
+     *
+     * The same rule the create path applies, for the same reason: otherwise an
+     * edit is a way to discover another company's sites by guessing ids and
+     * seeing which are accepted.
+     */
+    if (typeof body.siteId === 'string') {
+      const site = await prisma.site.findFirst({
+        where: { id: body.siteId, orgId: subject.orgId, deletedAt: null },
+        select: { clientId: true },
+      });
+      if (!site || (isCustomer(subject) && site.clientId !== existing.clientId)) {
+        throw new AppError(ErrorCode.VALIDATION_FAILED, 'That site was not found.', {
+          fields: { siteId: 'Not one of your sites.' },
+        });
+      }
+    }
+    if (typeof body.assetId === 'string') {
+      const asset = await prisma.asset.findFirst({
+        where: { id: body.assetId, orgId: subject.orgId, deletedAt: null },
+        select: { site: { select: { clientId: true } } },
+      });
+      if (!asset || (isCustomer(subject) && asset.site?.clientId !== existing.clientId)) {
+        throw new AppError(ErrorCode.VALIDATION_FAILED, 'That asset was not found.', {
+          fields: { assetId: 'Not one of your assets.' },
+        });
+      }
+    }
+
+    const updated = await prisma.inspectionRequest.update({
+      where: { id },
+      data: {
+        ...body,
+        ...(body.preferredDate !== undefined
+          ? { preferredDate: body.preferredDate ? new Date(body.preferredDate as string) : null }
+          : {}),
+      },
+      include: listInclude,
+    });
+
+    /*
+     * An edit is recorded as a message on the request, not only in the audit
+     * log.
+     *
+     * A reviewer who read this yesterday needs to know it changed, and the
+     * audit log is not somewhere they look. Which fields changed is enough —
+     * the new values are on the screen they are already reading.
+     */
+    const changed = Object.keys(body).filter((k) => body[k] !== undefined);
+    if (changed.length > 0) {
+      await prisma.requestComment.create({
+        data: {
+          id: ulid(),
+          orgId: subject.orgId,
+          requestId: id,
+          authorId: subject.userId,
+          body: `Updated ${changed.join(', ')}.`,
+          internal: false,
+        },
+      });
+    }
+
+    await prisma.auditLog.create({
+      data: {
+        id: ulid(),
+        orgId: subject.orgId,
+        userId: subject.userId,
+        action: 'RECORD_UPDATED',
+        entity: 'InspectionRequest',
+        entityId: id,
+        metadata: { number: existing.number, fields: changed },
+        ipAddress: clientIp(req),
+        requestId: req.requestId,
+      },
+    });
+
+    res.json({ data: { ...updated, displayStatus: displayStatus(updated) } });
+  }),
+);
+
 /** Withdraw a request that has not been decided yet. */
 router.post(
   '/:id/cancel',

@@ -622,6 +622,88 @@ describe('what the customer can see of the work', () => {
   });
 });
 
+describe('correcting a request', () => {
+  it('lets the customer fix their own details while it is still open', async () => {
+    const created = await request(server)
+      .post(`${api}/inspection-requests`)
+      .set('Authorization', `Bearer ${tokens.CLIENT}`)
+      .send({ title: 'Wrong building', priority: 'LOW' });
+    expect(created.status).toBe(201);
+
+    const edited = await request(server)
+      .patch(`${api}/inspection-requests/${created.body.data.id}`)
+      .set('Authorization', `Bearer ${tokens.CLIENT}`)
+      .send({ title: 'Right building', priority: 'HIGH', siteAddress: '4 Quarry Lane' });
+
+    expect(edited.status).toBe(200);
+    expect(edited.body.data.title).toBe('Right building');
+    expect(edited.body.data.priority).toBe('HIGH');
+    expect(edited.body.data.siteAddress).toBe('4 Quarry Lane');
+  });
+
+  it('tells the team what changed, on the request itself', async () => {
+    const created = await request(server)
+      .post(`${api}/inspection-requests`)
+      .set('Authorization', `Bearer ${tokens.CLIENT}`)
+      .send({ title: 'Needs a correction', priority: 'NORMAL' });
+
+    await request(server)
+      .patch(`${api}/inspection-requests/${created.body.data.id}`)
+      .set('Authorization', `Bearer ${tokens.CLIENT}`)
+      .send({ preferredDate: new Date(Date.now() + 86_400_000).toISOString() });
+
+    // A reviewer who read this yesterday needs to know it moved. The audit log
+    // is not somewhere they look; the thread is.
+    const detail = await request(server)
+      .get(`${api}/inspection-requests/${created.body.data.id}`)
+      .set('Authorization', `Bearer ${tokens.ADMIN}`);
+
+    expect(
+      detail.body.data.comments.some((c: { body: string }) => /preferredDate/.test(c.body)),
+    ).toBe(true);
+  });
+
+  it('cannot be used to edit another customer’s request', async () => {
+    const mine = await request(server)
+      .post(`${api}/inspection-requests`)
+      .set('Authorization', `Bearer ${tokens.CLIENT}`)
+      .send({ title: 'Private', priority: 'NORMAL' });
+
+    const res = await request(server)
+      .patch(`${api}/inspection-requests/${mine.body.data.id}`)
+      .set('Authorization', `Bearer ${tokens.CLIENT_OTHER}`)
+      .send({ title: 'Hijacked' });
+
+    expect(res.status).toBe(404);
+
+    const after = await prisma.inspectionRequest.findUniqueOrThrow({
+      where: { id: mine.body.data.id },
+    });
+    expect(after.title).toBe('Private');
+  });
+
+  it('refuses once the request has been decided', async () => {
+    const created = await request(server)
+      .post(`${api}/inspection-requests`)
+      .set('Authorization', `Bearer ${tokens.CLIENT}`)
+      .send({ title: 'Already decided', priority: 'NORMAL' });
+
+    await request(server)
+      .post(`${api}/inspection-requests/${created.body.data.id}/decide`)
+      .set('Authorization', `Bearer ${tokens.ADMIN}`)
+      .send({ decision: 'REJECT', note: 'Not this quarter.' });
+
+    const res = await request(server)
+      .patch(`${api}/inspection-requests/${created.body.data.id}`)
+      .set('Authorization', `Bearer ${tokens.CLIENT}`)
+      .send({ title: 'Changing the question after the answer' });
+
+    // Editing what was asked for after somebody agreed to it rewrites the
+    // basis of a decision that has already been made.
+    expect(res.status).toBe(409);
+  });
+});
+
 describe('tenant isolation still holds above the client boundary', () => {
   it('a client cannot reach another organisation at all', async () => {
     const other = await createTestOrg();

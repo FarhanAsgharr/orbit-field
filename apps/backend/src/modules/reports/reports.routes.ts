@@ -623,7 +623,10 @@ router.get(
                         // photograph taken on site carries different weight
                         // from a drawing the customer supplied.
                         source: a.requestId ? 'Supplied by client' : 'Captured on site',
-                        captured: (a.uploadedAt ?? a.createdAt).toISOString().slice(0, 16).replace('T', ' '),
+                        captured: (a.uploadedAt ?? a.createdAt)
+                          .toISOString()
+                          .slice(0, 16)
+                          .replace('T', ' '),
                       })),
                     }),
                   ]

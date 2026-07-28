@@ -182,58 +182,52 @@ describe('an inspector added to a registered organisation', () => {
   });
 });
 
-describe('signup is bootstrap only', () => {
-  it('makes the first registrant the organisation owner', async () => {
+describe('signup creates a company', () => {
+  it('makes the registrant the owner of the company they created', async () => {
     const owner = await register();
     const stored = await prisma.user.findUniqueOrThrow({ where: { id: owner.userId } });
 
-    // SUPER_ADMIN is safe here precisely because the gate below closes signup
-    // afterwards: there is exactly one organisation for the role to reach and
-    // it is this person's own.
+    /*
+     * SUPER_ADMIN of their own organisation and a stranger to every other one.
+     * This used to be safe because signup ran once; it is safe now because no
+     * role crosses a tenant — see `multi-tenant.integration.test.ts`, which
+     * asserts that boundary directly.
+     */
     expect(stored.role).toBe('SUPER_ADMIN');
   });
 
-  it('refuses a second registration with 403, permanently', async () => {
-    await register();
+  it('accepts a second company, and keeps the two apart', async () => {
+    const first = await register();
 
     const second = await request(server)
       .post(`${api}/auth/register`)
       .send({
         email: `${unique('second')}@test.invalid`,
         password: strongPassword(),
-        firstName: 'Second',
+        firstName: 'Marta',
         lastName: 'Company',
         organizationName: unique('Another Company'),
         device: device(),
       });
 
-    // Orbit Field is one company's system. A second organisation created
-    // through the public website would be invisible to the company that owns
-    // the deployment, because tenants cannot see each other.
-    expect(second.status).toBe(403);
-    expect(await prisma.organization.count()).toBe(1);
+    // Orbit Field carries several independent companies. Each registration is
+    // its own tenant with its own people, clients and work.
+    expect(second.status).toBe(201);
+    created.push(second.body.data.organization.id as string);
+    expect(String(second.body.data.organization.id)).not.toBe(first.orgId);
   });
 
-  it('reports itself unavailable once an organisation exists', async () => {
+  it('reports itself available while registration is switched on', async () => {
     await register();
 
     const res = await request(server).get(`${api}/auth/signup-available`);
     expect(res.status).toBe(200);
-    // The console hides its "Create account" tab on this answer, so it has to
+    // The console shows its "Create account" tab on this answer, so it has to
     // agree with what /auth/register would actually do.
-    expect(res.body.data.available).toBe(false);
-  });
-
-  it('reports itself available on an empty installation', async () => {
-    await prisma.organization.deleteMany({});
-
-    const res = await request(server).get(`${api}/auth/signup-available`);
     expect(res.body.data.available).toBe(true);
   });
 
   it('ignores a role somebody puts in the request body', async () => {
-    await prisma.organization.deleteMany({});
-
     const res = await request(server)
       .post(`${api}/auth/register`)
       .send({
@@ -248,7 +242,7 @@ describe('signup is bootstrap only', () => {
 
     expect(res.status).toBe(201);
     created.push(res.body.data.organization.id as string);
-    // The role comes from the bootstrap rule, never from the request.
+    // The role is decided by the server, never taken from the request.
     expect(res.body.data.user.role).toBe('SUPER_ADMIN');
   });
 
@@ -269,9 +263,16 @@ describe('signup is bootstrap only', () => {
         device: device(),
       });
 
-    // Refused outright, so there is no self-service route into somebody else's
-    // company. Inspectors exist only because an administrator created them.
-    expect(outsider.status).toBe(403);
+    /*
+     * Registering with somebody else's company name gets you a company of your
+     * own with that name, never a seat in theirs. Two firms may genuinely
+     * share a name, and matching on one would otherwise be a way to walk into
+     * a stranger's tenant. Joining an existing company happens exactly one
+     * way: an administrator there creates the account.
+     */
+    expect(outsider.status).toBe(201);
+    created.push(outsider.body.data.organization.id as string);
+    expect(String(outsider.body.data.organization.id)).not.toBe(owner.orgId);
     expect(await prisma.user.count({ where: { orgId: owner.orgId } })).toBe(before);
   });
 });

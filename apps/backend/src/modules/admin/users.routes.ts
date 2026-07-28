@@ -348,14 +348,32 @@ router.post(
       );
     }
 
+    /*
+     * An email may exist once across the whole installation, not once per
+     * company.
+     *
+     * The database constraint is per organisation, and this check used to
+     * match it. That was fine while there was one company. Now that anybody
+     * can register their own, two companies could each hold an account for
+     * the same address — and sign-in resolves an email with `findFirst`, so
+     * one of those two people would silently get the other's company every
+     * time they logged in, with no way to reach their own.
+     *
+     * Refusing here is the cheap half of the fix; the other half is that
+     * registration has always refused a duplicate globally, so the two paths
+     * now agree.
+     */
     const existing = await prisma.user.findFirst({
-      where: { orgId: subject.orgId, email: body.email },
-      select: { id: true, deletedAt: true },
+      where: { email: body.email, deletedAt: null },
+      select: { id: true, orgId: true },
     });
-    if (existing && !existing.deletedAt) {
+    if (existing) {
       throw new AppError(
         ErrorCode.DUPLICATE_RESOURCE,
-        'A user with that email already exists in this organisation.',
+        existing.orgId === subject.orgId
+          ? 'Someone with that email address already has an account here.'
+          : 'That email address is already in use on this installation. Each address can belong to one account.',
+        { fields: { email: 'Already registered.' } },
       );
     }
 

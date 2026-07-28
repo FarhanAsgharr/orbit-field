@@ -247,12 +247,24 @@ export function canAny(subject: AccessSubject, permissions: Array<Permission | s
  * Whether `actor` may administer `target`. Equal-rank users cannot act on each
  * other, which prevents two admins from locking one another out, and nobody
  * except a SUPER_ADMIN can touch a SUPER_ADMIN.
+ *
+ * **No role crosses an organisation.** This used to exempt SUPER_ADMIN from the
+ * tenant check, which was survivable while signup ran exactly once and there
+ * was only ever one organisation for a SUPER_ADMIN to be owner of. Orbit Field
+ * is now a multi-company product where anybody can register their own company
+ * and becomes its SUPER_ADMIN — so that exemption would hand every new
+ * registrant authority over every other company in the deployment.
+ *
+ * The routes already look their targets up scoped by `orgId`, so this was
+ * defence in depth rather than a live hole. It is the layer that has to be
+ * right anyway: the day a call site forgets that `where`, this is what stands
+ * between one company and all the others.
  */
 export function canManageUser(
   actor: AccessSubject,
   target: { role: Role; orgId: string; userId: string },
 ): boolean {
-  if (actor.orgId !== target.orgId && actor.role !== 'SUPER_ADMIN') return false;
+  if (actor.orgId !== target.orgId) return false;
   if (actor.userId === target.userId) return false;
   if (!can(actor, Permission.USER_UPDATE)) return false;
   return ROLE_RANK[actor.role] > ROLE_RANK[target.role];

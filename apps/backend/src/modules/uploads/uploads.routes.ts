@@ -58,7 +58,6 @@ const requireUploadAccess = asyncHandler(async (req, _res, next) => {
   );
 });
 
-
 /**
  * Narrow an attachment lookup to what this caller may reach.
  *
@@ -76,8 +75,6 @@ function attachmentScope(subject: ReturnType<typeof auth>): Prisma.AttachmentWhe
     ],
   };
 }
-
-
 
 /** Chunk payloads are base64 in JSON; the ceiling accounts for that inflation. */
 const MAX_CHUNK_BASE64_BYTES = Math.ceil((env.UPLOAD_CHUNK_SIZE_BYTES * 4) / 3) + 1024;
@@ -412,7 +409,9 @@ router.post(
 
     const session = await prisma.uploadSession.findFirst({
       where: { id: uploadId, orgId: subject.orgId },
-      include: { attachment: { select: { id: true, fileName: true, storageKey: true, mimeType: true } } },
+      include: {
+        attachment: { select: { id: true, fileName: true, storageKey: true, mimeType: true } },
+      },
     });
     if (!session) throw new AppError(ErrorCode.NOT_FOUND, 'That upload session was not found.');
 

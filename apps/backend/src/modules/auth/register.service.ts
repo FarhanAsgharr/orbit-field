@@ -1,38 +1,27 @@
 /**
  * Self-service registration.
  *
- * Creates the organisation and its owner in one transaction. Two decisions
- * worth stating:
+ * Creates an organisation and its owner in one transaction. Orbit Field is a
+ * multi-company product: anybody may register their own company, becomes its
+ * SUPER_ADMIN, and sees nothing of anyone else's. Somebody joining a company
+ * that already exists does not come through here at all — an administrator
+ * creates their account from the console, which is the "invitation" path.
  *
- *  1. **The creator becomes SUPER_ADMIN — the organisation's owner.** The
- *     reason this is safe is the bootstrap gate below: registration runs only
- *     on an empty installation, so there is exactly one organisation for
- *     SUPER_ADMIN to reach and it is the caller's own. That was not true when
- *     signup could be used repeatedly, and the role was deliberately held down
- *     to ADMIN then, because a cross-organisation role handed out to anyone who
- *     registered would have reached every other tenant in the deployment.
- *     Closing signup after the first organisation is what makes the higher
- *     grant correct, so the two changes belong together and neither is safe
- *     alone.
+ * Two decisions worth stating:
+ *
+ *  1. **The creator becomes SUPER_ADMIN — the organisation's owner.** Somebody
+ *     has to be able to add the second person, and there is nobody else in the
+ *     company yet. What makes it safe is that no role crosses an organisation:
+ *     `canManageUser` compares tenants with no exemption, and every query is
+ *     scoped by `orgId`. An owner is the top of their own company and a
+ *     stranger to every other one.
  *  2. **A starter checklist is seeded.** Without one, a new organisation is a
  *     dead end — the inspector opens the app, taps "Start an inspection", and
  *     finds nothing to start. The template is deliberately generic and
  *     immediately editable.
  *
- * Registration is **bootstrap only**. It succeeds exactly once, on an empty
- * installation, and is refused forever afterwards.
- *
- * Orbit Field is a single-company system, not a public multi-tenant service.
- * Leaving signup open lets anyone who finds the URL create an organisation
- * inside the deployment — and because tenants are isolated, nothing about that
- * is visible to the company that owns the install until somebody reads the
- * database. Closing it on the existence of an organisation rather than on a
- * flag means the window shuts by itself the moment the owner finishes setting
- * up, with nothing for an operator to remember.
- *
- * `ALLOW_SELF_SERVICE_SIGNUP=false` is still honoured as an override, for a
- * deployment that provisions its first owner with `scripts/provision-*.mjs`
- * and wants the endpoint dead from the start.
+ * `ALLOW_SELF_SERVICE_SIGNUP=false` closes the endpoint entirely, for a
+ * deployment that provisions its companies by hand.
  */
 
 import { AppError, ErrorCode } from '@orbit/shared';
@@ -220,21 +209,15 @@ function starterTemplate(versionId: string): {
 }
 
 /**
- * Whether the very first organisation can still be created.
+ * Whether a company can be registered.
  *
  * The console asks this to decide whether to offer a "Create account" tab, and
  * `registerOrganization` asks it again before writing. Both must agree: a
- * console that offers signup on an installation that will refuse it sends
- * people to a form that cannot work, and the reverse hides the only way in.
- *
- * Counting organisations is the check. It cannot drift out of step with
- * reality the way a flag can, and it needs nothing configured correctly at
- * deploy time to be safe — an installation that already has a company in it is
- * closed by virtue of having one.
+ * console that offers signup an installation will refuse sends people to a
+ * form that cannot work, and the reverse hides the only way in.
  */
 export async function signupAvailable(): Promise<boolean> {
-  if (!env.ALLOW_SELF_SERVICE_SIGNUP) return false;
-  return (await prisma.organization.count()) === 0;
+  return env.ALLOW_SELF_SERVICE_SIGNUP;
 }
 
 export interface RegisterInput {
@@ -264,7 +247,7 @@ export async function registerOrganization(input: RegisterInput): Promise<Regist
   if (!(await signupAvailable())) {
     throw new AppError(
       ErrorCode.PERMISSION_DENIED,
-      'This installation is already set up. Accounts are created by its administrator — ask them for a login.',
+      'Registration is closed on this installation. Ask your administrator for a login.',
     );
   }
 
@@ -342,8 +325,8 @@ export async function registerOrganization(input: RegisterInput): Promise<Regist
         lastName: input.lastName.trim(),
         passwordHash,
         passwordChangedAt: new Date(),
-        // ADMIN, never SUPER_ADMIN: the latter can reach across organisations
-        // in a shared install, which nobody should acquire by signing up.
+        // The owner of the company they just created. Safe because no role
+        // crosses an organisation — see the note at the top of this file.
         role: 'SUPER_ADMIN',
         status: 'ACTIVE',
         emailVerifiedAt: null,

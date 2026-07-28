@@ -19,6 +19,7 @@ import { Attachments } from '../components/Attachments';
 import { Shell } from '../components/Shell';
 import {
   Card,
+  Field,
   formatDate,
   initials,
   Loading,
@@ -115,6 +116,8 @@ export function RequestDetail(): React.ReactElement {
   const { user } = useSession();
   const [message, setMessage] = useState('');
   const [error, setError] = useState<string | null>(null);
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState<Record<string, string>>({});
   const threadEnd = useRef<HTMLDivElement>(null);
 
   const request = useQuery({
@@ -137,6 +140,71 @@ export function RequestDetail(): React.ReactElement {
     },
     onError: (e) => setError(e instanceof Error ? e.message : 'Your message could not be sent.'),
   });
+
+  /*
+   * Correct the details.
+   *
+   * The draft is seeded from the record when the form opens rather than held
+   * in sync with it, so a background refetch cannot overwrite what somebody is
+   * halfway through typing. Only fields that actually changed are sent — a
+   * PATCH carrying every field would record "updated everything" on a
+   * one-word fix, which is what the reviewer sees on the thread.
+   */
+  const save = useMutation({
+    mutationFn: () => {
+      const current = request.data!;
+      const patch: Record<string, unknown> = {};
+      const compare = (key: string, was: string | null) => {
+        const now = (draft[key] ?? '').trim();
+        if (now === (was ?? '')) return;
+        patch[key] = now === '' ? null : now;
+      };
+      compare('title', current.title);
+      compare('description', current.description);
+      compare('inspectionType', current.inspectionType);
+      compare('specialInstructions', current.specialInstructions);
+      compare('projectName', current.projectName);
+      compare('siteName', current.siteName);
+      compare('siteAddress', current.siteAddress);
+      if (draft.priority && draft.priority !== current.priority) patch.priority = draft.priority;
+
+      const wasDate = current.preferredDate ? current.preferredDate.slice(0, 10) : '';
+      if ((draft.preferredDate ?? '') !== wasDate) {
+        patch.preferredDate = draft.preferredDate
+          ? new Date(`${draft.preferredDate}T09:00:00`).toISOString()
+          : null;
+      }
+      // A title is how the team recognises the request; blanking it is not an
+      // edit anybody means to make.
+      if (patch.title === null) delete patch.title;
+
+      return api.patch(`/inspection-requests/${id}`, patch);
+    },
+    onSuccess: () => {
+      setEditing(false);
+      setError(null);
+      void queryClient.invalidateQueries({ queryKey: ['request', id] });
+      void queryClient.invalidateQueries({ queryKey: ['requests'] });
+    },
+    onError: (e) => setError(e instanceof Error ? e.message : 'Those changes could not be saved.'),
+  });
+
+  const startEditing = (): void => {
+    const c = request.data!;
+    setDraft({
+      title: c.title ?? '',
+      description: c.description ?? '',
+      inspectionType: c.inspectionType ?? '',
+      specialInstructions: c.specialInstructions ?? '',
+      projectName: c.projectName ?? '',
+      siteName: c.siteName ?? '',
+      siteAddress: c.siteAddress ?? '',
+      priority: c.priority ?? 'NORMAL',
+      preferredDate: c.preferredDate ? c.preferredDate.slice(0, 10) : '',
+    });
+    setEditing(true);
+    setError(null);
+  };
 
   const cancel = useMutation({
     mutationFn: () => api.post(`/inspection-requests/${id}/cancel`, {}),
@@ -230,48 +298,162 @@ export function RequestDetail(): React.ReactElement {
         )}
       </Card>
 
-      <Card title="Details">
-        <dl className="details">
-          <div>
-            <dt className="details__term">Project</dt>
-            <dd className="details__value">{data.projectName ?? '—'}</dd>
-          </div>
-          <div>
-            <dt className="details__term">Site</dt>
-            <dd className="details__value">{data.site?.name ?? data.siteName ?? '—'}</dd>
-          </div>
-          <div>
-            <dt className="details__term">Address</dt>
-            <dd className="details__value">{data.siteAddress ?? '—'}</dd>
-          </div>
-          <div>
-            <dt className="details__term">Type</dt>
-            <dd className="details__value">{data.inspectionType ?? '—'}</dd>
-          </div>
-          <div>
-            <dt className="details__term">Preferred date</dt>
-            <dd className="details__value">{formatDate(data.preferredDate)}</dd>
-          </div>
-          <div>
-            <dt className="details__term">Inspection</dt>
-            <dd className="details__value">{data.inspection?.number ?? 'Not created yet'}</dd>
-          </div>
-        </dl>
-        {data.description && (
-          <div style={{ marginTop: 20 }}>
-            <dt className="details__term">Problem description</dt>
-            <p className="details__value" style={{ whiteSpace: 'pre-wrap' }}>
-              {data.description}
-            </p>
-          </div>
-        )}
-        {data.specialInstructions && (
-          <div style={{ marginTop: 16 }}>
-            <dt className="details__term">Access instructions</dt>
-            <p className="details__value" style={{ whiteSpace: 'pre-wrap' }}>
-              {data.specialInstructions}
-            </p>
-          </div>
+      <Card
+        title="Details"
+        action={
+          open && !editing ? (
+            <button type="button" className="btn btn--sm" onClick={startEditing}>
+              Edit details
+            </button>
+          ) : null
+        }
+      >
+        {editing ? (
+          <form
+            onSubmit={(e) => {
+              e.preventDefault();
+              save.mutate();
+            }}
+          >
+            <div className="form-grid">
+              <Field label="Title" required full>
+                <input
+                  className="input"
+                  value={draft.title ?? ''}
+                  onChange={(e) => setDraft({ ...draft, title: e.target.value })}
+                  required
+                  maxLength={300}
+                />
+              </Field>
+              <Field label="Project name">
+                <input
+                  className="input"
+                  value={draft.projectName ?? ''}
+                  onChange={(e) => setDraft({ ...draft, projectName: e.target.value })}
+                />
+              </Field>
+              <Field label="Site name">
+                <input
+                  className="input"
+                  value={draft.siteName ?? ''}
+                  onChange={(e) => setDraft({ ...draft, siteName: e.target.value })}
+                />
+              </Field>
+              <Field label="Type of inspection">
+                <input
+                  className="input"
+                  value={draft.inspectionType ?? ''}
+                  onChange={(e) => setDraft({ ...draft, inspectionType: e.target.value })}
+                />
+              </Field>
+              <Field label="Priority">
+                <select
+                  className="select"
+                  value={draft.priority ?? 'NORMAL'}
+                  onChange={(e) => setDraft({ ...draft, priority: e.target.value })}
+                >
+                  <option value="LOW">Low</option>
+                  <option value="NORMAL">Normal</option>
+                  <option value="HIGH">High</option>
+                  <option value="CRITICAL">Critical</option>
+                </select>
+              </Field>
+              <Field label="Preferred date">
+                <input
+                  className="input"
+                  type="date"
+                  value={draft.preferredDate ?? ''}
+                  onChange={(e) => setDraft({ ...draft, preferredDate: e.target.value })}
+                />
+              </Field>
+              <Field label="Site address" full>
+                <textarea
+                  className="textarea"
+                  style={{ minHeight: 70 }}
+                  value={draft.siteAddress ?? ''}
+                  onChange={(e) => setDraft({ ...draft, siteAddress: e.target.value })}
+                />
+              </Field>
+              <Field label="Problem description" full>
+                <textarea
+                  className="textarea"
+                  value={draft.description ?? ''}
+                  onChange={(e) => setDraft({ ...draft, description: e.target.value })}
+                />
+              </Field>
+              <Field label="Access or site instructions" full>
+                <textarea
+                  className="textarea"
+                  style={{ minHeight: 70 }}
+                  value={draft.specialInstructions ?? ''}
+                  onChange={(e) => setDraft({ ...draft, specialInstructions: e.target.value })}
+                />
+              </Field>
+            </div>
+            <div className="form-actions" style={{ marginTop: 20 }}>
+              <button
+                className="btn btn--primary"
+                type="submit"
+                disabled={save.isPending || !(draft.title ?? '').trim()}
+              >
+                {save.isPending ? 'Saving…' : 'Save changes'}
+              </button>
+              <button
+                className="btn btn--ghost"
+                type="button"
+                onClick={() => setEditing(false)}
+                disabled={save.isPending}
+              >
+                Cancel
+              </button>
+              <span className="faint">The team is told which details changed.</span>
+            </div>
+          </form>
+        ) : (
+          <>
+            <dl className="details">
+              <div>
+                <dt className="details__term">Project</dt>
+                <dd className="details__value">{data.projectName ?? '—'}</dd>
+              </div>
+              <div>
+                <dt className="details__term">Site</dt>
+                <dd className="details__value">{data.site?.name ?? data.siteName ?? '—'}</dd>
+              </div>
+              <div>
+                <dt className="details__term">Address</dt>
+                <dd className="details__value">{data.siteAddress ?? '—'}</dd>
+              </div>
+              <div>
+                <dt className="details__term">Type</dt>
+                <dd className="details__value">{data.inspectionType ?? '—'}</dd>
+              </div>
+              <div>
+                <dt className="details__term">Preferred date</dt>
+                <dd className="details__value">{formatDate(data.preferredDate)}</dd>
+              </div>
+              <div>
+                <dt className="details__term">Inspection</dt>
+                <dd className="details__value">{data.inspection?.number ?? 'Not created yet'}</dd>
+              </div>
+            </dl>
+            {data.description && (
+              <div style={{ marginTop: 20 }}>
+                <dt className="details__term">Problem description</dt>
+                <p className="details__value" style={{ whiteSpace: 'pre-wrap' }}>
+                  {data.description}
+                </p>
+              </div>
+            )}
+            {data.specialInstructions && (
+              <div style={{ marginTop: 16 }}>
+                <dt className="details__term">Access instructions</dt>
+                <p className="details__value" style={{ whiteSpace: 'pre-wrap' }}>
+                  {data.specialInstructions}
+                </p>
+              </div>
+            )}
+          </>
         )}
       </Card>
 
