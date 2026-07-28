@@ -311,6 +311,8 @@ export async function login(email: string, password: string): Promise<AuthSessio
 }
 
 export interface ClientRegistrationInput {
+  /** The company being registered with. Required when the portal serves several. */
+  organizationSlug?: string;
   companyName: string;
   industry?: string;
   registrationNumber?: string;

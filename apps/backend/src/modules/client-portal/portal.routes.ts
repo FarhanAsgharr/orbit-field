@@ -103,6 +103,15 @@ const registrationSchema = z.object({
   notes: z.string().max(2000).trim().nullish(),
 
   password: z.string().min(1).max(200),
+
+  /**
+   * Which company the customer is registering with.
+   *
+   * Optional in the schema and required in practice whenever the portal serves
+   * more than one company — the service refuses rather than guessing, because
+   * guessing is what filed customers under the wrong firm.
+   */
+  organizationSlug: z.string().min(1).max(80).trim().optional(),
 });
 
 /**

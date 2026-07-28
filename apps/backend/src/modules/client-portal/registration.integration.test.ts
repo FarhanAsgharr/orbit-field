@@ -40,8 +40,17 @@ const device = () => ({
   appVersion: '1.0.0',
 });
 
-/** A complete, valid submission. Individual cases override one field at a time. */
+/**
+ * A complete, valid submission. Individual cases override one field at a time.
+ *
+ * `organizationSlug` is filled in by `beforeAll` once the fixture company
+ * exists — the portal now requires a customer to say which company they are
+ * registering with, and a submission without one is refused rather than filed
+ * under whichever company happens to be oldest.
+ */
+let defaultSlug = '';
 const submission = (overrides: Record<string, unknown> = {}) => ({
+  organizationSlug: defaultSlug,
   companyName: `Northwind ${unique('co')}`,
   industry: 'Construction',
   registrationNumber: 'CRN-99182',
@@ -67,35 +76,178 @@ const created: string[] = [];
 
 beforeAll(async () => {
   org = await createTestOrg();
+  defaultSlug = (
+    await prisma.organization.findUniqueOrThrow({
+      where: { id: org.orgId },
+      select: { slug: true },
+    })
+  ).slug;
 });
 
 afterAll(async () => {
-  // Registrations are not owned by the fixture organisation's cleanup, because
-  // the endpoint chooses the organisation itself.
+  /*
+   * Registrations are not owned by the fixture organisation's cleanup, because
+   * the endpoint chooses the organisation itself.
+   *
+   * Requests go first: one of these customers raises a request, and it holds a
+   * foreign key to the user who raised it.
+   */
+  await prisma.requestComment.deleteMany({ where: { request: { clientId: { in: created } } } });
+  await prisma.inspectionRequest.deleteMany({ where: { clientId: { in: created } } });
   await prisma.user.deleteMany({ where: { clientId: { in: created } } });
   await prisma.client.deleteMany({ where: { id: { in: created } } });
   await org.cleanup();
   await prisma.$disconnect();
 });
 
-/** The organisation the endpoint will have picked: the earliest-created one. */
+/**
+ * The organisation these registrations name.
+ *
+ * This used to return the earliest-created organisation, because that is what
+ * the endpoint picked. It now returns the company the submission actually
+ * chose — the fix and the assertion moved together, which is the point.
+ */
 async function hostOrgId(): Promise<string> {
-  const first = await prisma.organization.findFirst({
-    orderBy: { createdAt: 'asc' },
-    select: { id: true },
-  });
-  return first!.id;
+  return org.orgId;
 }
+
+describe('which company a customer registers with', () => {
+  /*
+   * The bug this covers, in full.
+   *
+   * Registration used to file every customer under the earliest-created
+   * organisation. On an installation with more than one company that is a
+   * silent misfiling: the customer registers, raises a request, gets a
+   * reference number, and the request lands in a console belonging to a
+   * company they have never dealt with. Nothing errors. The staff they *are*
+   * dealing with simply never see it, and tenant isolation — working exactly
+   * as designed — makes it invisible rather than wrong.
+   *
+   * So these cases are about where the row lands, not whether the call
+   * succeeds. A test asserting only a 201 passed throughout the entire life of
+   * the bug.
+   */
+  it('files the customer under the company they chose', async () => {
+    const others = await prisma.organization.findMany({
+      orderBy: { createdAt: 'asc' },
+      select: { id: true, slug: true },
+    });
+    const oldest = others[0]!;
+    // The fixture organisation is not the oldest, which is the whole point:
+    // choosing it must beat the old "first one wins" behaviour.
+    const target = await prisma.organization.findUniqueOrThrow({
+      where: { id: org.orgId },
+      select: { id: true, slug: true },
+    });
+
+    const res = await request(server)
+      .post(`${api}/portal/register`)
+      .send(submission({ organizationSlug: target.slug }));
+
+    expect(res.status).toBe(201);
+    created.push(res.body.data.clientId);
+
+    const client = await prisma.client.findUniqueOrThrow({
+      where: { id: res.body.data.clientId },
+      select: { orgId: true },
+    });
+    const user = await prisma.user.findFirstOrThrow({
+      where: { clientId: res.body.data.clientId },
+      select: { orgId: true },
+    });
+
+    expect(client.orgId).toBe(target.id);
+    expect(user.orgId).toBe(target.id);
+    if (oldest.id !== target.id) expect(client.orgId).not.toBe(oldest.id);
+  });
+
+  it('puts the customer’s requests where that company’s staff will see them', async () => {
+    const target = await prisma.organization.findUniqueOrThrow({
+      where: { id: org.orgId },
+      select: { slug: true },
+    });
+    const body = submission({ organizationSlug: target.slug });
+    const reg = await request(server).post(`${api}/portal/register`).send(body);
+    created.push(reg.body.data.clientId);
+
+    const login = await request(server)
+      .post(`${api}/auth/login`)
+      .send({ email: body.email, password: body.password, device: device() });
+
+    const raised = await request(server)
+      .post(`${api}/inspection-requests`)
+      .set('Authorization', `Bearer ${login.body.data.tokens.accessToken}`)
+      .send({ title: 'Does this reach the right console?', priority: 'NORMAL' });
+    expect(raised.status).toBe(201);
+
+    // The end of the chain, and the thing that was actually broken: an
+    // administrator of the chosen company opens their queue and sees it.
+    const adminLogin = await request(server).post(`${api}/auth/login`).send({
+      email: org.users.ADMIN!.email,
+      password: org.users.ADMIN!.password,
+      device: device(),
+    });
+    const queue = await request(server)
+      .get(`${api}/inspection-requests?pageSize=100`)
+      .set('Authorization', `Bearer ${adminLogin.body.data.tokens.accessToken}`);
+
+    expect(queue.status).toBe(200);
+    expect(queue.body.data.items.map((r: { id: string }) => r.id)).toContain(raised.body.data.id);
+  });
+
+  it('refuses to guess when several companies are on offer', async () => {
+    const count = await prisma.organization.count({ where: { isActive: true } });
+    if (count < 2) return;
+
+    const { organizationSlug: _omitted, ...withoutCompany } = submission();
+    const res = await request(server).post(`${api}/portal/register`).send(withoutCompany);
+
+    // Silently picking one is what caused the misfiling.
+    expect(res.status).toBe(422);
+    expect(res.body.error.fields?.organizationSlug).toBeTruthy();
+  });
+
+  it('refuses a company that is not on the portal', async () => {
+    const res = await request(server)
+      .post(`${api}/portal/register`)
+      .send(submission({ organizationSlug: 'no-such-company-anywhere' }));
+
+    expect(res.status).toBe(422);
+  });
+
+  it('offers the companies a visitor may choose from', async () => {
+    const res = await request(server).get(`${api}/portal/registration`);
+    expect(res.status).toBe(200);
+    expect(Array.isArray(res.body.data.companies)).toBe(true);
+    // The portal draws its picker from this; a slug missing here is a company
+    // nobody can register with.
+    const slugs = res.body.data.companies.map((c: { slug: string }) => c.slug);
+    const mine = await prisma.organization.findUniqueOrThrow({
+      where: { id: org.orgId },
+      select: { slug: true },
+    });
+    expect(slugs).toContain(mine.slug);
+  });
+});
 
 describe('registration availability', () => {
   it('reports that the portal is open and names the company behind it', async () => {
     const res = await request(server).get(`${api}/portal/registration`);
     expect(res.status).toBe(200);
     expect(res.body.data.available).toBe(true);
-    // The portal shows this on its sign-in screen, so it must be a real name
-    // rather than a slug or an id.
-    expect(typeof res.body.data.organizationName).toBe('string');
-    expect(res.body.data.organizationName.length).toBeGreaterThan(0);
+
+    /*
+     * The portal draws its company picker from this. `organizationName` is
+     * filled in only when there is exactly one company — with several, naming
+     * one of them on the sign-in screen would be picking for the visitor,
+     * which is the habit that misfiled customers in the first place.
+     */
+    expect(Array.isArray(res.body.data.companies)).toBe(true);
+    expect(res.body.data.companies.length).toBeGreaterThan(0);
+    for (const company of res.body.data.companies) {
+      expect(typeof company.slug).toBe('string');
+      expect(typeof company.name).toBe('string');
+    }
   });
 });
 

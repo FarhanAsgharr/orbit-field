@@ -12,14 +12,19 @@
  *
  * Two things are worth being explicit about.
  *
- * **Which organisation a customer joins.** Orbit Field is a single-company
- * install: bootstrap signup runs once, so there is normally one organisation
- * and no question to answer. A deployment that acquired a second one — a demo
- * tenant seeded alongside the real company, which is exactly the situation on
- * this production database — needs to say which is which, so
- * `PORTAL_ORG_SLUG` names it. Absent that, the earliest-created organisation
- * wins, because under bootstrap-only signup that is the one whose owner set the
- * installation up.
+ * **Which organisation a customer joins — the customer says.** This used to
+ * guess: it took the organisation named by `PORTAL_ORG_SLUG`, or failing that
+ * the earliest-created one, on the reasoning that a single-company install has
+ * only one answer. Once anybody could register their own company that reasoning
+ * collapsed, and the guess became a bug with no error message: a customer
+ * registering to work with one firm was filed under whichever firm happened to
+ * be oldest — the seeded demo tenant — and their requests landed in a console
+ * nobody they had ever spoken to was reading. The request was created, stored
+ * and returned correctly the whole time, to the wrong company's staff.
+ *
+ * So the company is now part of the submission, chosen from the list the portal
+ * offers. `PORTAL_ORG_SLUG` still pins a deployment that serves exactly one
+ * company, and a single-company install needs no choice at all.
  *
  * **This endpoint is open by definition.** Anyone who reaches the portal URL
  * can create a client record, which is what a customer portal *is* — the
@@ -73,6 +78,9 @@ export interface ClientRegistrationInput {
   /* Account */
   password: string;
 
+  /** Which company this customer is registering with. */
+  organizationSlug?: string;
+
   meta: RequestMeta;
 }
 
@@ -86,62 +94,116 @@ export interface ClientRegistrationResult {
 interface HostOrganization {
   id: string;
   name: string;
+  slug: string;
   settings: Prisma.JsonValue;
 }
 
-/**
- * The organisation a self-registering customer becomes a client of.
- *
- * Returns null on an installation that has not been set up yet, which the
- * caller turns into a message telling the visitor the portal is not open rather
- * than a stack trace.
- */
-async function hostOrganization(): Promise<HostOrganization | null> {
-  const select = { id: true, name: true, settings: true };
+const ORG_SELECT = { id: true, name: true, slug: true, settings: true };
 
+/** Whether this company is currently taking client registrations. */
+function accepts(org: { settings: Prisma.JsonValue }): boolean {
+  const settings = (org.settings ?? {}) as Record<string, unknown>;
+  return settings.clientSelfRegistration !== false;
+}
+
+/**
+ * The companies a visitor may register with.
+ *
+ * A deployment that serves one company pins it with `PORTAL_ORG_SLUG` and the
+ * portal asks nothing. Otherwise the customer picks, because nobody else can
+ * know which firm they have been dealing with.
+ */
+export async function registrableOrganizations(): Promise<HostOrganization[]> {
   if (env.PORTAL_ORG_SLUG) {
     const named = await prisma.organization.findUnique({
       where: { slug: env.PORTAL_ORG_SLUG },
-      select,
+      select: ORG_SELECT,
     });
-    if (named) return named;
-    // A slug configured but absent is a deployment mistake, not a visitor's
-    // problem. Say so in the log and fall through rather than turning every
-    // registration into a 500.
+    if (named) return accepts(named) ? [named] : [];
+    // Configured but absent is a deployment mistake, not a visitor's problem.
+    // Say so in the log rather than turning every registration into a 500.
     logger.warn(
       { slug: env.PORTAL_ORG_SLUG },
-      'PORTAL_ORG_SLUG names an organisation that does not exist; falling back to the oldest',
+      'PORTAL_ORG_SLUG names an organisation that does not exist; offering all companies instead',
     );
   }
 
-  return prisma.organization.findFirst({ orderBy: { createdAt: 'asc' }, select });
+  const all = await prisma.organization.findMany({
+    where: { isActive: true },
+    orderBy: { name: 'asc' },
+    select: ORG_SELECT,
+  });
+  return all.filter(accepts);
 }
 
-/** Whether the portal is currently accepting new customers, and where they go. */
+/**
+ * Resolve the company a submission names.
+ *
+ * Never falls back to "the first one". A registration whose company cannot be
+ * resolved is refused, because filing a customer under a company they did not
+ * choose is the failure this whole path exists to prevent.
+ */
+async function resolveOrganization(slug: string | undefined): Promise<HostOrganization> {
+  const available = await registrableOrganizations();
+
+  if (available.length === 0) {
+    throw new AppError(
+      ErrorCode.PERMISSION_DENIED,
+      'No company on this portal is accepting new client accounts. Please contact the company you are working with.',
+    );
+  }
+
+  if (!slug) {
+    // One company means there is nothing to ask and nothing to get wrong.
+    if (available.length === 1) return available[0]!;
+    throw new AppError(
+      ErrorCode.VALIDATION_FAILED,
+      'Choose the company you are registering with.',
+      {
+        fields: { organizationSlug: 'Required.' },
+      },
+    );
+  }
+
+  const chosen = available.find((o) => o.slug === slug);
+  if (!chosen) {
+    throw new AppError(ErrorCode.VALIDATION_FAILED, 'That company was not found on this portal.', {
+      fields: { organizationSlug: 'Not accepting client registrations.' },
+    });
+  }
+  return chosen;
+}
+
+/**
+ * Whether the portal is accepting new customers, and for whom.
+ *
+ * `companies` is what the registration form draws its picker from.
+ * `organizationName` is kept for the single-company case, where the portal
+ * says whose portal this is rather than showing unbranded chrome.
+ */
 export async function clientSignupAvailable(): Promise<{
   available: boolean;
   organizationName: string | null;
+  companies: Array<{ slug: string; name: string }>;
   reason?: string;
 }> {
-  const org = await hostOrganization();
-  if (!org) {
+  const companies = await registrableOrganizations();
+
+  if (companies.length === 0) {
     return {
       available: false,
       organizationName: null,
-      reason: 'This portal is not set up yet. Please contact the company you are working with.',
+      companies: [],
+      reason:
+        'This portal is not accepting new client accounts. Please contact the company you are working with.',
     };
   }
 
-  const settings = (org.settings ?? {}) as Record<string, unknown>;
-  if (settings.clientSelfRegistration === false) {
-    return {
-      available: false,
-      organizationName: org.name,
-      reason: `${org.name} creates client accounts directly. Contact them to have yours set up.`,
-    };
-  }
-
-  return { available: true, organizationName: org.name };
+  return {
+    available: true,
+    organizationName: companies.length === 1 ? companies[0]!.name : null,
+    companies: companies.map((o) => ({ slug: o.slug, name: o.name })),
+  };
 }
 
 /**
@@ -194,12 +256,7 @@ async function uniqueClientCode(orgId: string, companyName: string): Promise<str
 export async function registerClient(
   input: ClientRegistrationInput,
 ): Promise<ClientRegistrationResult> {
-  const availability = await clientSignupAvailable();
-  if (!availability.available) {
-    throw new AppError(ErrorCode.PERMISSION_DENIED, availability.reason!);
-  }
-
-  const org = (await hostOrganization())!;
+  const org = await resolveOrganization(input.organizationSlug);
   const email = input.email.toLowerCase().trim();
   const companyName = input.companyName.trim();
   /*

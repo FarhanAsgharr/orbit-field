@@ -13,7 +13,7 @@
 
 import { useQuery } from '@tanstack/react-query';
 import React, { useState } from 'react';
-import { Link, Navigate, useNavigate } from 'react-router-dom';
+import { Link, Navigate, useLocation, useNavigate } from 'react-router-dom';
 
 import { PasswordField } from '../components/PasswordField';
 import { Field, Notice } from '../components/ui';
@@ -24,6 +24,7 @@ import { AuthAside } from './Login';
 interface Availability {
   available: boolean;
   organizationName: string | null;
+  companies: Array<{ slug: string; name: string }>;
   reason?: string;
 }
 
@@ -45,6 +46,7 @@ const INDUSTRIES = [
 ];
 
 interface FormState {
+  organizationSlug: string;
   companyName: string;
   industry: string;
   registrationNumber: string;
@@ -66,6 +68,7 @@ interface FormState {
 }
 
 const EMPTY: FormState = {
+  organizationSlug: '',
   companyName: '',
   industry: '',
   registrationNumber: '',
@@ -100,6 +103,23 @@ export function Register(): React.ReactElement {
     retry: false,
   });
 
+  const companies = availability.data?.companies ?? [];
+
+  /*
+   * Which company this registration is for.
+   *
+   * Prefilled from `?company=<slug>` so a firm can hand its customers a direct
+   * link, and settled automatically when the portal serves only one. Otherwise
+   * the customer chooses: nobody else can know which firm they have been
+   * dealing with, and the old code guessed — which is how requests ended up in
+   * a stranger's console.
+   */
+  const requestedCompany = new URLSearchParams(useLocation().search).get('company') ?? '';
+  const chosenCompany =
+    form.organizationSlug ||
+    (companies.length === 1 ? companies[0]!.slug : '') ||
+    (companies.some((c) => c.slug === requestedCompany) ? requestedCompany : '');
+
   if (status === 'authenticated') return <Navigate to="/client/dashboard" replace />;
 
   const set =
@@ -126,8 +146,8 @@ export function Register(): React.ReactElement {
 
     setBusy(true);
     try {
-      const { confirmPassword: _drop, ...payload } = form;
-      await registerClient(payload);
+      const { confirmPassword: _drop, ...rest } = form;
+      await registerClient({ ...rest, organizationSlug: chosenCompany });
       // Straight in — the account exists and they just typed the password.
       await signIn(form.email.trim(), form.password);
       navigate('/client/dashboard', { replace: true });
@@ -174,6 +194,33 @@ export function Register(): React.ReactElement {
           </div>
 
           {error && <Notice>{error}</Notice>}
+
+          {companies.length > 1 && (
+            <fieldset className="fieldset">
+              <legend className="fieldset__legend">Who are you registering with?</legend>
+              <Field
+                label="Company"
+                required
+                hint="The company that will carry out your inspections."
+                error={fieldErrors.organizationSlug}
+                full
+              >
+                <select
+                  className="select"
+                  value={chosenCompany}
+                  onChange={(e) => setForm({ ...form, organizationSlug: e.target.value })}
+                  required
+                >
+                  <option value="">Select a company</option>
+                  {companies.map((c) => (
+                    <option key={c.slug} value={c.slug}>
+                      {c.name}
+                    </option>
+                  ))}
+                </select>
+              </Field>
+            </fieldset>
+          )}
 
           <fieldset className="fieldset">
             <legend className="fieldset__legend">Company information</legend>
@@ -352,7 +399,11 @@ export function Register(): React.ReactElement {
           </fieldset>
 
           <div className="form-actions">
-            <button className="btn btn--primary" type="submit" disabled={busy}>
+            <button
+              className="btn btn--primary"
+              type="submit"
+              disabled={busy || (companies.length > 1 && !chosenCompany)}
+            >
               {busy ? 'Creating your account…' : 'Create account'}
             </button>
             <Link className="btn btn--ghost" to="/client/login">

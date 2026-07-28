@@ -40,9 +40,23 @@ const server = testServer(app);
 const api = '/api/v1';
 
 let org: TestOrg;
+/**
+ * The company these submissions register with.
+ *
+ * Named explicitly rather than left out: the portal refuses to guess when an
+ * installation carries several companies, which is what stopped customers
+ * being filed under whichever one happened to be oldest.
+ */
+let orgSlug = '';
 
 beforeAll(async () => {
   org = await createTestOrg();
+  orgSlug = (
+    await prisma.organization.findUniqueOrThrow({
+      where: { id: org.orgId },
+      select: { slug: true },
+    })
+  ).slug;
 });
 
 afterAll(async () => {
@@ -51,6 +65,7 @@ afterAll(async () => {
 });
 
 const base = (o: Record<string, unknown> = {}) => ({
+  organizationSlug: orgSlug,
   companyName: `Repro ${unique('co')}`,
   contactName: 'Muhammad Farhan',
   email: `${unique('repro')}@example.test`,
