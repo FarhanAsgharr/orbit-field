@@ -241,7 +241,7 @@ export function Overview(): React.ReactElement {
             ) : null}
             {can(Permission.USER_INVITE) ? (
               <Link className="btn btn--ghost" to="/users">
-                Add someone
+                Create an account
               </Link>
             ) : null}
             {can(Permission.REPORT_EXPORT) ? (
