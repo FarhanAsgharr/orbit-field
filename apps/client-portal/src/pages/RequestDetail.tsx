@@ -16,6 +16,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 
 import { Attachments } from '../components/Attachments';
+import { usePortalPath } from '../App';
 import { Shell } from '../components/Shell';
 import {
   Card,
@@ -110,6 +111,7 @@ function timeline(
 }
 
 export function RequestDetail(): React.ReactElement {
+  const path = usePortalPath();
   const { id = '' } = useParams();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
@@ -229,7 +231,7 @@ export function RequestDetail(): React.ReactElement {
       <Shell title="Request">
         <Notice>That request could not be found. It may belong to another account.</Notice>
         <div className="form-actions">
-          <Link className="btn" to="/client/requests">
+          <Link className="btn" to={path('/requests')}>
             Back to my requests
           </Link>
         </div>
@@ -290,7 +292,7 @@ export function RequestDetail(): React.ReactElement {
             <button
               type="button"
               className="btn btn--primary btn--sm"
-              onClick={() => navigate('/client/reports')}
+              onClick={() => navigate(path('/reports'))}
             >
               Download the report
             </button>

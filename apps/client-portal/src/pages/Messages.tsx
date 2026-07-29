@@ -12,6 +12,7 @@ import { useQuery } from '@tanstack/react-query';
 import React from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 
+import { usePortalPath } from '../App';
 import { Shell } from '../components/Shell';
 import {
   Card,
@@ -40,6 +41,7 @@ interface Thread {
 }
 
 export function Messages(): React.ReactElement {
+  const path = usePortalPath();
   const navigate = useNavigate();
 
   const threads = useQuery({
@@ -58,7 +60,7 @@ export function Messages(): React.ReactElement {
           <Empty
             title="No messages yet"
             action={
-              <Link className="btn btn--primary" to="/client/requests">
+              <Link className="btn btn--primary" to={path('/requests')}>
                 Go to my requests
               </Link>
             }
@@ -81,7 +83,7 @@ export function Messages(): React.ReactElement {
                   <tr
                     key={thread.id}
                     className="is-clickable"
-                    onClick={() => navigate(`/client/requests/${thread.id}`)}
+                    onClick={() => navigate(path(`/requests/${thread.id}`))}
                   >
                     <td>
                       <div style={{ fontWeight: 550 }}>{thread.title}</div>

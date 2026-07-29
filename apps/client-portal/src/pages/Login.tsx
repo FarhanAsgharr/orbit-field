@@ -6,20 +6,13 @@
  * call tells the page whether to offer registration at all.
  */
 
-import { useQuery } from '@tanstack/react-query';
 import React, { useState } from 'react';
 import { Link, Navigate, useLocation } from 'react-router-dom';
 
+import { usePortalPath, useTenant } from '../App';
 import { PasswordField } from '../components/PasswordField';
 import { Field, Notice } from '../components/ui';
-import { api } from '../lib/api';
 import { useSession } from '../lib/session';
-
-interface Availability {
-  available: boolean;
-  organizationName: string | null;
-  reason?: string;
-}
 
 export function AuthAside({ organizationName }: { organizationName?: string | null }) {
   return (
@@ -55,18 +48,14 @@ export function AuthAside({ organizationName }: { organizationName?: string | nu
 export function Login(): React.ReactElement {
   const { signIn, status, busy, error, setError } = useSession();
   const location = useLocation();
+  const path = usePortalPath();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
 
-  const availability = useQuery({
-    queryKey: ['portal-registration'],
-    queryFn: () => api.get<Availability>('/portal/registration'),
-    retry: false,
-    staleTime: 5 * 60 * 1000,
-  });
+  const tenant = useTenant();
 
   if (status === 'authenticated') {
-    const to = (location.state as { from?: string } | null)?.from ?? '/client/dashboard';
+    const to = (location.state as { from?: string } | null)?.from ?? path('/dashboard');
     return <Navigate to={to} replace />;
   }
 
@@ -77,16 +66,12 @@ export function Login(): React.ReactElement {
 
   return (
     <div className="auth">
-      <AuthAside organizationName={availability.data?.organizationName} />
+      <AuthAside organizationName={tenant.name} />
       <div className="auth__panel">
         <form className="auth__form" onSubmit={submit} noValidate>
           <div>
             <h1>Sign in</h1>
-            <p className="main__subtitle">
-              {availability.data?.organizationName
-                ? `Your inspections with ${availability.data.organizationName}.`
-                : 'Your inspections, requests and reports.'}
-            </p>
+            <p className="main__subtitle">Your inspections with {tenant.name}.</p>
           </div>
 
           {error && <Notice>{error}</Notice>}
@@ -120,15 +105,15 @@ export function Login(): React.ReactElement {
             {busy ? 'Signing in…' : 'Sign in'}
           </button>
 
-          {availability.data?.available ? (
+          {tenant.registrationOpen ? (
             <p className="faint" style={{ textAlign: 'center' }}>
-              New here? <Link to="/client/register">Create a company account</Link>
+              New here? <Link to={path('/register')}>Create a company account</Link>
             </p>
-          ) : availability.data?.reason ? (
+          ) : (
             <p className="faint" style={{ textAlign: 'center' }}>
-              {availability.data.reason}
+              {tenant.name} creates client accounts directly. Contact them for a login.
             </p>
-          ) : null}
+          )}
         </form>
       </div>
     </div>

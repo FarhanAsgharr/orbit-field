@@ -297,11 +297,19 @@ const device = () => ({
  * session is discarded rather than kept, so a mistaken sign-in leaves nothing
  * behind.
  */
-export async function login(email: string, password: string): Promise<AuthSession> {
+export async function login(
+  email: string,
+  password: string,
+  organizationSlug?: string,
+): Promise<AuthSession> {
   const session = await request<AuthSession>('/auth/login', {
     method: 'POST',
     anonymous: true,
-    body: { email, password, device: device() },
+    // The company comes from the address this portal was opened at. The server
+    // refuses the sign-in if the account belongs to a different one, so a
+    // customer cannot walk into another company's workspace with valid
+    // credentials.
+    body: { email, password, device: device(), organizationSlug },
   });
 
   setTokens(session.tokens);
@@ -311,8 +319,8 @@ export async function login(email: string, password: string): Promise<AuthSessio
 }
 
 export interface ClientRegistrationInput {
-  /** The company being registered with. Required when the portal serves several. */
-  organizationSlug?: string;
+  /** The company being registered with, taken from the portal's own address. */
+  organizationSlug: string;
   companyName: string;
   industry?: string;
   registrationNumber?: string;

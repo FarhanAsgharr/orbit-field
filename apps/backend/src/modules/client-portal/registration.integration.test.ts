@@ -212,42 +212,61 @@ describe('which company a customer registers with', () => {
       .post(`${api}/portal/register`)
       .send(submission({ organizationSlug: 'no-such-company-anywhere' }));
 
-    expect(res.status).toBe(422);
+    /*
+     * 404, with wording that does not distinguish "no such company" from
+     * "that company is closed to registrations". Anything more specific turns
+     * this endpoint into an oracle for discovering which companies exist.
+     */
+    expect(res.status).toBe(404);
+    expect(res.body.error.message).not.toMatch(/exist|closed|found on this/i);
   });
 
-  it('offers the companies a visitor may choose from', async () => {
-    const res = await request(server).get(`${api}/portal/registration`);
-    expect(res.status).toBe(200);
-    expect(Array.isArray(res.body.data.companies)).toBe(true);
-    // The portal draws its picker from this; a slug missing here is a company
-    // nobody can register with.
-    const slugs = res.body.data.companies.map((c: { slug: string }) => c.slug);
-    const mine = await prisma.organization.findUniqueOrThrow({
-      where: { id: org.orgId },
-      select: { slug: true },
+  it('never lists the companies on the installation', async () => {
+    /*
+     * The endpoint that did this is gone, and its removal is the point of the
+     * per-company portal: a customer portal able to enumerate its tenants
+     * publishes the operator's customer list, and where two competitors are
+     * both tenants that is a disclosure between them.
+     */
+    const enumeration = await request(server).get(`${api}/portal/registration`);
+    expect(enumeration.status).toBe(404);
+
+    // And nothing that remains returns more than the one company asked for.
+    const one = await request(server).get(`${api}/portal/tenant/${defaultSlug}`);
+    expect(one.status).toBe(200);
+    expect(Object.keys(one.body.data).sort()).toEqual(['name', 'registrationOpen', 'slug']);
+
+    const other = await prisma.organization.findFirst({
+      where: { id: { not: org.orgId } },
+      select: { name: true },
     });
-    expect(slugs).toContain(mine.slug);
+    if (other) expect(one.text).not.toContain(other.name);
   });
 });
 
 describe('registration availability', () => {
-  it('reports that the portal is open and names the company behind it', async () => {
-    const res = await request(server).get(`${api}/portal/registration`);
-    expect(res.status).toBe(200);
-    expect(res.body.data.available).toBe(true);
+  it('tells the portal whose portal it is, for one company only', async () => {
+    const res = await request(server).get(`${api}/portal/tenant/${defaultSlug}`);
 
-    /*
-     * The portal draws its company picker from this. `organizationName` is
-     * filled in only when there is exactly one company — with several, naming
-     * one of them on the sign-in screen would be picking for the visitor,
-     * which is the habit that misfiled customers in the first place.
-     */
-    expect(Array.isArray(res.body.data.companies)).toBe(true);
-    expect(res.body.data.companies.length).toBeGreaterThan(0);
-    for (const company of res.body.data.companies) {
-      expect(typeof company.slug).toBe('string');
-      expect(typeof company.name).toBe('string');
-    }
+    expect(res.status).toBe(200);
+    expect(res.body.data.slug).toBe(defaultSlug);
+    expect(typeof res.body.data.name).toBe('string');
+    expect(res.body.data.registrationOpen).toBe(true);
+  });
+
+  it('answers a made-up address the same way as a real closed one', async () => {
+    const invented = await request(server).get(`${api}/portal/tenant/not-a-real-company-here`);
+    expect(invented.status).toBe(404);
+
+    // Deactivating a real company must produce an indistinguishable answer,
+    // or the difference is itself the disclosure.
+    const victim = await prisma.organization.create({
+      data: { id: unique('O').padEnd(26, '0').slice(0, 26).toUpperCase(), name: 'Closed Co', slug: unique('closed').toLowerCase(), isActive: false },
+    });
+    const closed = await request(server).get(`${api}/portal/tenant/${victim.slug}`);
+    expect(closed.status).toBe(404);
+    expect(closed.body.error.message).toBe(invented.body.error.message);
+    await prisma.organization.delete({ where: { id: victim.id } });
   });
 });
 

@@ -218,14 +218,40 @@ export async function login(input: {
   password: string;
   device: DeviceInfo;
   rememberMe?: boolean;
+  /**
+   * The company whose portal this sign-in came from.
+   *
+   * Sent by the Client Portal, which knows it from its own address, and absent
+   * for the console and the phone app — they are not company-specific front
+   * doors. When present the account must belong to that company.
+   */
+  organizationSlug?: string;
   meta: RequestMeta;
 }): Promise<AuthSession> {
   const user = await prisma.user.findFirst({
     where: { email: input.email.toLowerCase().trim(), deletedAt: null },
-    include: { organization: { select: { id: true, isActive: true, settings: true } } },
+    include: { organization: { select: { id: true, isActive: true, settings: true, slug: true } } },
   });
 
   if (!user || !user.passwordHash) {
+    await dummyVerify(input.password);
+    throw new AppError(ErrorCode.AUTH_INVALID_CREDENTIALS, 'The email or password is incorrect.');
+  }
+
+  /*
+   * A company-specific door only opens for that company.
+   *
+   * Acme's customer typing valid credentials into Tesla's portal is refused —
+   * otherwise every portal address is a front door to every tenant, and the
+   * separation is cosmetic.
+   *
+   * The refusal is the ordinary bad-credentials error, deliberately. Saying
+   * "right password, wrong company" would confirm that the address belongs to
+   * a real account somewhere on the platform, which is exactly what removing
+   * the public company list was meant to stop. The password is still verified
+   * first, so the timing does not distinguish the two cases either.
+   */
+  if (input.organizationSlug && user.organization.slug !== input.organizationSlug.toLowerCase()) {
     await dummyVerify(input.password);
     throw new AppError(ErrorCode.AUTH_INVALID_CREDENTIALS, 'The email or password is incorrect.');
   }

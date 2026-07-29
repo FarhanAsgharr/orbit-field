@@ -12,6 +12,7 @@
 import React, { useEffect, useState } from 'react';
 import { NavLink, useLocation } from 'react-router-dom';
 
+import { usePortalPath, useTenant } from '../App';
 import { useSession } from '../lib/session';
 import { initials } from './ui';
 
@@ -30,7 +31,7 @@ const icon = (path: React.ReactNode): React.ReactElement => (
 
 const ITEMS: NavItem[] = [
   {
-    to: '/client/dashboard',
+    to: '/dashboard',
     label: 'Dashboard',
     icon: icon(
       <>
@@ -42,7 +43,7 @@ const ITEMS: NavItem[] = [
     ),
   },
   {
-    to: '/client/request/new',
+    to: '/request/new',
     label: 'Create request',
     icon: icon(
       <>
@@ -52,7 +53,7 @@ const ITEMS: NavItem[] = [
     ),
   },
   {
-    to: '/client/requests',
+    to: '/requests',
     label: 'My requests',
     icon: icon(
       <>
@@ -62,12 +63,12 @@ const ITEMS: NavItem[] = [
     ),
   },
   {
-    to: '/client/messages',
+    to: '/messages',
     label: 'Messages',
     icon: icon(<path d="M21 12a8 8 0 0 1-8 8H4l2.2-2.7A8 8 0 1 1 21 12Z" />),
   },
   {
-    to: '/client/reports',
+    to: '/reports',
     label: 'Reports',
     icon: icon(
       <>
@@ -76,7 +77,7 @@ const ITEMS: NavItem[] = [
     ),
   },
   {
-    to: '/client/profile',
+    to: '/profile',
     label: 'Profile',
     icon: icon(
       <>
@@ -99,6 +100,8 @@ export function Shell({
   children: React.ReactNode;
 }): React.ReactElement {
   const { user, company, signOut } = useSession();
+  const path = usePortalPath();
+  const tenant = useTenant();
   const [navOpen, setNavOpen] = useState(false);
   const location = useLocation();
 
@@ -107,8 +110,8 @@ export function Shell({
   useEffect(() => setNavOpen(false), [location.pathname]);
 
   useEffect(() => {
-    document.title = `${title} — ${company?.name ?? 'Client portal'}`;
-  }, [title, company?.name]);
+    document.title = `${title} — ${tenant.name}`;
+  }, [title, tenant.name]);
 
   return (
     <div className="portal">
@@ -131,7 +134,7 @@ export function Shell({
             </span>
           )}
           <div className="nav__company">
-            <div className="nav__company-label">Client portal</div>
+            <div className="nav__company-label">{tenant.name}</div>
             <div className="nav__company-name" title={company?.name ?? ''}>
               {company?.name ?? '—'}
             </div>
@@ -142,7 +145,7 @@ export function Shell({
           {ITEMS.map((item) => (
             <NavLink
               key={item.to}
-              to={item.to}
+              to={path(item.to)}
               end={item.end}
               className={({ isActive }) => (isActive ? 'nav__link nav__link--active' : 'nav__link')}
             >

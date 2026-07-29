@@ -10,6 +10,7 @@ import { useQuery } from '@tanstack/react-query';
 import React from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 
+import { usePortalPath } from '../App';
 import { Shell } from '../components/Shell';
 import { Card, Empty, formatDate, Loading, Notice, StatusBadge } from '../components/ui';
 import { api } from '../lib/api';
@@ -28,6 +29,7 @@ interface Summary {
 }
 
 export function Dashboard(): React.ReactElement {
+  const path = usePortalPath();
   const { user } = useSession();
   const navigate = useNavigate();
 
@@ -54,7 +56,7 @@ export function Dashboard(): React.ReactElement {
       title={`Welcome back, ${user?.firstName ?? ''}`.trim()}
       subtitle="Your inspection requests and their progress."
       actions={
-        <Link className="btn btn--primary" to="/client/request/new">
+        <Link className="btn btn--primary" to={path('/request/new')}>
           New request
         </Link>
       }
@@ -72,7 +74,7 @@ export function Dashboard(): React.ReactElement {
           <span className="stat__value">{counts?.requests.informationRequested ?? '—'}</span>
           <span className="stat__hint">
             {counts && counts.requests.informationRequested > 0 ? (
-              <Link to="/client/messages">Answer to get things moving</Link>
+              <Link to={path('/messages')}>Answer to get things moving</Link>
             ) : (
               'Nothing waiting on you'
             )}
@@ -90,7 +92,7 @@ export function Dashboard(): React.ReactElement {
           <span className="stat__value">{summary.data ? completed : '—'}</span>
           <span className="stat__hint">
             {completed > 0 ? (
-              <Link to="/client/reports">Download the reports</Link>
+              <Link to={path('/reports')}>Download the reports</Link>
             ) : (
               'No reports yet'
             )}
@@ -101,7 +103,7 @@ export function Dashboard(): React.ReactElement {
       <Card
         title="Recent requests"
         action={
-          <Link className="btn btn--sm" to="/client/requests">
+          <Link className="btn btn--sm" to={path('/requests')}>
             See all
           </Link>
         }
@@ -113,7 +115,7 @@ export function Dashboard(): React.ReactElement {
           <Empty
             title="No requests yet"
             action={
-              <Link className="btn btn--primary" to="/client/request/new">
+              <Link className="btn btn--primary" to={path('/request/new')}>
                 Create your first request
               </Link>
             }
@@ -136,7 +138,7 @@ export function Dashboard(): React.ReactElement {
                   <tr
                     key={request.id}
                     className="is-clickable"
-                    onClick={() => navigate(`/client/requests/${request.id}`)}
+                    onClick={() => navigate(path(`/requests/${request.id}`))}
                   >
                     <td className="table__ref">{request.number}</td>
                     <td>{request.title}</td>

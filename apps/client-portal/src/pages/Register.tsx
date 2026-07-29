@@ -11,22 +11,15 @@
  * is a needless step at the exact moment they are most likely to leave.
  */
 
-import { useQuery } from '@tanstack/react-query';
 import React, { useState } from 'react';
-import { Link, Navigate, useLocation, useNavigate } from 'react-router-dom';
+import { Link, Navigate, useNavigate } from 'react-router-dom';
 
 import { PasswordField } from '../components/PasswordField';
+import { usePortalPath, useTenant } from '../App';
 import { Field, Notice } from '../components/ui';
-import { api, ApiRequestError, registerClient } from '../lib/api';
+import { ApiRequestError, registerClient } from '../lib/api';
 import { useSession } from '../lib/session';
 import { AuthAside } from './Login';
-
-interface Availability {
-  available: boolean;
-  organizationName: string | null;
-  companies: Array<{ slug: string; name: string }>;
-  reason?: string;
-}
 
 /** Common enough to be worth offering; "Other" keeps it from being a cage. */
 const INDUSTRIES = [
@@ -46,7 +39,6 @@ const INDUSTRIES = [
 ];
 
 interface FormState {
-  organizationSlug: string;
   companyName: string;
   industry: string;
   registrationNumber: string;
@@ -68,7 +60,6 @@ interface FormState {
 }
 
 const EMPTY: FormState = {
-  organizationSlug: '',
   companyName: '',
   industry: '',
   registrationNumber: '',
@@ -92,35 +83,23 @@ const EMPTY: FormState = {
 export function Register(): React.ReactElement {
   const { status, signIn } = useSession();
   const navigate = useNavigate();
+  const path = usePortalPath();
   const [form, setForm] = useState<FormState>(EMPTY);
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
-  const availability = useQuery({
-    queryKey: ['portal-registration'],
-    queryFn: () => api.get<Availability>('/portal/registration'),
-    retry: false,
-  });
-
-  const companies = availability.data?.companies ?? [];
-
   /*
-   * Which company this registration is for.
+   * No company question, and no company query.
    *
-   * Prefilled from `?company=<slug>` so a firm can hand its customers a direct
-   * link, and settled automatically when the portal serves only one. Otherwise
-   * the customer chooses: nobody else can know which firm they have been
-   * dealing with, and the old code guessed — which is how requests ended up in
-   * a stranger's console.
+   * `TenantGate` has already resolved which company this portal belongs to
+   * from the address, and refused to render at all if it were not a real one.
+   * There is nothing left to ask and nothing to choose from — which is the
+   * point: a customer of one company must never see that another exists.
    */
-  const requestedCompany = new URLSearchParams(useLocation().search).get('company') ?? '';
-  const chosenCompany =
-    form.organizationSlug ||
-    (companies.length === 1 ? companies[0]!.slug : '') ||
-    (companies.some((c) => c.slug === requestedCompany) ? requestedCompany : '');
+  const tenant = useTenant();
 
-  if (status === 'authenticated') return <Navigate to="/client/dashboard" replace />;
+  if (status === 'authenticated') return <Navigate to={path('/dashboard')} replace />;
 
   const set =
     (key: keyof FormState) =>
@@ -147,10 +126,10 @@ export function Register(): React.ReactElement {
     setBusy(true);
     try {
       const { confirmPassword: _drop, ...rest } = form;
-      await registerClient({ ...rest, organizationSlug: chosenCompany });
+      await registerClient({ ...rest, organizationSlug: tenant.slug });
       // Straight in — the account exists and they just typed the password.
       await signIn(form.email.trim(), form.password);
-      navigate('/client/dashboard', { replace: true });
+      navigate(path('/dashboard'), { replace: true });
     } catch (err) {
       if (err instanceof ApiRequestError) {
         setFieldErrors(err.fields ?? {});
@@ -162,15 +141,17 @@ export function Register(): React.ReactElement {
     }
   };
 
-  if (availability.data && !availability.data.available) {
+  if (!tenant.registrationOpen) {
     return (
       <div className="auth">
-        <AuthAside organizationName={availability.data.organizationName} />
+        <AuthAside organizationName={tenant.name} />
         <div className="auth__panel">
           <div className="auth__form">
             <h1>Registration is closed</h1>
-            <Notice kind="info">{availability.data.reason}</Notice>
-            <Link className="btn btn--block" to="/client/login">
+            <Notice kind="info">
+              {tenant.name} creates client accounts directly. Contact them to have yours set up.
+            </Notice>
+            <Link className="btn btn--block" to={path('/login')}>
               Back to sign in
             </Link>
           </div>
@@ -181,46 +162,17 @@ export function Register(): React.ReactElement {
 
   return (
     <div className="auth">
-      <AuthAside organizationName={availability.data?.organizationName} />
+      <AuthAside organizationName={tenant.name} />
       <div className="auth__panel">
         <form className="auth__form auth__form--wide" onSubmit={(e) => void submit(e)} noValidate>
           <div>
             <h1>Create a company account</h1>
             <p className="main__subtitle">
-              {availability.data?.organizationName
-                ? `Register with ${availability.data.organizationName} to request inspections online.`
-                : 'Register to request inspections online.'}
+              Register with {tenant.name} to request inspections online.
             </p>
           </div>
 
           {error && <Notice>{error}</Notice>}
-
-          {companies.length > 1 && (
-            <fieldset className="fieldset">
-              <legend className="fieldset__legend">Who are you registering with?</legend>
-              <Field
-                label="Company"
-                required
-                hint="The company that will carry out your inspections."
-                error={fieldErrors.organizationSlug}
-                full
-              >
-                <select
-                  className="select"
-                  value={chosenCompany}
-                  onChange={(e) => setForm({ ...form, organizationSlug: e.target.value })}
-                  required
-                >
-                  <option value="">Select a company</option>
-                  {companies.map((c) => (
-                    <option key={c.slug} value={c.slug}>
-                      {c.name}
-                    </option>
-                  ))}
-                </select>
-              </Field>
-            </fieldset>
-          )}
 
           <fieldset className="fieldset">
             <legend className="fieldset__legend">Company information</legend>
@@ -399,14 +351,10 @@ export function Register(): React.ReactElement {
           </fieldset>
 
           <div className="form-actions">
-            <button
-              className="btn btn--primary"
-              type="submit"
-              disabled={busy || (companies.length > 1 && !chosenCompany)}
-            >
+            <button className="btn btn--primary" type="submit" disabled={busy}>
               {busy ? 'Creating your account…' : 'Create account'}
             </button>
-            <Link className="btn btn--ghost" to="/client/login">
+            <Link className="btn btn--ghost" to={path('/login')}>
               I already have an account
             </Link>
           </div>

@@ -33,7 +33,7 @@ interface SessionUser {
 interface SessionState {
   status: 'checking' | 'authenticated' | 'anonymous';
   user: SessionUser | null;
-  organization: { id: string; name: string } | null;
+  organization: { id: string; name: string; slug?: string } | null;
   permissions: Set<string>;
   error: string | null;
   busy: boolean;
@@ -82,7 +82,11 @@ export function SessionProvider({ children }: { children: React.ReactNode }): Re
         lastName: session.user.lastName,
         role: String(session.user.role),
       },
-      organization: { id: String(session.organization.id), name: session.organization.name },
+      organization: {
+        id: String(session.organization.id),
+        name: session.organization.name,
+        slug: (session.organization as { slug?: string }).slug,
+      },
       permissions,
       error: null,
       busy: false,
@@ -117,7 +121,10 @@ export function SessionProvider({ children }: { children: React.ReactNode }): Re
               >;
             }>('/users', { pageSize: 1, search: '' })
             .catch(() => null),
-          api.get<{ id: string; name: string }>('/admin/organization').catch(() => null),
+          // `slug` is what builds this company's own Client Portal address.
+          api
+            .get<{ id: string; name: string; slug: string }>('/admin/organization')
+            .catch(() => null),
         ]);
 
         if (cancelled) return;
@@ -137,7 +144,7 @@ export function SessionProvider({ children }: { children: React.ReactNode }): Re
             role: me.role,
           },
           organization: org
-            ? { id: org.id, name: org.name }
+            ? { id: org.id, name: org.name, slug: org.slug }
             : { id: me.orgId, name: 'Organisation' },
           permissions: new Set(
             Array.from(

@@ -220,6 +220,95 @@ describe('an owner is a stranger to every other company', () => {
   });
 });
 
+describe('a company-specific portal is a door to that company only', () => {
+  /*
+   * The Client Portal is per company: `/acme/login` is Acme's front door. It
+   * sends its own slug with the sign-in, and the server must refuse an account
+   * belonging to anybody else — otherwise every portal address is a front door
+   * to every tenant and the separation is decoration.
+   */
+  it('lets a company’s own account in through its own portal', async () => {
+    const res = await request(server)
+      .post(`${api}/auth/login`)
+      .send({
+        email: alpha.email,
+        password: alpha.password,
+        organizationSlug: (
+          await prisma.organization.findUniqueOrThrow({
+            where: { id: alpha.orgId },
+            select: { slug: true },
+          })
+        ).slug,
+        device: device(),
+      });
+
+    expect(res.status).toBe(200);
+    expect(String(res.body.data.organization.id)).toBe(alpha.orgId);
+  });
+
+  it('refuses valid credentials presented at another company’s portal', async () => {
+    const bravoSlug = (
+      await prisma.organization.findUniqueOrThrow({
+        where: { id: bravo.orgId },
+        select: { slug: true },
+      })
+    ).slug;
+
+    const res = await request(server)
+      .post(`${api}/auth/login`)
+      .send({
+        // Alpha's owner, correct password, Bravo's portal.
+        email: alpha.email,
+        password: alpha.password,
+        organizationSlug: bravoSlug,
+        device: device(),
+      });
+
+    expect(res.status).toBe(401);
+    expect(res.body.error.code).toBe('AUTH_INVALID_CREDENTIALS');
+  });
+
+  it('says nothing about which company an address belongs to', async () => {
+    const bravoSlug = (
+      await prisma.organization.findUniqueOrThrow({
+        where: { id: bravo.orgId },
+        select: { slug: true },
+      })
+    ).slug;
+
+    const wrongDoor = await request(server)
+      .post(`${api}/auth/login`)
+      .send({ email: alpha.email, password: alpha.password, organizationSlug: bravoSlug, device: device() });
+
+    const nobody = await request(server)
+      .post(`${api}/auth/login`)
+      .send({
+        email: `ghost.${unique('x')}@example.test`,
+        password: 'Tk9-Vrelm-2026!qz',
+        organizationSlug: bravoSlug,
+        device: device(),
+      });
+
+    /*
+     * Identical answers. "Right password, wrong company" would confirm that
+     * the address holds a real account somewhere on the platform — the same
+     * thing removing the public company list was meant to stop.
+     */
+    expect(wrongDoor.status).toBe(nobody.status);
+    expect(wrongDoor.body.error.message).toBe(nobody.body.error.message);
+  });
+
+  it('still lets the console and the phone app sign in without a company', async () => {
+    // Neither is a company-specific front door, so neither sends a slug.
+    const res = await request(server)
+      .post(`${api}/auth/login`)
+      .send({ email: alpha.email, password: alpha.password, device: device() });
+
+    expect(res.status).toBe(200);
+    expect(String(res.body.data.organization.id)).toBe(alpha.orgId);
+  });
+});
+
 describe('email addresses across companies', () => {
   it('refuses to register a company with an address already in use', async () => {
     const res = await request(server)

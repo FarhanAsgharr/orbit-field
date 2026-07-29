@@ -26,6 +26,7 @@ import {
   logout as apiLogout,
   onAuthLost,
 } from './api';
+import { resolveTenant } from './tenant';
 
 export interface Company {
   id: string;
@@ -139,7 +140,9 @@ export function SessionProvider({ children }: { children: React.ReactNode }): Re
   const signIn = useCallback(async (email: string, password: string) => {
     setState((s) => ({ ...s, busy: true, error: null }));
     try {
-      const session: AuthSession = await apiLogin(email, password);
+      // Whose portal this is, from the address. The server rejects an account
+      // belonging to any other company.
+      const session: AuthSession = await apiLogin(email, password, resolveTenant() ?? undefined);
 
       if (String(session.user.role) !== 'CLIENT') {
         // Valid credentials, wrong product. Drop the session we just minted so

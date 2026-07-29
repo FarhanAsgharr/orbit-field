@@ -34,7 +34,7 @@ import {
   statusBadge,
 } from '../components/ui';
 import { api } from '../lib/api';
-import { PORTAL_URL } from '../lib/config';
+import { portalUrlFor } from '../lib/config';
 import { useSession } from '../lib/auth';
 
 // ---------------------------------------------------------------------------
@@ -969,7 +969,7 @@ function EditMemberPanel({
  */
 function InviteUserButton(): React.ReactElement {
   const queryClient = useQueryClient();
-  const { user } = useSession();
+  const { user, organization } = useSession();
   const [open, setOpen] = useState(false);
   const [form, setForm] = useState(EMPTY_INVITE);
   const [error, setError] = useState<string | null>(null);
@@ -1082,7 +1082,8 @@ function InviteUserButton(): React.ReactElement {
           {created.isClient ? (
             <p>
               Give these to <strong>{created.email}</strong>, along with the client portal address:{' '}
-              <code>{PORTAL_URL}</code>. They sign in there with exactly this email and password.
+              <code>{portalUrlFor(organization?.slug) ?? '—'}</code>. They sign in there with
+              exactly this email and password.
             </p>
           ) : (
             <p>

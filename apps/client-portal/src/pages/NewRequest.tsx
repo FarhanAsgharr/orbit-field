@@ -19,6 +19,7 @@ import React, { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 
 import { Attachments } from '../components/Attachments';
+import { usePortalPath } from '../App';
 import { Shell } from '../components/Shell';
 import { Card, Field, Notice } from '../components/ui';
 import { api, ApiRequestError } from '../lib/api';
@@ -36,6 +37,7 @@ interface Created {
 }
 
 export function NewRequest(): React.ReactElement {
+  const path = usePortalPath();
   const navigate = useNavigate();
   const [created, setCreated] = useState<Created | null>(null);
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
@@ -114,11 +116,11 @@ export function NewRequest(): React.ReactElement {
           <button
             type="button"
             className="btn btn--primary"
-            onClick={() => navigate(`/client/requests/${created.id}`)}
+            onClick={() => navigate(path(`/requests/${created.id}`))}
           >
             View the request
           </button>
-          <Link className="btn" to="/client/requests">
+          <Link className="btn" to={path('/requests')}>
             All my requests
           </Link>
         </div>
@@ -248,7 +250,7 @@ export function NewRequest(): React.ReactElement {
             >
               {submit.isPending ? 'Submitting…' : 'Submit request'}
             </button>
-            <Link className="btn btn--ghost" to="/client/requests">
+            <Link className="btn btn--ghost" to={path('/requests')}>
               Cancel
             </Link>
           </div>

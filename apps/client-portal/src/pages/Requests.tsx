@@ -10,6 +10,7 @@ import { useQuery } from '@tanstack/react-query';
 import React, { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 
+import { usePortalPath } from '../App';
 import { Shell } from '../components/Shell';
 import {
   Card,
@@ -48,6 +49,7 @@ const FILTERS: Array<{ value: string; label: string }> = [
 ];
 
 export function Requests(): React.ReactElement {
+  const path = usePortalPath();
   const navigate = useNavigate();
   const [status, setStatus] = useState('');
   const [search, setSearch] = useState('');
@@ -71,7 +73,7 @@ export function Requests(): React.ReactElement {
       title="My requests"
       subtitle="Everything you have asked for, and where it has got to."
       actions={
-        <Link className="btn btn--primary" to="/client/request/new">
+        <Link className="btn btn--primary" to={path('/request/new')}>
           New request
         </Link>
       }
@@ -117,7 +119,7 @@ export function Requests(): React.ReactElement {
             title={search || status ? 'Nothing matches that' : 'No requests yet'}
             action={
               search || status ? undefined : (
-                <Link className="btn btn--primary" to="/client/request/new">
+                <Link className="btn btn--primary" to={path('/request/new')}>
                   Create a request
                 </Link>
               )
@@ -146,7 +148,7 @@ export function Requests(): React.ReactElement {
                   <tr
                     key={request.id}
                     className="is-clickable"
-                    onClick={() => navigate(`/client/requests/${request.id}`)}
+                    onClick={() => navigate(path(`/requests/${request.id}`))}
                   >
                     <td className="table__ref">{request.number}</td>
                     <td>

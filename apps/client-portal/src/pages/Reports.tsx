@@ -15,6 +15,7 @@ import { useMutation, useQuery } from '@tanstack/react-query';
 import React, { useState } from 'react';
 import { Link } from 'react-router-dom';
 
+import { usePortalPath } from '../App';
 import { Shell } from '../components/Shell';
 import { Card, Empty, formatDate, Loading, Notice, StatusBadge } from '../components/ui';
 import { api } from '../lib/api';
@@ -37,6 +38,7 @@ interface Inspection {
 const FINISHED = ['APPROVED', 'COMPLETED'];
 
 export function Reports(): React.ReactElement {
+  const path = usePortalPath();
   const [error, setError] = useState<string | null>(null);
   const [downloading, setDownloading] = useState<string | null>(null);
 
@@ -92,7 +94,7 @@ export function Reports(): React.ReactElement {
           <Empty
             title="No reports yet"
             action={
-              <Link className="btn btn--primary" to="/client/request/new">
+              <Link className="btn btn--primary" to={path('/request/new')}>
                 Request an inspection
               </Link>
             }

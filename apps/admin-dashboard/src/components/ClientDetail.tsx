@@ -16,7 +16,8 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import React, { useState } from 'react';
 
 import { api } from '../lib/api';
-import { PORTAL_URL } from '../lib/config';
+import { portalUrlFor } from '../lib/config';
+import { useSession } from '../lib/auth';
 import { PasswordInput } from './PasswordInput';
 import { Badge, ErrorBanner } from './ui';
 
@@ -91,6 +92,8 @@ export function ClientDetail({
   onClose: () => void;
 }): React.ReactElement {
   const queryClient = useQueryClient();
+  const { organization } = useSession();
+  const [copied, setCopied] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [resetFor, setResetFor] = useState<ClientPortalUser | null>(null);
@@ -257,6 +260,65 @@ export function ClientDetail({
           </div>
         </div>
 
+        {/*
+          This company's own portal address.
+          
+          It is the same for every client of this company — the company is the
+          tenant, not the individual customer — and it is the only way in:
+          there is no directory of companies to browse and no picker to get
+          wrong. Sending this link is how an administrator onboards a customer.
+        */}
+        <section>
+          <h3 className="card__title">Company Portal URL</h3>
+          {organization?.slug ? (
+            <div className="row gap-2" style={{ marginTop: 8, flexWrap: 'nowrap' }}>
+              <code
+                className="input grow"
+                style={{ display: 'block', overflowX: 'auto', whiteSpace: 'nowrap' }}
+              >
+                {portalUrlFor(organization.slug)}
+              </code>
+              <button
+                className="btn btn--sm"
+                type="button"
+                onClick={() => {
+                  const url = portalUrlFor(organization.slug);
+                  if (!url) return;
+                  /*
+                   * The clipboard API needs a secure context and permission,
+                   * and refuses in a few browsers. Falling back to a selected
+                   * textarea means the button never silently does nothing.
+                   */
+                  void navigator.clipboard
+                    .writeText(url)
+                    .catch(() => {
+                      const field = document.createElement('textarea');
+                      field.value = url;
+                      field.style.position = 'fixed';
+                      field.style.opacity = '0';
+                      document.body.append(field);
+                      field.select();
+                      document.execCommand('copy');
+                      field.remove();
+                    })
+                    .finally(() => {
+                      setCopied(true);
+                      setTimeout(() => setCopied(false), 2000);
+                    });
+                }}
+              >
+                {copied ? 'Copied' : 'Copy Portal Link'}
+              </button>
+            </div>
+          ) : (
+            <p className="muted small">The portal address could not be determined.</p>
+          )}
+          <p className="field__hint" style={{ marginTop: 6 }}>
+            Send this to {data.name}. They register and sign in there, and see nothing belonging to
+            any other company.
+          </p>
+        </section>
+
         <section>
           <h3 className="card__title">Company</h3>
           <div className="grid grid--4">
@@ -327,7 +389,7 @@ export function ClientDetail({
             <div className="stack gap-2" style={{ marginTop: 12 }}>
               <p className="small">
                 Give these to <strong>{issued.email}</strong> along with the portal address:{' '}
-                <code>{PORTAL_URL}</code>
+                <code>{portalUrlFor(organization?.slug) ?? '—'}</code>
               </p>
               <div className="field">
                 <span className="field__label">Password</span>

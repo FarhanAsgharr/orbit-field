@@ -12,19 +12,18 @@
  *
  * Two things are worth being explicit about.
  *
- * **Which organisation a customer joins — the customer says.** This used to
- * guess: it took the organisation named by `PORTAL_ORG_SLUG`, or failing that
- * the earliest-created one, on the reasoning that a single-company install has
- * only one answer. Once anybody could register their own company that reasoning
- * collapsed, and the guess became a bug with no error message: a customer
- * registering to work with one firm was filed under whichever firm happened to
- * be oldest — the seeded demo tenant — and their requests landed in a console
- * nobody they had ever spoken to was reading. The request was created, stored
- * and returned correctly the whole time, to the wrong company's staff.
+ * **Which organisation a customer joins — the URL says.** This has been wrong
+ * twice, in opposite directions. First it guessed: the oldest organisation won,
+ * which silently filed customers under a company they had never dealt with.
+ * Then it asked, with a dropdown — which fixed the misfiling but published
+ * every company's name to anyone who opened the portal, and still let somebody
+ * pick the wrong one.
  *
- * So the company is now part of the submission, chosen from the list the portal
- * offers. `PORTAL_ORG_SLUG` still pins a deployment that serves exactly one
- * company, and a single-company install needs no choice at all.
+ * Now the company comes from the address the customer was given:
+ * `portal.example.com/acme` is Acme's portal and nothing else. There is no
+ * list to leak and no question to answer wrongly. A slug that names no company
+ * is a 404 — the same answer a stranger gets for a company that does exist but
+ * has closed registration, so probing tells them nothing either way.
  *
  * **This endpoint is open by definition.** Anyone who reaches the portal URL
  * can create a client record, which is what a customer portal *is* — the
@@ -95,10 +94,11 @@ interface HostOrganization {
   id: string;
   name: string;
   slug: string;
+  isActive: boolean;
   settings: Prisma.JsonValue;
 }
 
-const ORG_SELECT = { id: true, name: true, slug: true, settings: true };
+const ORG_SELECT = { id: true, name: true, slug: true, isActive: true, settings: true };
 
 /** Whether this company is currently taking client registrations. */
 function accepts(org: { settings: Prisma.JsonValue }): boolean {
@@ -107,103 +107,74 @@ function accepts(org: { settings: Prisma.JsonValue }): boolean {
 }
 
 /**
- * The companies a visitor may register with.
+ * The one company a portal address names.
  *
- * A deployment that serves one company pins it with `PORTAL_ORG_SLUG` and the
- * portal asks nothing. Otherwise the customer picks, because nobody else can
- * know which firm they have been dealing with.
+ * Deliberately singular. Nothing here returns "all companies" to an
+ * unauthenticated caller, because a customer portal that can enumerate its
+ * tenants publishes the operator's customer list — and where two competitors
+ * may both be tenants, that is precisely the disclosure this design exists to
+ * prevent.
+ *
+ * `PORTAL_ORG_SLUG` pins a deployment to one company and makes the URL segment
+ * irrelevant, which is how a customer-owned deployment on its own domain runs.
  */
-export async function registrableOrganizations(): Promise<HostOrganization[]> {
-  if (env.PORTAL_ORG_SLUG) {
-    const named = await prisma.organization.findUnique({
-      where: { slug: env.PORTAL_ORG_SLUG },
-      select: ORG_SELECT,
-    });
-    if (named) return accepts(named) ? [named] : [];
-    // Configured but absent is a deployment mistake, not a visitor's problem.
-    // Say so in the log rather than turning every registration into a 500.
-    logger.warn(
-      { slug: env.PORTAL_ORG_SLUG },
-      'PORTAL_ORG_SLUG names an organisation that does not exist; offering all companies instead',
-    );
-  }
+export async function organizationForPortal(slug: string): Promise<HostOrganization | null> {
+  const wanted = env.PORTAL_ORG_SLUG ?? slug;
+  if (!wanted) return null;
 
-  const all = await prisma.organization.findMany({
-    where: { isActive: true },
-    orderBy: { name: 'asc' },
+  const org = await prisma.organization.findUnique({
+    where: { slug: wanted.toLowerCase() },
     select: ORG_SELECT,
   });
-  return all.filter(accepts);
+
+  if (!org || !org.isActive) return null;
+  return org;
 }
 
 /**
- * Resolve the company a submission names.
+ * Resolve the company a submission names, or refuse.
  *
- * Never falls back to "the first one". A registration whose company cannot be
- * resolved is refused, because filing a customer under a company they did not
- * choose is the failure this whole path exists to prevent.
+ * Never falls back to "the only one" or "the first one". Both were real bugs:
+ * the fallback filed customers under a company they had never heard of, and
+ * the dropdown that replaced it let them pick a competitor's portal by mistake
+ * while publishing every tenant's name.
  */
 async function resolveOrganization(slug: string | undefined): Promise<HostOrganization> {
-  const available = await registrableOrganizations();
+  const org = slug ? await organizationForPortal(slug) : null;
 
-  if (available.length === 0) {
+  /*
+   * One message for "no such company" and for "that company is not taking
+   * registrations".
+   *
+   * Distinguishing them would make this endpoint an oracle: a stranger could
+   * walk a word list and learn exactly which companies exist here.
+   */
+  if (!org || !accepts(org)) {
     throw new AppError(
-      ErrorCode.PERMISSION_DENIED,
-      'No company on this portal is accepting new client accounts. Please contact the company you are working with.',
+      ErrorCode.NOT_FOUND,
+      'This portal address is not valid. Ask the company you are working with for their portal link.',
     );
   }
 
-  if (!slug) {
-    // One company means there is nothing to ask and nothing to get wrong.
-    if (available.length === 1) return available[0]!;
-    throw new AppError(
-      ErrorCode.VALIDATION_FAILED,
-      'Choose the company you are registering with.',
-      {
-        fields: { organizationSlug: 'Required.' },
-      },
-    );
-  }
-
-  const chosen = available.find((o) => o.slug === slug);
-  if (!chosen) {
-    throw new AppError(ErrorCode.VALIDATION_FAILED, 'That company was not found on this portal.', {
-      fields: { organizationSlug: 'Not accepting client registrations.' },
-    });
-  }
-  return chosen;
+  return org;
 }
 
 /**
- * Whether the portal is accepting new customers, and for whom.
+ * What the portal may say about the company whose address was opened.
  *
- * `companies` is what the registration form draws its picker from.
- * `organizationName` is kept for the single-company case, where the portal
- * says whose portal this is rather than showing unbranded chrome.
+ * Name and slug only, and only for a company that was named correctly. There
+ * is no list, no search and no "did you mean" — the caller must already know
+ * the address, which is exactly the property that keeps one tenant from
+ * discovering another.
  */
-export async function clientSignupAvailable(): Promise<{
-  available: boolean;
-  organizationName: string | null;
-  companies: Array<{ slug: string; name: string }>;
-  reason?: string;
-}> {
-  const companies = await registrableOrganizations();
-
-  if (companies.length === 0) {
-    return {
-      available: false,
-      organizationName: null,
-      companies: [],
-      reason:
-        'This portal is not accepting new client accounts. Please contact the company you are working with.',
-    };
-  }
-
-  return {
-    available: true,
-    organizationName: companies.length === 1 ? companies[0]!.name : null,
-    companies: companies.map((o) => ({ slug: o.slug, name: o.name })),
-  };
+export async function portalTenant(slug: string): Promise<{
+  slug: string;
+  name: string;
+  registrationOpen: boolean;
+} | null> {
+  const org = await organizationForPortal(slug);
+  if (!org) return null;
+  return { slug: org.slug, name: org.name, registrationOpen: accepts(org) };
 }
 
 /**

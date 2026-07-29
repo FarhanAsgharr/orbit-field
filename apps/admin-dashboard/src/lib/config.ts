@@ -11,6 +11,26 @@
  * than to a broken link in the one message whose whole job is telling somebody
  * where to go.
  */
-export const PORTAL_URL =
-  (import.meta.env.VITE_PORTAL_URL as string | undefined) ??
-  'https://orbit-field-portal.vercel.app/client/login';
+/** The Client Portal's origin. Company-specific paths hang off it. */
+export const PORTAL_ORIGIN = (
+  (import.meta.env.VITE_PORTAL_URL as string | undefined) ?? 'https://orbit-field-portal.vercel.app'
+).replace(/\/+$/, '');
+
+/**
+ * This company's own portal address.
+ *
+ * Every company has its own — `…/acme` is Acme's and shows no sign that anyone
+ * else uses the platform. Administrators hand this link to their customers,
+ * which is the only way in: there is no directory to browse and no company
+ * picker to get wrong.
+ *
+ * Built from the slug rather than stored, so it stays correct if the portal
+ * moves to a domain of its own. Moving to `acme.portal.example.com` later
+ * changes this one function and nothing else.
+ */
+export function portalUrlFor(slug: string | null | undefined): string | null {
+  return slug ? `${PORTAL_ORIGIN}/${slug}` : null;
+}
+
+/** Where a client account signs in. Used in the hand-over instructions. */
+export const PORTAL_URL = PORTAL_ORIGIN;

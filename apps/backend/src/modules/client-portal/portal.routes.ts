@@ -30,7 +30,7 @@ import { validate } from '../../middleware/validate.js';
 import type { RequestMeta } from '../auth/auth.service.js';
 import { recordChange } from '../sync/change-log.js';
 import { SyncEntity, SyncOperation } from '@orbit/types';
-import { clientSignupAvailable, registerClient } from './registration.service.js';
+import { portalTenant, registerClient } from './registration.service.js';
 
 const router: Router = Router();
 
@@ -107,26 +107,40 @@ const registrationSchema = z.object({
   /**
    * Which company the customer is registering with.
    *
-   * Optional in the schema and required in practice whenever the portal serves
-   * more than one company — the service refuses rather than guessing, because
-   * guessing is what filed customers under the wrong firm.
+   * Required, always. The portal takes it from the address that was opened —
+   * `/acme/register` is Acme's — so there is nothing for the customer to
+   * choose and nothing for the server to guess. Both of those were bugs.
    */
-  organizationSlug: z.string().min(1).max(80).trim().optional(),
+  organizationSlug: z.string().min(1).max(80).trim(),
 });
 
 /**
- * Is the portal accepting registrations, and who is behind it?
+ * Who is behind this portal address?
  *
- * The portal asks before drawing the form. Offering a signup an installation
- * will refuse sends people to a page that cannot work; hiding one that would
- * have succeeded loses a customer. The organisation's name comes back so the
- * portal can say whose portal this is rather than showing unbranded chrome.
+ * The portal calls this to learn whose portal it is drawing — the company's
+ * name for the heading, and whether registration is open. It answers for one
+ * company, named in the path, and never lists any other.
+ *
+ * A slug nobody recognises is a 404 with the same wording a closed company
+ * gets, so probing this endpoint cannot be used to discover which companies
+ * exist on the installation.
  */
 router.get(
-  '/registration',
+  '/tenant/:slug',
   authLimiter,
-  asyncHandler(async (_req, res) => {
-    res.json({ data: await clientSignupAvailable() });
+  validate({ params: z.object({ slug: z.string().min(1).max(80) }) }),
+  asyncHandler(async (req, res) => {
+    const { slug } = req.validated!.params as { slug: string };
+    const tenant = await portalTenant(slug);
+
+    if (!tenant) {
+      throw new AppError(
+        ErrorCode.NOT_FOUND,
+        'This portal address is not valid. Ask the company you are working with for their portal link.',
+      );
+    }
+
+    res.json({ data: tenant });
   }),
 );
 

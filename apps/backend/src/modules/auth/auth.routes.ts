@@ -44,6 +44,8 @@ router.post(
       password: z.string().min(1).max(200),
       device: deviceSchema,
       rememberMe: z.boolean().optional(),
+      /** Set by the Client Portal, which takes it from its own address. */
+      organizationSlug: z.string().min(1).max(80).trim().optional(),
     }),
   }),
   asyncHandler(async (req, res) => {
@@ -52,6 +54,7 @@ router.post(
       password: string;
       device: z.infer<typeof deviceSchema>;
       rememberMe?: boolean;
+      organizationSlug?: string;
     };
     const session = await authService.login({ ...body, meta: meta(req) });
     res.json({ data: session });
