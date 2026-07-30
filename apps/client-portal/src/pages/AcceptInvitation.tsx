@@ -16,6 +16,7 @@
  * whether they guessed a real one.
  */
 
+import type { InvitationDetails } from '@orbit/types';
 import { useMutation, useQuery } from '@tanstack/react-query';
 import React, { useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
@@ -26,16 +27,6 @@ import { Loading, Notice } from '../components/ui';
 import { api, ApiRequestError } from '../lib/api';
 import { useSession } from '../lib/session';
 import { AuthAside } from './Login';
-
-interface Invitation {
-  organizationName: string;
-  organizationSlug: string;
-  clientName: string;
-  email: string;
-  firstName: string | null;
-  lastName: string | null;
-  expiresAt: string;
-}
 
 export function AcceptInvitation(): React.ReactElement {
   const { token = '' } = useParams();
@@ -52,7 +43,8 @@ export function AcceptInvitation(): React.ReactElement {
 
   const invitation = useQuery({
     queryKey: ['invitation', token],
-    queryFn: () => api.get<Invitation>(`/portal/invitations/${token}`, { company: tenant.slug }),
+    queryFn: () =>
+      api.get<InvitationDetails>(`/portal/invitations/${token}`, { company: tenant.slug }),
     retry: false,
   });
 

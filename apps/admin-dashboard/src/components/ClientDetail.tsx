@@ -12,6 +12,7 @@
  * one by aiming badly at a dense table.
  */
 
+import type { ClientInvitationSummary } from '@orbit/types';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import React, { useState } from 'react';
 
@@ -28,19 +29,6 @@ export interface ClientPortalUser {
   lastName: string;
   status: string;
   lastLoginAt: string | null;
-}
-
-export interface Invitation {
-  id: string;
-  email: string;
-  firstName: string | null;
-  lastName: string | null;
-  expiresAt: string;
-  acceptedAt: string | null;
-  revokedAt: string | null;
-  createdAt: string;
-  status: 'PENDING' | 'ACCEPTED' | 'REVOKED' | 'EXPIRED';
-  createdBy: { firstName: string; lastName: string } | null;
 }
 
 export interface ClientRecord {
@@ -231,7 +219,7 @@ export function ClientDetail({
     newLogin.password.length >= 12;
   const invitations = useQuery({
     queryKey: ['client-invitations', client.id],
-    queryFn: () => api.get<Invitation[]>(`/clients/${client.id}/invitations`),
+    queryFn: () => api.get<ClientInvitationSummary[]>(`/clients/${client.id}/invitations`),
   });
 
   const refreshInvitations = (): void => {
@@ -279,7 +267,7 @@ export function ClientDetail({
    * working the moment this succeeds.
    */
   const resendInvite = useMutation({
-    mutationFn: (row: Invitation) =>
+    mutationFn: (row: ClientInvitationSummary) =>
       api.post<{ invitePath: string }>(`/clients/${client.id}/invitations`, {
         email: row.email,
         firstName: row.firstName,

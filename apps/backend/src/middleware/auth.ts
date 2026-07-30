@@ -31,6 +31,18 @@ function extractBearer(req: Request): string | null {
  * not keep a suspended user or a revoked (stolen) device working for the rest
  * of its lifetime.
  */
+/**
+ * Markers the OpenAPI generator reads.
+ *
+ * `requireAuth` is wrapped by `asyncHandler`, so it reaches Express as an
+ * anonymous function and its name says nothing. Rather than have the generator
+ * guess from paths — which would quietly go wrong the first time a route moved
+ * — the middleware says what it is. Symbols, because this is metadata for one
+ * reader; nothing branches on it at runtime and request handling is unchanged.
+ */
+export const AUTH_MARKER = Symbol.for('orbit.requiresAuth');
+export const PERMISSION_MARKER = Symbol.for('orbit.requiresPermission');
+
 export const requireAuth = asyncHandler(
   async (req: Request, _res: Response, next: NextFunction) => {
     const token = extractBearer(req);
@@ -147,8 +159,10 @@ export const optionalAuth = asyncHandler(
 );
 
 /** Gate a route on a single permission. */
+Object.defineProperty(requireAuth, AUTH_MARKER, { value: true, enumerable: false });
+
 export function requirePermission(permission: Permission) {
-  return (req: Request, _res: Response, next: NextFunction): void => {
+  const middleware = (req: Request, _res: Response, next: NextFunction): void => {
     const subject = getAuth(req);
     if (!can(subject, permission)) {
       req.log.warn({ permission, role: subject.role }, 'permission denied');
@@ -175,6 +189,14 @@ export function requirePermission(permission: Permission) {
     }
     next();
   };
+
+  // Which permission this route wants, so the API reference can say so rather
+  // than leaving a reader to discover it by being refused.
+  Object.defineProperty(middleware, PERMISSION_MARKER, {
+    value: permission,
+    enumerable: false,
+  });
+  return middleware;
 }
 
 /** Gate a route on holding at least one of several permissions. */
