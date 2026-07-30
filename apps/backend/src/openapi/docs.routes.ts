@@ -18,6 +18,14 @@
  * For the same reason there is no inline script anywhere here: `'unsafe-inline'`
  * is not in the policy and is not being added, so the few lines that boot each
  * renderer are served as their own files.
+ *
+ * **The page is always the real page.** Whether *this process* can resolve the
+ * bundles says nothing about whether the browser will get them: in production
+ * the build copies them into the static output and Vercel's CDN answers before
+ * a request ever reaches this function. An earlier version gated the page on a
+ * local `require.resolve` and so rendered an apologetic placeholder in the one
+ * environment where the assets were definitely present. The `express.static`
+ * mounts below are what serve them in development, where there is no CDN.
  */
 
 import { createRequire } from 'node:module';
@@ -92,15 +100,6 @@ const REDOC_PAGE = `<!doctype html>
 </html>
 `;
 
-const MISSING = (name: string): string => `<!doctype html>
-<html lang="en"><head><meta charset="utf-8"><title>Orbit Field API</title></head>
-<body style="font-family: system-ui; padding: 3rem; max-width: 40rem;">
-<h1>${name} is not available in this build</h1>
-<p>Its assets were not bundled. The specification itself is served at
-<a href="/openapi.json">/openapi.json</a> and can be opened in any OpenAPI viewer.</p>
-</body></html>
-`;
-
 /**
  * Mount the documentation.
  *
@@ -151,7 +150,7 @@ export function mountDocumentation(app: Express): void {
     );
   }
   swagger.get('/', (_req, res) => {
-    res.type('html').send(SWAGGER_ASSETS ? SWAGGER_PAGE : MISSING('Swagger UI'));
+    res.type('html').send(SWAGGER_PAGE);
   });
   app.use('/docs', swagger);
 
@@ -160,7 +159,7 @@ export function mountDocumentation(app: Express): void {
     redoc.use('/assets', express.static(REDOC_ASSETS, { maxAge: '7d', index: false }));
   }
   redoc.get('/', (_req, res) => {
-    res.type('html').send(REDOC_ASSETS ? REDOC_PAGE : MISSING('ReDoc'));
+    res.type('html').send(REDOC_PAGE);
   });
   app.use('/redoc', redoc);
 }
