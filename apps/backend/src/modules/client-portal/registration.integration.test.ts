@@ -111,139 +111,6 @@ async function hostOrgId(): Promise<string> {
   return org.orgId;
 }
 
-describe('which company a customer registers with', () => {
-  /*
-   * The bug this covers, in full.
-   *
-   * Registration used to file every customer under the earliest-created
-   * organisation. On an installation with more than one company that is a
-   * silent misfiling: the customer registers, raises a request, gets a
-   * reference number, and the request lands in a console belonging to a
-   * company they have never dealt with. Nothing errors. The staff they *are*
-   * dealing with simply never see it, and tenant isolation — working exactly
-   * as designed — makes it invisible rather than wrong.
-   *
-   * So these cases are about where the row lands, not whether the call
-   * succeeds. A test asserting only a 201 passed throughout the entire life of
-   * the bug.
-   */
-  it('files the customer under the company they chose', async () => {
-    const others = await prisma.organization.findMany({
-      orderBy: { createdAt: 'asc' },
-      select: { id: true, slug: true },
-    });
-    const oldest = others[0]!;
-    // The fixture organisation is not the oldest, which is the whole point:
-    // choosing it must beat the old "first one wins" behaviour.
-    const target = await prisma.organization.findUniqueOrThrow({
-      where: { id: org.orgId },
-      select: { id: true, slug: true },
-    });
-
-    const res = await request(server)
-      .post(`${api}/portal/register`)
-      .send(submission({ organizationSlug: target.slug }));
-
-    expect(res.status).toBe(201);
-    created.push(res.body.data.clientId);
-
-    const client = await prisma.client.findUniqueOrThrow({
-      where: { id: res.body.data.clientId },
-      select: { orgId: true },
-    });
-    const user = await prisma.user.findFirstOrThrow({
-      where: { clientId: res.body.data.clientId },
-      select: { orgId: true },
-    });
-
-    expect(client.orgId).toBe(target.id);
-    expect(user.orgId).toBe(target.id);
-    if (oldest.id !== target.id) expect(client.orgId).not.toBe(oldest.id);
-  });
-
-  it('puts the customer’s requests where that company’s staff will see them', async () => {
-    const target = await prisma.organization.findUniqueOrThrow({
-      where: { id: org.orgId },
-      select: { slug: true },
-    });
-    const body = submission({ organizationSlug: target.slug });
-    const reg = await request(server).post(`${api}/portal/register`).send(body);
-    created.push(reg.body.data.clientId);
-
-    const login = await request(server)
-      .post(`${api}/auth/login`)
-      .send({ email: body.email, password: body.password, device: device() });
-
-    const raised = await request(server)
-      .post(`${api}/inspection-requests`)
-      .set('Authorization', `Bearer ${login.body.data.tokens.accessToken}`)
-      .send({ title: 'Does this reach the right console?', priority: 'NORMAL' });
-    expect(raised.status).toBe(201);
-
-    // The end of the chain, and the thing that was actually broken: an
-    // administrator of the chosen company opens their queue and sees it.
-    const adminLogin = await request(server).post(`${api}/auth/login`).send({
-      email: org.users.ADMIN!.email,
-      password: org.users.ADMIN!.password,
-      device: device(),
-    });
-    const queue = await request(server)
-      .get(`${api}/inspection-requests?pageSize=100`)
-      .set('Authorization', `Bearer ${adminLogin.body.data.tokens.accessToken}`);
-
-    expect(queue.status).toBe(200);
-    expect(queue.body.data.items.map((r: { id: string }) => r.id)).toContain(raised.body.data.id);
-  });
-
-  it('refuses to guess when several companies are on offer', async () => {
-    const count = await prisma.organization.count({ where: { isActive: true } });
-    if (count < 2) return;
-
-    const { organizationSlug: _omitted, ...withoutCompany } = submission();
-    const res = await request(server).post(`${api}/portal/register`).send(withoutCompany);
-
-    // Silently picking one is what caused the misfiling.
-    expect(res.status).toBe(422);
-    expect(res.body.error.fields?.organizationSlug).toBeTruthy();
-  });
-
-  it('refuses a company that is not on the portal', async () => {
-    const res = await request(server)
-      .post(`${api}/portal/register`)
-      .send(submission({ organizationSlug: 'no-such-company-anywhere' }));
-
-    /*
-     * 404, with wording that does not distinguish "no such company" from
-     * "that company is closed to registrations". Anything more specific turns
-     * this endpoint into an oracle for discovering which companies exist.
-     */
-    expect(res.status).toBe(404);
-    expect(res.body.error.message).not.toMatch(/exist|closed|found on this/i);
-  });
-
-  it('never lists the companies on the installation', async () => {
-    /*
-     * The endpoint that did this is gone, and its removal is the point of the
-     * per-company portal: a customer portal able to enumerate its tenants
-     * publishes the operator's customer list, and where two competitors are
-     * both tenants that is a disclosure between them.
-     */
-    const enumeration = await request(server).get(`${api}/portal/registration`);
-    expect(enumeration.status).toBe(404);
-
-    // And nothing that remains returns more than the one company asked for.
-    const one = await request(server).get(`${api}/portal/tenant/${defaultSlug}`);
-    expect(one.status).toBe(200);
-    expect(Object.keys(one.body.data).sort()).toEqual(['name', 'registrationOpen', 'slug']);
-
-    const other = await prisma.organization.findFirst({
-      where: { id: { not: org.orgId } },
-      select: { name: true },
-    });
-    if (other) expect(one.text).not.toContain(other.name);
-  });
-});
-
 describe('registration availability', () => {
   it('tells the portal whose portal it is, for one company only', async () => {
     const res = await request(server).get(`${api}/portal/tenant/${defaultSlug}`);
@@ -251,7 +118,6 @@ describe('registration availability', () => {
     expect(res.status).toBe(200);
     expect(res.body.data.slug).toBe(defaultSlug);
     expect(typeof res.body.data.name).toBe('string');
-    expect(res.body.data.registrationOpen).toBe(true);
   });
 
   it('answers a made-up address the same way as a real closed one', async () => {
@@ -270,251 +136,46 @@ describe('registration availability', () => {
   });
 });
 
-describe('creating a client account', () => {
-  it('persists every field the form collected', async () => {
-    const body = submission();
-    const res = await request(server).post(`${api}/portal/register`).send(body);
-
-    expect(res.status).toBe(201);
-    created.push(res.body.data.clientId);
-
-    const client = await prisma.client.findUniqueOrThrow({
-      where: { id: res.body.data.clientId },
-    });
-
-    // Every field, not a sample. A form that collects eighteen values and
-    // stores twelve is the failure this case exists to catch.
-    expect(client.name).toBe(body.companyName);
-    expect(client.industry).toBe('Construction');
-    expect(client.registrationNumber).toBe('CRN-99182');
-    expect(client.taxNumber).toBe('TAX-55010');
-    expect(client.contactName).toBe('Dana Whitfield');
-    expect(client.contactDesignation).toBe('Facilities Manager');
-    expect(client.contactEmail).toBe(body.email.toLowerCase());
-    expect(client.contactPhone).toBe('+44 20 7946 0102');
-    expect(client.whatsapp).toBe('+44 7700 900333');
-    expect(client.country).toBe('United Kingdom');
-    expect(client.state).toBe('Greater London');
-    expect(client.city).toBe('London');
-    expect(client.address).toBe('18 Cheapside, Floor 4');
-    expect(client.postalCode).toBe('EC2V 6AA');
-    expect(client.notes).toBe('Two towers, quarterly inspections.');
-    expect(client.isActive).toBe(true);
-    // A scheme is added rather than the value being refused: people type
-    // "acme.com".
-    expect(client.website).toBe('https://northwind.example');
-    expect(client.code).toBeTruthy();
-  });
-
-  it('creates exactly one CLIENT user, bound to that company', async () => {
-    const body = submission();
-    const res = await request(server).post(`${api}/portal/register`).send(body);
-    expect(res.status).toBe(201);
-    created.push(res.body.data.clientId);
-
-    const users = await prisma.user.findMany({ where: { clientId: res.body.data.clientId } });
-    expect(users).toHaveLength(1);
-
-    const user = users[0]!;
-    // The role is the whole security story: CLIENT carries five read
-    // permissions and reaches no admin surface.
-    expect(user.role).toBe('CLIENT');
-    expect(user.status).toBe('ACTIVE');
-    expect(user.email).toBe(body.email.toLowerCase());
-    expect(user.clientId).toBe(res.body.data.clientId);
-    expect(user.orgId).toBe(await hostOrgId());
-    // Split on whitespace, so "Dana Whitfield" is a first and a last name.
-    expect(user.firstName).toBe('Dana');
-    expect(user.lastName).toBe('Whitfield');
-  });
-
-  it('signs in with the password that was chosen', async () => {
-    const body = submission();
-    const created_ = await request(server).post(`${api}/portal/register`).send(body);
-    expect(created_.status).toBe(201);
-    created.push(created_.body.data.clientId);
-
-    const login = await request(server)
-      .post(`${api}/auth/login`)
-      .send({ email: body.email, password: body.password, device: device() });
-
-    expect(login.status).toBe(200);
-    expect(String(login.body.data.user.role)).toBe('CLIENT');
-  });
-
-  it('publishes the client to the change log so devices see it', async () => {
-    const res = await request(server).post(`${api}/portal/register`).send(submission());
-    expect(res.status).toBe(201);
-    created.push(res.body.data.clientId);
-
-    /*
-     * A device replays the change log and nothing else. A client created only
-     * in the database is invisible to every phone in the organisation, so the
-     * inspector sent to their site sees a job for nobody.
-     */
-    const entry = await prisma.changeLogEntry.findFirst({
-      where: { entity: 'CLIENT', entityId: res.body.data.clientId },
-    });
-    expect(entry).not.toBeNull();
-    expect(entry!.operation).toBe('CREATE');
-  });
-
-  it('appears in the console with its full record and its portal login', async () => {
-    const body = submission();
-    const res = await request(server).post(`${api}/portal/register`).send(body);
-    expect(res.status).toBe(201);
-    created.push(res.body.data.clientId);
-
-    // Staff of the host organisation, since that is where the client landed.
-    const hostAdmin = await prisma.user.findFirstOrThrow({
-      where: { orgId: await hostOrgId(), role: { in: ['SUPER_ADMIN', 'ADMIN'] }, deletedAt: null },
-      select: { id: true, orgId: true },
-    });
-
-    const client = await prisma.client.findUniqueOrThrow({
-      where: { id: res.body.data.clientId },
-      include: {
-        _count: { select: { projects: true, sites: true, inspections: true, requests: true } },
-        portalUsers: { where: { role: 'CLIENT', deletedAt: null }, select: { email: true } },
-      },
-    });
-
-    expect(client.orgId).toBe(hostAdmin.orgId);
-    expect(client.portalUsers.map((u) => u.email)).toContain(body.email.toLowerCase());
-    expect(client._count.requests).toBe(0);
-  });
-});
-
-describe('what a stranger cannot do with it', () => {
-  it('refuses an email that already has an account', async () => {
-    const body = submission();
-    const first = await request(server).post(`${api}/portal/register`).send(body);
-    expect(first.status).toBe(201);
-    created.push(first.body.data.clientId);
-
-    const second = await request(server)
-      .post(`${api}/portal/register`)
-      .send(submission({ email: body.email }));
-
-    expect(second.status).toBe(409);
-    expect(second.body.error.code).toBe('DUPLICATE_RESOURCE');
-  });
-
-  it('gives a fresh code when a deleted client already holds the obvious one', async () => {
-    /*
-     * Found on production, not here.
-     *
-     * `@@unique([orgId, code])` is a database constraint that knows nothing
-     * about `deletedAt`, so a deleted client keeps its derived code reserved.
-     * The uniqueness probe used to skip deleted rows, hand back a code that was
-     * already taken, and fail the insert — surfacing to the customer as a
-     * duplicate-key error about a column they never saw.
-     */
-    const name = `Collision Test ${unique('x')}`;
-
-    const first = await request(server)
-      .post(`${api}/portal/register`)
-      .send(submission({ companyName: name }));
-    expect(first.status).toBe(201);
-    created.push(first.body.data.clientId);
-
-    const code = (
-      await prisma.client.findUniqueOrThrow({ where: { id: first.body.data.clientId } })
-    ).code;
-
-    // Soft delete, exactly as `DELETE /clients/:id` does.
-    await prisma.client.update({
-      where: { id: first.body.data.clientId },
-      data: { deletedAt: new Date() },
-    });
-
-    const second = await request(server)
-      .post(`${api}/portal/register`)
-      .send(submission({ companyName: name }));
-
-    expect(second.status).toBe(201);
-    created.push(second.body.data.clientId);
-
-    const secondCode = (
-      await prisma.client.findUniqueOrThrow({ where: { id: second.body.data.clientId } })
-    ).code;
-    expect(secondCode).not.toBe(code);
-  });
-
-  it('refuses a weak password', async () => {
-    const res = await request(server)
-      .post(`${api}/portal/register`)
-      .send(submission({ password: 'password' }));
-
-    expect(res.status).toBe(422);
-    expect(res.body.error.fields?.password).toBeTruthy();
-  });
-
-  it('refuses a submission missing a field the company needs', async () => {
-    for (const field of [
-      'companyName',
-      'contactName',
-      'email',
-      'contactPhone',
-      'country',
-      'city',
-      'address',
-    ]) {
-      const body = submission();
-      delete (body as Record<string, unknown>)[field];
-      const res = await request(server).post(`${api}/portal/register`).send(body);
-      expect(res.status, `${field} should be required`).toBe(422);
-    }
-  });
-
-  it('cannot be used to choose a role or an organisation', async () => {
-    const res = await request(server)
-      .post(`${api}/portal/register`)
-      .send({
-        ...submission(),
-        // Both ignored by the schema — asserted rather than assumed, because
-        // "zod strips unknown keys" is a property of the code, not a law.
-        role: 'SUPER_ADMIN',
-        orgId: org.orgId,
-        clientId: 'someone-elses-client',
-      });
-
-    expect(res.status).toBe(201);
-    created.push(res.body.data.clientId);
-
-    const user = await prisma.user.findFirstOrThrow({
-      where: { clientId: res.body.data.clientId },
-    });
-    expect(user.role).toBe('CLIENT');
-    expect(user.orgId).toBe(await hostOrgId());
-  });
-
-  it('never returns a session or a token', async () => {
-    const res = await request(server).post(`${api}/portal/register`).send(submission());
-    expect(res.status).toBe(201);
-    created.push(res.body.data.clientId);
-
-    // Sessions are minted in exactly one place. A registration that also
-    // returned tokens would be a second one, with its own device binding and
-    // lockout behaviour to keep in step.
-    const serialised = JSON.stringify(res.body);
-    expect(serialised).not.toMatch(/accessToken|refreshToken/i);
-  });
-});
-
 describe('the account it creates is a client account', () => {
   let token: string;
   let clientId: string;
 
   beforeAll(async () => {
-    const body = submission();
-    const res = await request(server).post(`${api}/portal/register`).send(body);
-    clientId = res.body.data.clientId;
+    /*
+     * Built the way a real client account is now built: staff create the
+     * customer, invite somebody, and that person sets a password. There is no
+     * other route, so testing the boundary against an account made any other
+     * way would be testing something that cannot exist.
+     */
+    const admin = await request(server).post(`${api}/auth/login`).send({
+      email: org.users.ADMIN!.email,
+      password: org.users.ADMIN!.password,
+      device: device(),
+    });
+    const adminToken = admin.body.data.tokens.accessToken;
+
+    const client = await request(server)
+      .post(`${api}/clients`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ name: `Boundary Co ${unique('b')}`, city: 'London' });
+    clientId = client.body.data.id;
     created.push(clientId);
+
+    const email = `${unique('boundary')}@example.test`;
+    const invitation = await request(server)
+      .post(`${api}/clients/${clientId}/invitations`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ email, firstName: 'Dana', lastName: 'Whitfield' });
+    expect(invitation.status).toBe(201);
+
+    const accepted = await request(server)
+      .post(`${api}/portal/invitations/${invitation.body.data.token}/accept`)
+      .send({ password: 'Portal-Access-2026!' });
+    expect(accepted.status).toBe(201);
 
     const login = await request(server)
       .post(`${api}/auth/login`)
-      .send({ email: body.email, password: body.password, device: device() });
+      .send({ email, password: 'Portal-Access-2026!', device: device() });
     token = login.body.data.tokens.accessToken;
   });
 
@@ -574,8 +235,17 @@ describe('the account it creates is a client account', () => {
   });
 
   it('cannot read another company through the portal endpoints', async () => {
-    const other = await request(server).post(`${api}/portal/register`).send(submission());
-    created.push(other.body.data.clientId);
+    // Another customer in the same organisation, to be invisible to this one.
+    const admin = await request(server).post(`${api}/auth/login`).send({
+      email: org.users.ADMIN!.email,
+      password: org.users.ADMIN!.password,
+      device: device(),
+    });
+    const other = await request(server)
+      .post(`${api}/clients`)
+      .set('Authorization', `Bearer ${admin.body.data.tokens.accessToken}`)
+      .send({ name: `Other Co ${unique('o')}` });
+    created.push(other.body.data.id);
 
     // There is no path that takes a client id — the scope comes from the
     // token — so the check is that the record returned is always the caller's.
@@ -583,7 +253,7 @@ describe('the account it creates is a client account', () => {
       .get(`${api}/portal/company`)
       .set('Authorization', `Bearer ${token}`);
     expect(res.body.data.id).toBe(clientId);
-    expect(res.body.data.id).not.toBe(other.body.data.clientId);
+    expect(res.body.data.id).not.toBe(other.body.data.id);
   });
 });
 

@@ -24,12 +24,12 @@ import { Loading, Notice } from './components/ui';
 import { api } from './lib/api';
 import { SessionProvider, useSession } from './lib/session';
 import { resolveTenant, tenantIsInHost } from './lib/tenant';
+import { AcceptInvitation, RegistrationClosed } from './pages/AcceptInvitation';
 import { Dashboard } from './pages/Dashboard';
 import { Login } from './pages/Login';
 import { Messages } from './pages/Messages';
 import { NewRequest } from './pages/NewRequest';
 import { Profile } from './pages/Profile';
-import { Register } from './pages/Register';
 import { RequestDetail } from './pages/RequestDetail';
 import { Requests } from './pages/Requests';
 import { Reports } from './pages/Reports';
@@ -47,7 +47,6 @@ const queryClient = new QueryClient({
 export interface Tenant {
   slug: string;
   name: string;
-  registrationOpen: boolean;
 }
 
 const TenantContext = React.createContext<Tenant | null>(null);
@@ -151,7 +150,9 @@ function TenantRoutes(): React.ReactElement {
   return (
     <Routes>
       <Route path="login" element={<Login />} />
-      <Route path="register" element={<Register />} />
+      {/* The only way an account is created. */}
+      <Route path="invite/:token" element={<AcceptInvitation />} />
+      <Route path="register" element={<RegistrationClosed />} />
       <Route path="dashboard" element={guarded(<Dashboard />)} />
       <Route path="request/new" element={guarded(<NewRequest />)} />
       <Route path="requests" element={guarded(<Requests />)} />

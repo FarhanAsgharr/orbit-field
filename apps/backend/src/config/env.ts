@@ -142,6 +142,15 @@ const schema = z.object({
    */
   PORTAL_ORG_SLUG: z.string().optional(),
 
+  /**
+   * How long a client invitation stays usable, in hours.
+   *
+   * A week by default: long enough to survive a holiday, short enough that a
+   * link forwarded into a mailing list years ago is inert. An administrator
+   * can shorten it per invitation.
+   */
+  CLIENT_INVITATION_TTL_HOURS: z.coerce.number().int().positive().max(8760).default(168),
+
   CORS_ORIGINS: z.string().default('*'),
   TRUST_PROXY: boolish(false),
 

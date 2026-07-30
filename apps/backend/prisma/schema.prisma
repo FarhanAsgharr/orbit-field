@@ -229,6 +229,8 @@ model Organization {
   inspectionRequests InspectionRequest[]
 
   @@index([slug])
+  invitations ClientInvitation[]
+
   @@map("organizations")
 }
 
@@ -310,6 +312,7 @@ model User {
   reviewedRequests      InspectionRequest[]  @relation("RequestReviewer")
   requestComments       RequestComment[]
   portalClient          Client?              @relation("ClientPortalUser", fields: [clientId], references: [id], onDelete: SetNull)
+  invitationsCreated    ClientInvitation[]   @relation("InvitationAuthor")
   auditLogs             AuditLog[]
   notifications         Notification[]
   createdTemplates      Template[]
@@ -483,6 +486,7 @@ model Client {
   sites        Site[]
   inspections  Inspection[]
   portalUsers  User[]              @relation("ClientPortalUser")
+  invitations  ClientInvitation[]
   requests     InspectionRequest[]
 
   @@unique([orgId, code])
@@ -1286,4 +1290,50 @@ model Notification {
   @@index([userId, readAt, createdAt])
   @@index([orgId, syncCursor])
   @@map("notifications")
+}
+
+/// An invitation for a customer to create their portal login.
+///
+/// Replaces open registration: a company decides who becomes its client, and
+/// the only way to obtain a portal account is to be sent one of these.
+///
+/// The token itself is never stored. What is kept is a SHA-256 of it, so a
+/// database copy — a backup, a support query, a leaked dump — cannot be turned
+/// back into working invitations. The raw token exists exactly twice: in the
+/// response that created it, and in the link the administrator sends.
+model ClientInvitation {
+  id       String @id @db.VarChar(26)
+  orgId    String @db.VarChar(26)
+  /// The customer company this invitation admits somebody to.
+  clientId String @db.VarChar(26)
+
+  /// SHA-256 of the token, hex encoded. Unique so a lookup is a single index hit.
+  tokenHash String @unique @db.VarChar(64)
+
+  /// Who it was addressed to. Becomes the login identity on acceptance.
+  email     String  @db.VarChar(320)
+  firstName String? @db.VarChar(100)
+  lastName  String? @db.VarChar(100)
+
+  expiresAt DateTime @db.Timestamptz(6)
+
+  /// Set once, when the invitation is spent. Its presence is what makes the
+  /// token single-use — the row is kept afterwards so the audit trail survives.
+  acceptedAt     DateTime? @db.Timestamptz(6)
+  acceptedUserId String?   @db.VarChar(26)
+
+  revokedAt   DateTime? @db.Timestamptz(6)
+  revokedById String?   @db.VarChar(26)
+
+  createdById String   @db.VarChar(26)
+  createdAt   DateTime @default(now()) @db.Timestamptz(6)
+  updatedAt   DateTime @updatedAt @db.Timestamptz(6)
+
+  organization Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  client       Client       @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  createdBy    User         @relation("InvitationAuthor", fields: [createdById], references: [id])
+
+  @@index([orgId, clientId, createdAt])
+  @@index([orgId, expiresAt])
+  @@map("client_invitations")
 }

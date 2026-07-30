@@ -7,7 +7,7 @@
  */
 
 import React, { useState } from 'react';
-import { Link, Navigate, useLocation } from 'react-router-dom';
+import { Navigate, useLocation } from 'react-router-dom';
 
 import { usePortalPath, useTenant } from '../App';
 import { PasswordField } from '../components/PasswordField';
@@ -105,15 +105,13 @@ export function Login(): React.ReactElement {
             {busy ? 'Signing in…' : 'Sign in'}
           </button>
 
-          {tenant.registrationOpen ? (
-            <p className="faint" style={{ textAlign: 'center' }}>
-              New here? <Link to={path('/register')}>Create a company account</Link>
-            </p>
-          ) : (
-            <p className="faint" style={{ textAlign: 'center' }}>
-              {tenant.name} creates client accounts directly. Contact them for a login.
-            </p>
-          )}
+          {/*
+            No sign-up link. Accounts exist because {tenant.name} issued an
+            invitation, so the only useful thing to say is where to ask.
+          */}
+          <p className="faint" style={{ textAlign: 'center' }}>
+            Accounts are created by {tenant.name}. Contact them if you need access.
+          </p>
         </form>
       </div>
     </div>

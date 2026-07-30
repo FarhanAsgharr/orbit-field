@@ -144,34 +144,26 @@ router.get(
   }),
 );
 
-/** Create a client company and its first login. */
+/**
+ * Public registration, closed.
+ *
+ * Anybody holding a company's portal address could previously create an
+ * account there, which is not something an enterprise customer will accept:
+ * the company must decide who becomes its client. Accounts now come from an
+ * invitation an administrator issues — see `invitations.routes.ts`.
+ *
+ * The route is kept, rather than deleted, so somebody following an old link or
+ * an old bookmark is told why it stopped working instead of meeting a bare
+ * 404 that reads like an outage.
+ */
 router.post(
   '/register',
   authLimiter,
-  validate({ body: registrationSchema }),
-  asyncHandler(async (req, res) => {
-    /*
-     * The *validated* body, never `req.body`.
-     *
-     * `validate` parses into `req.validated` and leaves the raw body alone, so
-     * reading `req.body` here would take the caller's object verbatim: zod's
-     * stripping of unknown keys would not have happened, and neither would the
-     * transforms — a website typed as "acme.com" would be stored without a
-     * scheme, and any extra key the caller invented would be passed straight
-     * to Prisma.
-     */
-    const body = req.validated!.body as z.infer<typeof registrationSchema>;
-    const result = await registerClient({ ...body, meta: meta(req) });
-    /*
-     * Identifiers only, and no session.
-     *
-     * The portal signs the new account in through `/auth/login` like any other
-     * account, so there stays exactly one code path that mints a token and one
-     * place where device binding, lockout and audit happen.
-     */
-    res.status(201).json({
-      data: { clientId: result.clientId, userId: result.userId, email: result.email },
-    });
+  asyncHandler(async (_req, _res) => {
+    throw new AppError(
+      ErrorCode.PERMISSION_DENIED,
+      'Registration is by invitation only. Please contact your service provider for an invitation link.',
+    );
   }),
 );
 

@@ -170,11 +170,12 @@ async function resolveOrganization(slug: string | undefined): Promise<HostOrgani
 export async function portalTenant(slug: string): Promise<{
   slug: string;
   name: string;
-  registrationOpen: boolean;
 } | null> {
   const org = await organizationForPortal(slug);
   if (!org) return null;
-  return { slug: org.slug, name: org.name, registrationOpen: accepts(org) };
+  // Name and slug, and nothing else. Accounts come from invitations now, so
+  // there is no registration state for a stranger to learn either.
+  return { slug: org.slug, name: org.name };
 }
 
 /**

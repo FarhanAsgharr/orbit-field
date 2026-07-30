@@ -29,6 +29,10 @@ import {
 import { usersRouter } from './modules/admin/users.routes.js';
 import { analyticsRouter } from './modules/analytics/analytics.routes.js';
 import { authRouter } from './modules/auth/auth.routes.js';
+import {
+  clientInvitationsRouter,
+  portalInvitationsRouter,
+} from './modules/client-portal/invitations.routes.js';
 import { portalRouter } from './modules/client-portal/portal.routes.js';
 import { inspectionRequestsRouter } from './modules/client-portal/requests.routes.js';
 import { devicesRouter } from './modules/devices/devices.routes.js';
@@ -167,6 +171,12 @@ export function createApp(): Express {
   api.use('/uploads', uploadLimiter, uploadsRouter);
   api.use('/templates', templatesRouter);
   api.use('/users', usersRouter);
+  /*
+   * Invitations hang off a customer, so they mount inside the clients path
+   * before the resource router — which would otherwise treat "invitations" as
+   * an id and answer 404 for every one of them.
+   */
+  api.use('/clients/:clientId/invitations', clientInvitationsRouter);
   api.use('/clients', clientsRouter);
   api.use('/projects', projectsRouter);
   api.use('/sites', sitesRouter);
@@ -175,6 +185,7 @@ export function createApp(): Express {
   api.use('/reports', reportsRouter);
   api.use('/notifications', notificationsRouter);
   api.use('/inspection-requests', inspectionRequestsRouter);
+  api.use('/portal/invitations', portalInvitationsRouter);
   api.use('/portal', portalRouter);
   api.use('/admin', adminRouter);
 

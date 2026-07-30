@@ -30,6 +30,19 @@ export interface ClientPortalUser {
   lastLoginAt: string | null;
 }
 
+export interface Invitation {
+  id: string;
+  email: string;
+  firstName: string | null;
+  lastName: string | null;
+  expiresAt: string;
+  acceptedAt: string | null;
+  revokedAt: string | null;
+  createdAt: string;
+  status: 'PENDING' | 'ACCEPTED' | 'REVOKED' | 'EXPIRED';
+  createdBy: { firstName: string; lastName: string } | null;
+}
+
 export interface ClientRecord {
   id: string;
   name: string;
@@ -107,6 +120,23 @@ export function ClientDetail({
     password: '',
   });
   const [issued, setIssued] = useState<{ email: string; password: string } | null>(null);
+  const [inviting, setInviting] = useState(false);
+  const [invite, setInvite] = useState({
+    email: '',
+    firstName: '',
+    lastName: '',
+    expiresInHours: '',
+  });
+  /*
+   * The invitation link, held only in this component's state.
+   *
+   * The server returns the raw token once, when the invitation is created, and
+   * stores nothing but its hash — so this is the only moment it can be copied.
+   * Closing the panel loses it, which is why "resend" issues a new one rather
+   * than showing the old.
+   */
+  const [inviteLink, setInviteLink] = useState<string | null>(null);
+  const [linkCopied, setLinkCopied] = useState(false);
 
   // Re-read on open: the row in the table may be a page or two old, and the
   // portal logins are not carried on the list response the table caches.
@@ -199,6 +229,89 @@ export function ClientDetail({
     newLogin.firstName.trim() !== '' &&
     newLogin.email.trim() !== '' &&
     newLogin.password.length >= 12;
+  const invitations = useQuery({
+    queryKey: ['client-invitations', client.id],
+    queryFn: () => api.get<Invitation[]>(`/clients/${client.id}/invitations`),
+  });
+
+  const refreshInvitations = (): void => {
+    void queryClient.invalidateQueries({ queryKey: ['client-invitations', client.id] });
+  };
+
+  const sendInvite = useMutation({
+    mutationFn: () =>
+      api.post<{ id: string; email: string; expiresAt: string; invitePath: string }>(
+        `/clients/${client.id}/invitations`,
+        {
+          email: invite.email.trim(),
+          firstName: invite.firstName.trim() || null,
+          lastName: invite.lastName.trim() || null,
+          ...(invite.expiresInHours ? { expiresInHours: Number(invite.expiresInHours) } : {}),
+        },
+      ),
+    onSuccess: (created) => {
+      // The API returns a path, not a URL: it does not know where the portal is
+      // deployed, and a guessed origin would work in one environment only.
+      setInviteLink(`${portalUrlFor(organization?.slug) ?? ''}${created.invitePath}`);
+      setInviting(false);
+      setInvite({ email: '', firstName: '', lastName: '', expiresInHours: '' });
+      setError(null);
+      refreshInvitations();
+    },
+    onError: (e) =>
+      setError(e instanceof Error ? e.message : 'That invitation could not be created.'),
+  });
+
+  const revokeInvite = useMutation({
+    mutationFn: (id: string) => api.delete(`/clients/${client.id}/invitations/${id}`),
+    onSuccess: () => {
+      setError(null);
+      refreshInvitations();
+    },
+    onError: (e) => setError(e instanceof Error ? e.message : 'That could not be cancelled.'),
+  });
+
+  /**
+   * Resending is issuing a new invitation to the same address.
+   *
+   * The old token cannot be recovered — only its hash is stored — and the
+   * server supersedes whatever was outstanding, so the previous link stops
+   * working the moment this succeeds.
+   */
+  const resendInvite = useMutation({
+    mutationFn: (row: Invitation) =>
+      api.post<{ invitePath: string }>(`/clients/${client.id}/invitations`, {
+        email: row.email,
+        firstName: row.firstName,
+        lastName: row.lastName,
+      }),
+    onSuccess: (created) => {
+      setInviteLink(`${portalUrlFor(organization?.slug) ?? ''}${created.invitePath}`);
+      setError(null);
+      refreshInvitations();
+    },
+    onError: (e) => setError(e instanceof Error ? e.message : 'That could not be resent.'),
+  });
+
+  const copy = (text: string, done: (v: boolean) => void): void => {
+    void navigator.clipboard
+      .writeText(text)
+      .catch(() => {
+        const field = document.createElement('textarea');
+        field.value = text;
+        field.style.position = 'fixed';
+        field.style.opacity = '0';
+        document.body.append(field);
+        field.select();
+        document.execCommand('copy');
+        field.remove();
+      })
+      .finally(() => {
+        done(true);
+        setTimeout(() => done(false), 2000);
+      });
+  };
+
   return (
     <div
       className="card modal modal--wide"
@@ -367,6 +480,210 @@ export function ClientDetail({
             <p style={{ whiteSpace: 'pre-wrap' }}>{data.notes}</p>
           </section>
         ) : null}
+
+        {/*
+          Invitations.
+          
+          The only route to a portal account: open registration was removed so
+          the company decides who becomes its client. The link is shown once,
+          here, because the server keeps a hash and cannot reproduce it.
+        */}
+        <section>
+          <div className="row gap-3" style={{ justifyContent: 'space-between' }}>
+            <h3 className="card__title">Invitations</h3>
+            {!inviting && (
+              <button
+                className="btn btn--sm"
+                onClick={() => {
+                  setInviting(true);
+                  setInviteLink(null);
+                  setError(null);
+                }}
+              >
+                Invite Client
+              </button>
+            )}
+          </div>
+
+          {inviteLink && (
+            <div className="stack gap-2" style={{ marginTop: 12 }}>
+              <p className="small">
+                Send this link to the person you invited. It works once, and it is shown here only
+                now — nobody can retrieve it later.
+              </p>
+              <div className="row gap-2" style={{ flexWrap: 'nowrap' }}>
+                <code
+                  className="input grow"
+                  style={{ display: 'block', overflowX: 'auto', whiteSpace: 'nowrap' }}
+                >
+                  {inviteLink}
+                </code>
+                <button className="btn btn--sm" onClick={() => copy(inviteLink, setLinkCopied)}>
+                  {linkCopied ? 'Copied' : 'Copy Invitation Link'}
+                </button>
+              </div>
+              <div>
+                <button className="btn btn--ghost btn--sm" onClick={() => setInviteLink(null)}>
+                  Done
+                </button>
+              </div>
+            </div>
+          )}
+
+          {inviting && (
+            <form
+              className="stack gap-3"
+              style={{ marginTop: 12 }}
+              onSubmit={(e) => {
+                e.preventDefault();
+                sendInvite.mutate();
+              }}
+            >
+              <div className="row gap-3">
+                <div className="field grow">
+                  <label className="field__label" htmlFor="inv-first-name">
+                    First name
+                  </label>
+                  <input
+                    id="inv-first-name"
+                    className="input"
+                    value={invite.firstName}
+                    onChange={(e) => setInvite({ ...invite, firstName: e.target.value })}
+                  />
+                </div>
+                <div className="field grow">
+                  <label className="field__label" htmlFor="inv-last-name">
+                    Last name
+                  </label>
+                  <input
+                    id="inv-last-name"
+                    className="input"
+                    value={invite.lastName}
+                    onChange={(e) => setInvite({ ...invite, lastName: e.target.value })}
+                  />
+                </div>
+              </div>
+              <div className="field">
+                <label className="field__label" htmlFor="inv-mail">
+                  Email
+                </label>
+                <input
+                  id="inv-mail"
+                  className="input"
+                  type="email"
+                  autoComplete="off"
+                  value={invite.email}
+                  onChange={(e) => setInvite({ ...invite, email: e.target.value })}
+                  required
+                />
+                <span className="field__hint">
+                  They will sign in with this address once they set a password.
+                </span>
+              </div>
+              <div className="field">
+                <label className="field__label" htmlFor="inv-ttl">
+                  Expires after
+                </label>
+                <select
+                  id="inv-ttl"
+                  className="select"
+                  value={invite.expiresInHours}
+                  onChange={(e) => setInvite({ ...invite, expiresInHours: e.target.value })}
+                >
+                  <option value="">7 days (default)</option>
+                  <option value="24">24 hours</option>
+                  <option value="72">3 days</option>
+                  <option value="336">14 days</option>
+                  <option value="720">30 days</option>
+                </select>
+              </div>
+              <div className="row gap-2">
+                <button
+                  className="btn btn--primary btn--sm"
+                  type="submit"
+                  disabled={sendInvite.isPending || !invite.email.trim()}
+                >
+                  {sendInvite.isPending ? 'Creating…' : 'Create invitation'}
+                </button>
+                <button
+                  className="btn btn--ghost btn--sm"
+                  type="button"
+                  onClick={() => setInviting(false)}
+                >
+                  Cancel
+                </button>
+              </div>
+            </form>
+          )}
+
+          {(invitations.data?.length ?? 0) === 0 ? (
+            inviting ? null : (
+              <p className="muted small">
+                Nobody has been invited yet. An invitation is the only way somebody at this company
+                gets a portal login.
+              </p>
+            )
+          ) : (
+            <table className="table" style={{ marginTop: 12 }}>
+              <thead>
+                <tr>
+                  <th>Invited</th>
+                  <th>Status</th>
+                  <th>Expires</th>
+                  <th />
+                </tr>
+              </thead>
+              <tbody>
+                {invitations.data?.map((row) => (
+                  <tr key={row.id}>
+                    <td>
+                      <div className="small">{row.email}</div>
+                      <div className="table__meta">
+                        {`${row.firstName ?? ''} ${row.lastName ?? ''}`.trim() || '—'}
+                      </div>
+                    </td>
+                    <td>
+                      <Badge
+                        label={row.status.charAt(0) + row.status.slice(1).toLowerCase()}
+                        tone={
+                          row.status === 'ACCEPTED'
+                            ? 'ok'
+                            : row.status === 'PENDING'
+                              ? 'accent'
+                              : 'neutral'
+                        }
+                      />
+                    </td>
+                    <td className="small muted">{date(row.expiresAt)}</td>
+                    <td>
+                      <div className="row gap-2" style={{ flexWrap: 'nowrap' }}>
+                        {/* Resending issues a new link; the old one dies. */}
+                        {row.status !== 'ACCEPTED' && (
+                          <button
+                            className="btn btn--ghost btn--sm"
+                            disabled={resendInvite.isPending}
+                            onClick={() => resendInvite.mutate(row)}
+                          >
+                            Resend
+                          </button>
+                        )}
+                        {row.status === 'PENDING' && (
+                          <button
+                            className="btn btn--ghost btn--sm"
+                            disabled={revokeInvite.isPending}
+                            onClick={() => revokeInvite.mutate(row.id)}
+                          >
+                            Revoke
+                          </button>
+                        )}
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </section>
 
         <section>
           <div className="row gap-3" style={{ justifyContent: 'space-between' }}>

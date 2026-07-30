@@ -1,0 +1,31 @@
+-- Rollback for 20260729155257_client_invitations.
+--
+-- Prisma Migrate is forward-only: it never generates or runs these, and
+-- `migrate deploy` ignores this file entirely. It exists so a rollback is a
+-- reviewed, tested statement sitting next to the change it undoes, rather than
+-- something improvised against a production database at the worst moment.
+--
+-- Apply by hand:
+--     psql "$DIRECT_URL" -f down.sql
+-- then remove the row from `_prisma_migrations` so the migration can be
+-- re-applied cleanly:
+--     DELETE FROM "_prisma_migrations" WHERE migration_name = '20260729155257_client_invitations';
+--
+-- SAFETY. This drops the table and every invitation in it, which is audit
+-- history: who invited whom, when, and whether it was used. The accounts those
+-- invitations created are NOT affected — they are ordinary rows in `users` and
+-- survive untouched — so a rollback loses the paper trail, not anybody's
+-- access. Take a copy first if the trail matters:
+--     \copy client_invitations TO 'client_invitations.csv' CSV HEADER
+--
+-- The forward migration is purely additive: one new table, three indexes and
+-- three foreign keys, with no column added to or altered on an existing table.
+-- That is what makes this a single DROP rather than a sequence of reversals,
+-- and it is why the application on either side of the rollback is consistent —
+-- code that predates the feature never referenced this table.
+--
+-- CASCADE is deliberate: the three foreign keys point *out* of this table, so
+-- nothing else references it and CASCADE has nothing to follow. It is there to
+-- make the statement idempotent against a partially-applied migration.
+
+DROP TABLE IF EXISTS "client_invitations" CASCADE;
