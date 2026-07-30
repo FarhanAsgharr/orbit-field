@@ -22,6 +22,7 @@
 
 import { createRequire } from 'node:module';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 import express, { Router } from 'express';
 import type { Express } from 'express';
@@ -50,19 +51,14 @@ function assetDirectory(packageName: string, marker: string): string | null {
 const SWAGGER_ASSETS = assetDirectory('swagger-ui-dist', 'swagger-ui-bundle.js');
 const REDOC_ASSETS = assetDirectory('redoc', 'bundles/redoc.standalone.js');
 
-/** Boots Swagger UI against our own document. Served as a file, not inlined. */
-const SWAGGER_INIT = `window.onload = function () {
-  window.ui = SwaggerUIBundle({
-    url: '/openapi.json',
-    dom_id: '#swagger-ui',
-    deepLinking: true,
-    presets: [SwaggerUIBundle.presets.apis, SwaggerUIStandalonePreset],
-    layout: 'StandaloneLayout',
-    persistAuthorization: true,
-    tryItOutEnabled: true,
-  });
-};
-`;
+/**
+ * The Swagger bootstrap, which lives in the repository rather than a package.
+ *
+ * The same file is copied into the static output at build time, so the bytes
+ * Express serves in development and the bytes Vercel's CDN serves in
+ * production are identical — there is no second copy to drift.
+ */
+const OWN_ASSETS = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../assets');
 
 const SWAGGER_PAGE = `<!doctype html>
 <html lang="en">
@@ -135,9 +131,15 @@ export function mountDocumentation(app: Express): void {
 
   const swagger = Router();
   if (SWAGGER_ASSETS) {
-    swagger.get('/assets/initialise.js', (_req, res) => {
-      res.type('application/javascript').send(SWAGGER_INIT);
-    });
+    swagger.use(
+      '/assets',
+      express.static(OWN_ASSETS, {
+        index: false,
+        // Served before the package directory below, so `initialise.js`
+        // resolves to the repository's copy.
+        extensions: false,
+      }),
+    );
     swagger.use(
       '/assets',
       express.static(SWAGGER_ASSETS, {

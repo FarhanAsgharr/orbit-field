@@ -125,7 +125,10 @@ describe('the document is a valid OpenAPI 3.1 description', () => {
         const where = `${method.toUpperCase()} ${routePath}`;
         expect((operation as { operationId?: string }).operationId, where).toBeTruthy();
         expect((operation as { tags?: string[] }).tags?.length, where).toBeGreaterThan(0);
-        expect(Object.keys((operation as { responses: object }).responses).length, where).toBeGreaterThan(0);
+        expect(
+          Object.keys((operation as { responses: object }).responses).length,
+          where,
+        ).toBeGreaterThan(0);
       }
     }
   });
@@ -168,7 +171,9 @@ describe('the document and the server agree', () => {
     const login = document.paths['/api/v1/auth/login']?.post as {
       requestBody?: { content: { 'application/json': { schema: { properties: object } } } };
     };
-    const properties = Object.keys(login?.requestBody?.content['application/json'].schema.properties ?? {});
+    const properties = Object.keys(
+      login?.requestBody?.content['application/json'].schema.properties ?? {},
+    );
 
     // These come from the Zod schema the route parses with, so the assertion
     // fails if the schema changes and the document is not regenerated.

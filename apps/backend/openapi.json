@@ -13097,44 +13097,6 @@
         "security": []
       }
     },
-    "/docs/assets/initialise.js": {
-      "get": {
-        "tags": [
-          "documentation"
-        ],
-        "operationId": "get_docs_assets_initialise_js",
-        "responses": {
-          "200": {
-            "description": "Success."
-          },
-          "400": {
-            "description": "The request could not be parsed."
-          },
-          "401": {
-            "description": "Authentication is required, or the session has expired."
-          },
-          "403": {
-            "description": "Authenticated, but not permitted."
-          },
-          "404": {
-            "description": "No such record, or none the caller may see."
-          },
-          "409": {
-            "description": "The request conflicts with the current state."
-          },
-          "422": {
-            "description": "The request was well formed but failed validation."
-          },
-          "429": {
-            "description": "Rate limited. Retry after the interval in `Retry-After`."
-          },
-          "500": {
-            "description": "An unexpected error. Quote the request id when reporting it."
-          }
-        },
-        "security": []
-      }
-    },
     "/docs": {
       "get": {
         "tags": [
