@@ -21,7 +21,19 @@ const read = (value: string | undefined, fallback: string): string => {
 const env = import.meta.env;
 
 export const links = {
-  clientPortal: read(env.VITE_CLIENT_PORTAL_URL, 'https://orbit-field-portal.vercel.app'),
+  /*
+   * The portal is per company, so this must name one.
+   *
+   * The bare origin renders a page telling the visitor they need their
+   * company's link — correct behaviour for somebody who typed the address by
+   * hand, and useless as the destination of a button that just promised them
+   * the portal. This default is the seeded demo company; a deployment points
+   * it at whichever company the landing page fronts.
+   */
+  clientPortal: read(
+    env.VITE_CLIENT_PORTAL_URL,
+    'https://orbit-field-portal.vercel.app/orbit-field-demo',
+  ),
   adminDashboard: read(env.VITE_ADMIN_DASHBOARD_URL, 'https://orbit-field-three.vercel.app'),
   api: read(env.VITE_API_URL, 'https://orbit-field-api.vercel.app'),
   github: read(env.VITE_GITHUB_URL, 'https://github.com/FarhanAsgharr/orbit-field'),
