@@ -6,8 +6,6 @@
  * tokens, so a theme is changed in one place and cannot be got wrong in forty.
  */
 
-@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600&family=Space+Grotesk:wght@500;600;700&display=swap');
-
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
@@ -37,8 +35,8 @@
     --fg: 11 18 32;
     --subtle: 90 104 126;
     /* Amber needs to darken on white or it disappears; cyan likewise. */
-    --signal: 176 106 0;
-    --sync: 12 122 140;
+    --signal: 154 90 0;
+    --sync: 10 109 125;
     --portal: 14 124 102;
 
     color-scheme: light;

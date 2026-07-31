@@ -15,7 +15,10 @@
 
     <meta property="og:type" content="website" />
     <meta property="og:site_name" content="Orbit Field" />
-    <meta property="og:title" content="Orbit Field — Offline-First Enterprise Inspection Platform" />
+    <meta
+      property="og:title"
+      content="Orbit Field — Offline-First Enterprise Inspection Platform"
+    />
     <meta
       property="og:description"
       content="Inspectors work in basements, plant rooms and sites with no coverage. Orbit Field runs on the device and reconciles when the connection returns."
@@ -23,7 +26,10 @@
     <meta property="og:url" content="https://orbitfield.app/" />
     <meta property="og:image" content="/og.svg" />
     <meta name="twitter:card" content="summary_large_image" />
-    <meta name="twitter:title" content="Orbit Field — Offline-First Enterprise Inspection Platform" />
+    <meta
+      name="twitter:title"
+      content="Orbit Field — Offline-First Enterprise Inspection Platform"
+    />
     <meta
       name="twitter:description"
       content="Inspections that do not wait for a signal. Offline-first, multi-tenant, audit-complete."
@@ -34,9 +40,21 @@
     <link rel="apple-touch-icon" href="/favicon.svg" />
     <link rel="manifest" href="/site.webmanifest" />
 
-    <!-- The two font files are the only third-party request on the page. -->
+    <!--
+      The only third-party request on the page.
+
+      Loaded here rather than through an @import in the stylesheet: an import
+      is discovered only after this file's CSS has been fetched and parsed,
+      which put the fonts at the end of a serial chain and cost 1.6s of render
+      blocking. As a link it downloads alongside everything else, and
+      `display=swap` means text paints in the fallback rather than waiting.
+    -->
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      rel="stylesheet"
+      href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600&family=Space+Grotesk:wght@500;600;700&display=swap"
+    />
 
     <script type="application/ld+json">
       {
