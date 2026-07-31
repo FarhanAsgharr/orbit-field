@@ -1,0 +1,4 @@
+User-agent: *
+Allow: /
+
+Sitemap: https://orbitfield.app/sitemap.xml

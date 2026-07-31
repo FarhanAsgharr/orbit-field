@@ -1,0 +1,10 @@
+{
+  "name": "Orbit Field",
+  "short_name": "Orbit Field",
+  "description": "Offline-First Enterprise Inspection Platform",
+  "icons": [{ "src": "/favicon.svg", "type": "image/svg+xml", "sizes": "any" }],
+  "theme_color": "#0B1220",
+  "background_color": "#0B1220",
+  "display": "standalone",
+  "start_url": "/"
+}

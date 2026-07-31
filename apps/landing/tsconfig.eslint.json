@@ -1,0 +1,6 @@
+{
+  "//": "ESLint-only type information. Extends the console's own config so moduleResolution stays Bundler and the DOM lib is present — a shared repo-wide lint config gets both wrong and makes type-aware rules draw false conclusions about browser code.",
+  "extends": "./tsconfig.json",
+  "compilerOptions": { "noEmit": true },
+  "include": ["src/**/*.ts", "src/**/*.tsx", "vite.config.ts"]
+}

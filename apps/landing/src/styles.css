@@ -1,0 +1,114 @@
+/*
+ * Orbit Field — landing.
+ *
+ * The whole theme lives in the two variable blocks below. Components never
+ * name a literal colour and never carry a `dark:` variant; they use semantic
+ * tokens, so a theme is changed in one place and cannot be got wrong in forty.
+ */
+
+@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600&family=Space+Grotesk:wght@500;600;700&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  /* Dark is the default: the design is built on it, and the amber only reads
+     as high-visibility against a dark ground. */
+  :root {
+    --canvas: 11 18 32;
+    --raised: 17 26 43;
+    --hairline: 30 42 61;
+    --fg: 238 241 245;
+    --subtle: 138 153 176;
+    --signal: 255 176 32;
+    --sync: 61 214 232;
+    --portal: 78 195 166;
+
+    color-scheme: dark;
+  }
+
+  /* A printed datasheet. Cold greys rather than warm paper, so it reads as
+     the same instrument in daylight rather than a different product. */
+  html.light {
+    --canvas: 238 241 245;
+    --raised: 255 255 255;
+    --hairline: 205 214 226;
+    --fg: 11 18 32;
+    --subtle: 90 104 126;
+    /* Amber needs to darken on white or it disappears; cyan likewise. */
+    --signal: 176 106 0;
+    --sync: 12 122 140;
+    --portal: 14 124 102;
+
+    color-scheme: light;
+  }
+
+  html {
+    scroll-behavior: smooth;
+    /* The header is sticky, so an anchor must not land under it. */
+    scroll-padding-top: 5rem;
+  }
+
+  body {
+    @apply bg-canvas font-sans text-fg/85 antialiased;
+  }
+
+  /*
+   * One focus treatment everywhere. Never removed — a page of links that
+   * cannot be navigated by keyboard excludes people for no reason.
+   */
+  :focus-visible {
+    @apply outline-none ring-2 ring-signal ring-offset-2;
+    --tw-ring-offset-color: rgb(var(--canvas));
+  }
+
+  ::selection {
+    @apply bg-signal text-canvas;
+  }
+}
+
+@layer components {
+  /*
+   * The instrument grid: a faint rule grid, like the face of a field
+   * controller or the back of an engineering drawing. The one piece of
+   * ambient texture, sitting far enough back to read as material.
+   */
+  .grid-face {
+    background-image:
+      linear-gradient(to right, rgb(var(--hairline) / 55%) 1px, transparent 1px),
+      linear-gradient(to bottom, rgb(var(--hairline) / 55%) 1px, transparent 1px);
+    background-size: 72px 72px;
+  }
+
+  /* A datasheet field label: how every section announces itself. */
+  .spec-label {
+    @apply font-mono text-[11px] uppercase tracking-widest text-signal;
+  }
+
+  .surface {
+    @apply border border-hairline bg-raised;
+  }
+
+  .muted {
+    @apply text-subtle;
+  }
+}
+
+/*
+ * Motion is opt-out at the system level. Everything animated here is ambient
+ * or entrance; none of it carries meaning that is lost when it stops.
+ */
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}

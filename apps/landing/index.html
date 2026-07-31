@@ -1,0 +1,78 @@
+<!doctype html>
+<html lang="en" class="dark">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+
+    <title>Orbit Field — Offline-First Enterprise Inspection Platform</title>
+    <meta
+      name="description"
+      content="Inspections that do not wait for a signal. Orbit Field runs entirely on the device and reconciles when the connection returns, with the audit trail, signatures and photographs intact."
+    />
+    <link rel="canonical" href="https://orbitfield.app/" />
+    <meta name="theme-color" content="#0B1220" media="(prefers-color-scheme: dark)" />
+    <meta name="theme-color" content="#EEF1F5" media="(prefers-color-scheme: light)" />
+
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="Orbit Field" />
+    <meta property="og:title" content="Orbit Field — Offline-First Enterprise Inspection Platform" />
+    <meta
+      property="og:description"
+      content="Inspectors work in basements, plant rooms and sites with no coverage. Orbit Field runs on the device and reconciles when the connection returns."
+    />
+    <meta property="og:url" content="https://orbitfield.app/" />
+    <meta property="og:image" content="/og.svg" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="Orbit Field — Offline-First Enterprise Inspection Platform" />
+    <meta
+      name="twitter:description"
+      content="Inspections that do not wait for a signal. Offline-first, multi-tenant, audit-complete."
+    />
+    <meta name="twitter:image" content="/og.svg" />
+
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <link rel="apple-touch-icon" href="/favicon.svg" />
+    <link rel="manifest" href="/site.webmanifest" />
+
+    <!-- The two font files are the only third-party request on the page. -->
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+
+    <script type="application/ld+json">
+      {
+        "@context": "https://schema.org",
+        "@type": "SoftwareApplication",
+        "name": "Orbit Field",
+        "applicationCategory": "BusinessApplication",
+        "operatingSystem": "Android, Web",
+        "description": "Offline-first enterprise inspection platform with multi-tenant isolation, digital signatures, GPS verification and audit-complete reporting.",
+        "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" }
+      }
+    </script>
+
+    <script>
+      /*
+       * Theme, before first paint.
+       *
+       * Applied here rather than in React so nobody sees a dark page flash
+       * white on load. Dark is the default because the design is built on it;
+       * a visitor who has never chosen gets whatever their system asks for.
+       */
+      (function () {
+        try {
+          var saved = localStorage.getItem('orbit.theme');
+          var prefersLight = window.matchMedia('(prefers-color-scheme: light)').matches;
+          if (saved === 'light' || (!saved && prefersLight)) {
+            document.documentElement.classList.add('light');
+          }
+        } catch (e) {
+          /* Private browsing can refuse storage; dark is a fine answer. */
+        }
+      })();
+    </script>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>
