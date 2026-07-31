@@ -13,6 +13,8 @@ interface ImportMetaEnv {
   readonly VITE_API_URL?: string;
   readonly VITE_GITHUB_URL?: string;
   readonly VITE_CONTACT_URL?: string;
+  readonly VITE_LINKEDIN_URL?: string;
+  readonly VITE_X_URL?: string;
   readonly VITE_APK_URL?: string;
   readonly VITE_APK_VERSION?: string;
   readonly VITE_APK_BUILD?: string;

@@ -6,13 +6,7 @@
  * it is the first thing worth quoting when something is wrong.
  */
 import { Logo } from './Logo';
-import { build, company, docs, links } from '../lib/config';
-
-const SOCIAL = [
-  { name: 'GitHub', href: links.github },
-  { name: 'LinkedIn', href: '#' },
-  { name: 'X', href: '#' },
-];
+import { build, company, docs, links, social } from '../lib/config';
 
 export function Footer() {
   return (
@@ -78,14 +72,13 @@ export function Footer() {
             © {new Date().getFullYear()} {company.legal} · v{build.version} · built {build.date}
           </p>
           <ul className="flex gap-5">
-            {SOCIAL.map((item) => (
+            {social.map((item) => (
               <li key={item.name}>
                 <a
                   href={item.href}
+                  target="_blank"
+                  rel="noreferrer noopener"
                   className="font-mono text-[11px] transition-colors hover:text-signal muted"
-                  {...(item.href === '#'
-                    ? { 'aria-disabled': 'true' }
-                    : { target: '_blank', rel: 'noreferrer noopener' })}
                 >
                   {item.name}
                 </a>

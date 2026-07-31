@@ -60,7 +60,7 @@ export function Hero() {
             className="mt-4 font-display text-4xl font-bold leading-[1.06] tracking-tight text-fg sm:text-5xl lg:text-[3rem] xl:text-[3.4rem]"
           >
             Inspections that do not
-            <br />
+            <br className="hidden sm:inline" />{' '}
             <span className="text-signal">wait for a signal.</span>
           </motion.h1>
 
@@ -108,7 +108,7 @@ export function Hero() {
             animate="show"
             custom={5}
             variants={rise}
-            className="border-hairline mt-12 grid max-w-lg grid-cols-3 gap-px overflow-hidden rounded-md border"
+            className="border-hairline mt-12 grid max-w-lg grid-cols-1 gap-px overflow-hidden rounded-md border sm:grid-cols-3"
           >
             {[
               ['Roles', 'Owner to client'],

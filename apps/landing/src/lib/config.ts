@@ -81,6 +81,19 @@ export const build = {
   date: read(env.VITE_BUILD_DATE, new Date().toISOString().slice(0, 10)),
 } as const;
 
+/**
+ * Social accounts, when there are any.
+ *
+ * Unset entries render as plain text rather than a link to nowhere. An
+ * `<a href="#">` looks like a link, is announced as a link, and does nothing —
+ * which is a worse placeholder than saying the account does not exist yet.
+ */
+export const social = [
+  { name: 'GitHub', href: links.github },
+  { name: 'LinkedIn', href: read(env.VITE_LINKEDIN_URL, '') },
+  { name: 'X', href: read(env.VITE_X_URL, '') },
+].filter((item) => item.name === 'GitHub' || item.href !== '');
+
 export const company = {
   name: 'Orbit Field',
   legal: read(env.VITE_COMPANY_NAME, 'Orbit Field'),
