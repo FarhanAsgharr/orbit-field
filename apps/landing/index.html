@@ -41,19 +41,23 @@
     <link rel="manifest" href="/site.webmanifest" />
 
     <!--
-      The only third-party request on the page.
-
-      Loaded here rather than through an @import in the stylesheet: an import
-      is discovered only after this file's CSS has been fetched and parsed,
-      which put the fonts at the end of a serial chain and cost 1.6s of render
-      blocking. As a link it downloads alongside everything else, and
-      `display=swap` means text paints in the fallback rather than waiting.
+      The fonts are served from this origin, so there is no third-party
+      request on the page at all and the policy below can stay at 'self'.
+      The two heaviest faces are preloaded because the hero uses both.
     -->
-    <link rel="preconnect" href="https://fonts.googleapis.com" />
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
-      rel="stylesheet"
-      href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600&family=Space+Grotesk:wght@500;600;700&display=swap"
+      rel="preload"
+      href="/fonts/space-grotesk-700.woff2"
+      as="font"
+      type="font/woff2"
+      crossorigin
+    />
+    <link
+      rel="preload"
+      href="/fonts/ibm-plex-sans-400.woff2"
+      as="font"
+      type="font/woff2"
+      crossorigin
     />
 
     <script type="application/ld+json">

@@ -6,6 +6,8 @@
  * tokens, so a theme is changed in one place and cannot be got wrong in forty.
  */
 
+@import './fonts.css';
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
