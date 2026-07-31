@@ -56,7 +56,7 @@ export function App() {
           id="screenshots"
           label="Interface"
           title="What it looks like in use"
-          intro="Captures are being prepared. Each frame below shows what will appear in it."
+          intro="Captures from the running product — the console and portal in production, the phone screens from the release build. Demo data throughout."
         >
           <Screenshots />
         </Section>
